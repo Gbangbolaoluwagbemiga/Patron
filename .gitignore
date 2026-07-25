@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+*.env
+
+# Plans (local only)
+.plans/
+
+# OS
+.DS_Store
+
+# Runtime data
+daemon/data/*.db
