@@ -94,6 +94,17 @@ async function runHireFlow(instruction: string, clientType: "agent" | "human") {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
+  // CORS: the command-center web viewer runs on a different origin (Vite dev
+  // server / static host) and only ever does reads — safe to allow from anywhere.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Payment");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // ── SSE stream ──
   if (req.method === "GET" && url.pathname === "/events") {
     res.writeHead(200, {

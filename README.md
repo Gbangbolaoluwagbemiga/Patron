@@ -99,7 +99,7 @@ Patron/
 │   │   ├── circle/            ← MPC signer, wallet setup, Gateway client, x402 seller
 │   │   └── web3/              ← SecureFlow ABI + contract writes
 │   └── scripts/                ← seed-freelancers, seed-submission, e2e-loop
-├── web/                        ← command center (viewer only) — in progress
+├── web/                        ← command center (viewer only) — built: Quest Board, Decision Log, Payment Feed, SSE
 ├── buyer-demo/                 ← starter-kit buyer agent, the demo's "customer" — in progress
 └── src/                        ← original browser-only prototype, superseded by daemon/
 ```
@@ -125,6 +125,17 @@ npm run seed:submission  # submit work to a milestone
 npm run e2e              # full hire→review→pay loop against the running daemon, no UI
 ```
 
+## Running the command center
+
+```bash
+cd web
+npm install
+cp .env.example .env   # VITE_DAEMON_URL, defaults to http://localhost:8787
+npm run dev             # open http://localhost:5173
+```
+
+Pure read-only viewer — fetches `/api/tasks`, `/api/decisions`, `/api/payments` on load, then stays live over `/events` (SSE). No wallet connect, no keys, no auth; the daemon must already be running.
+
 **Chain facts (Arc Testnet):** chain ID `5042002` · RPC `https://rpc.drpc.testnet.arc.network` · Explorer `https://testnet.arcscan.app` · SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`.
 
 ---
@@ -144,8 +155,8 @@ npm run e2e              # full hire→review→pay loop against the running dae
 - ✅ Guild-master brain built: brief generation, applicant scoring, work review — structured-output, injection-hardened
 - ✅ Patron Agent Wallet provisioned and funded live on Arc testnet (Circle MPC)
 - ✅ x402 seller flow validated live — real `402` response, real Gateway verifying contract
+- ✅ Command Center UI — read-only viewer, live over SSE (Quest Board, Decision Log, Payment Feed)
 - 🔜 Full end-to-end loop run
-- 🔜 Command Center UI (read-only viewer)
 - 🔜 Buyer-demo agent for the live walkthrough
 
 See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full build plan and demo script.

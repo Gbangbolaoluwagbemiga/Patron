@@ -1,0 +1,256 @@
+:root {
+  color-scheme: dark;
+  --bg: #05060a;
+  --panel: #0d0f1a;
+  --panel-border: #22243a;
+  --gold: #e8c468;
+  --purple: #8b7bff;
+  --blue: #5eb1ff;
+  --green: #5fd98a;
+  --red: #ff6b6b;
+  --text: #e9e9f2;
+  --muted: #8a8ba3;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(ellipse at top, #10122080 0%, var(--bg) 60%);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand h1 {
+  font-size: 26px;
+  margin: 0;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+
+.brand span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+.dot.live {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+
+.keycard {
+  border: 1px solid var(--panel-border);
+  background: linear-gradient(135deg, #14162a, #0d0f1a);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.keycard b {
+  color: var(--gold);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 980px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  max-height: 640px;
+}
+
+.panel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-body {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.card {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #10121f;
+}
+
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge.agent {
+  color: var(--purple);
+  border-color: #3f3a70;
+}
+
+.badge.human {
+  color: var(--blue);
+  border-color: #2b4a66;
+}
+
+.badge.status-posted,
+.badge.status-briefing {
+  color: var(--gold);
+  border-color: #5a4a20;
+}
+
+.badge.status-active {
+  color: var(--blue);
+  border-color: #2b4a66;
+}
+
+.badge.status-completed {
+  color: var(--green);
+  border-color: #235c37;
+}
+
+.card-title {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.card-reasoning {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.injection {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.tx-link {
+  color: var(--blue);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.tx-link:hover {
+  text-decoration: underline;
+}
+
+.amount {
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.direction-in,
+.direction-escrow_release {
+  color: var(--green);
+}
+
+.direction-out,
+.direction-escrow_lock {
+  color: var(--muted);
+}
+
+.footer {
+  margin-top: 28px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.footer a {
+  color: var(--muted);
+}
