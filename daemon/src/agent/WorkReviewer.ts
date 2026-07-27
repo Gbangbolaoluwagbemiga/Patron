@@ -1,7 +1,13 @@
 // WorkReviewer — reviews submitted milestone work against the acceptance brief,
-// criterion by criterion. Uses claude-opus-4-8: this is the highest-stakes call in
-// the pipeline (it decides whether USDC actually releases), so it gets the strongest
-// available model rather than the sonnet tier used for briefs/scoring.
+// criterion by criterion. This is the highest-stakes call in the pipeline (it
+// decides whether USDC actually releases) — on Anthropic it used claude-opus-4-8,
+// the strongest available model, rather than the sonnet tier used for briefs/scoring.
+//
+// TEMPORARY: running on Groq (groqStructured) instead — the Anthropic account has
+// no credit balance yet. Groq's lineup here has no distinct "highest-stakes" tier
+// above the primary model, so this uses the same groqModel as the other two calls.
+// Swap back to `client.messages.parse()` + zodOutputFormat(WorkReviewSchema) once
+// billing is sorted; the schema doesn't change.
 //
 // shouldEscalateToHuman takes the FULL review history for a milestone and a FIXED
 // max-revisions count. v1 called this with a single-element array and a shrinking
@@ -9,15 +15,9 @@
 // never reach the threshold. The caller (AgentClient) is responsible for accumulating
 // history per milestone across calls; this function only ever counts what it's given.
 
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { config } from "../config.js";
+import { groqStructured } from "../groq/structured.js";
 import type { AcceptanceBrief } from "../web3/types.js";
-
-// Omit apiKey entirely when unset, rather than passing an empty string — lets the
-// SDK fall back to ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile if present.
-const client = new Anthropic(config.anthropicApiKey ? { apiKey: config.anthropicApiKey } : {});
 
 const CriterionResultSchema = z.object({
   criterion: z.string(),
@@ -62,15 +62,10 @@ export async function reviewWork(
   brief: AcceptanceBrief,
   milestoneDescription: string,
 ): Promise<WorkReviewResult> {
-  const response = await client.messages.parse({
-    model: "claude-opus-4-8",
-    max_tokens: 2048,
+  const parsed = await groqStructured({
     system: SYSTEM_PROMPT,
-    output_config: { format: zodOutputFormat(WorkReviewSchema) },
-    messages: [
-      {
-        role: "user",
-        content: `Milestone: ${milestoneDescription}
+    maxTokens: 2048,
+    user: `Milestone: ${milestoneDescription}
 
 Acceptance Criteria:
 ${brief.criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
@@ -80,18 +75,8 @@ Expected Format: ${brief.deliverableFormat}
 Description: ${submissionDescription}
 Link/Reference: ${submissionLink || "No link provided"}
 </untrusted_submission>`,
-      },
-    ],
+    schema: WorkReviewSchema,
   });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error("Work review refused by safety classifiers");
-  }
-
-  const parsed = response.parsed_output;
-  if (!parsed) {
-    throw new Error(`Work review returned no parsed output (stop_reason: ${response.stop_reason})`);
-  }
 
   return parsed;
 }

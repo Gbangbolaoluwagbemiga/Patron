@@ -3,20 +3,18 @@
 // split, and a keccak256 hash of the criteria that gets posted on-chain in
 // SecureFlow's `projectDescription` so the brief can't be silently altered later.
 //
-// Structured outputs (output_config.format) replace the v1 regex `/\{[\s\S]*\}/`
-// extraction — a malformed or truncated response now surfaces as a typed failure
-// (empty parsed_output + a checkable stop_reason) instead of a thrown JSON.parse error.
+// Structured outputs (zod schema validated on the way back out) replace the v1
+// regex `/\{[\s\S]*\}/` extraction — a malformed or truncated response now surfaces
+// as a typed failure instead of a thrown JSON.parse error.
+//
+// TEMPORARY: running on Groq (groqStructured) instead of Anthropic — the Anthropic
+// account has no credit balance yet. Swap back to `client.messages.parse()` +
+// zodOutputFormat(BriefSchema) once billing is sorted; the schema doesn't change.
 
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { keccak256, toBytes } from "viem";
-import { config } from "../config.js";
+import { groqStructured } from "../groq/structured.js";
 import type { AcceptanceBrief } from "../web3/types.js";
-
-// Omit apiKey entirely when unset, rather than passing an empty string — lets the
-// SDK fall back to ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile if present.
-const client = new Anthropic(config.anthropicApiKey ? { apiKey: config.anthropicApiKey } : {});
 
 const BriefMilestoneSchema = z.object({
   description: z.string().describe("What this milestone delivers"),
@@ -65,29 +63,12 @@ export interface BriefGenerationResult {
 }
 
 export async function generateBrief(instruction: string): Promise<BriefGenerationResult> {
-  const response = await client.messages.parse({
-    model: "claude-sonnet-5",
-    max_tokens: 2048,
+  const parsed = await groqStructured({
     system: SYSTEM_PROMPT,
-    output_config: { format: zodOutputFormat(BriefSchema) },
-    messages: [
-      {
-        role: "user",
-        content: `<client_instruction>\n${instruction}\n</client_instruction>\n\nConvert the instruction above into an acceptance brief.`,
-      },
-    ],
+    user: `<client_instruction>\n${instruction}\n</client_instruction>\n\nConvert the instruction above into an acceptance brief.`,
+    schema: BriefSchema,
+    maxTokens: 2048,
   });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error("Brief generation refused by safety classifiers — instruction may need rewording");
-  }
-
-  const parsed = response.parsed_output;
-  if (!parsed) {
-    throw new Error(
-      `Brief generation returned no parsed output (stop_reason: ${response.stop_reason}) — likely hit max_tokens`,
-    );
-  }
 
   const milestoneSum = parsed.milestones.reduce((sum, m) => sum + m.amount, 0);
   if (Math.abs(milestoneSum - parsed.budget) > 0.01) {
@@ -103,6 +84,6 @@ export async function generateBrief(instruction: string): Promise<BriefGeneratio
 
   return {
     brief: { ...parsed, briefHash },
-    stopReason: response.stop_reason ?? "end_turn",
+    stopReason: "end_turn",
   };
 }

@@ -19,6 +19,24 @@ import { createCircleSigner } from "../circle/circleSigner.js";
 // and accept `value` on `createEscrow` — a looser `unknown[]` cast defeats that.
 const abi = secureFlowAbi as Abi;
 
+// Arc's USDC precompile (config.usdcAddress) is a non-zero address, so SecureFlow's
+// createEscrow treats it as an ERC20 (NATIVE_TOKEN in the contract is address(0) —
+// see SecureFlow.sol): it requires msg.value === 0 and pulls funds itself via
+// safeTransferFrom, which needs a prior `approve`. quoteDeposit's return is already
+// in the token's own 6-decimal units — it is NOT a native `value` to attach.
+const erc20Abi = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
+
 let publicClient: PublicClient | null = null;
 function getPublicClient(): PublicClient {
   if (!publicClient) {
@@ -50,6 +68,19 @@ export async function createEscrow(params: CreateEscrowParams): Promise<bigint> 
     args: [params.totalAmount],
   })) as [bigint, bigint];
 
+  // Approve SecureFlow to pull `deposit` (totalAmount + platform fee, in USDC's own
+  // 6-decimal units) via safeTransferFrom — required before createEscrow will accept
+  // a non-native token; sending it as msg.value instead reverts with InvalidAmount.
+  const approveHash = await signer.walletClient.writeContract({
+    chain: arcTestnet,
+    account: signer.address,
+    address: config.usdcAddress,
+    abi: erc20Abi,
+    functionName: "approve",
+    args: [config.secureflowAddress, deposit],
+  });
+  await client.waitForTransactionReceipt({ hash: approveHash });
+
   const hash = await signer.walletClient.writeContract({
     chain: arcTestnet,
     account: signer.address,
@@ -68,7 +99,6 @@ export async function createEscrow(params: CreateEscrowParams): Promise<bigint> 
       params.projectTitle,
       params.projectDescription,
     ],
-    value: deposit,
   });
 
   const receipt = await client.waitForTransactionReceipt({ hash });

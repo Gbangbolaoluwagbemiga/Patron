@@ -16,6 +16,13 @@ export const arcTestnet = defineChain({
 export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY?.trim() || "",
 
+  // Groq — temporary stand-in LLM provider while the Anthropic account has no
+  // credit balance. Same call shape (structured JSON), swap back by pointing
+  // agent/* at the Anthropic client again once billing is sorted.
+  groqApiKey: process.env.GROQ_API_KEY?.trim() || "",
+  groqModel: process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
+  groqFallbackModel: process.env.GROQ_FALLBACK_MODEL?.trim() || "llama-3.1-8b-instant",
+
   // SecureFlow — Patron calls this contract, does NOT deploy its own
   secureflowAddress: (process.env.SECUREFLOW_CONTRACT_ADDRESS?.trim() ||
     "0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59") as `0x${string}`,
