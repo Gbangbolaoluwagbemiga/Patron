@@ -254,3 +254,232 @@ body {
 .footer a {
   color: var(--muted);
 }
+
+/* ── Logo / header ─────────────────────────────────────────────────────── */
+.logo {
+  width: 40px;
+  height: 40px;
+  filter: drop-shadow(0 0 10px rgba(232, 196, 104, 0.35));
+}
+
+/* ── Stats bar ─────────────────────────────────────────────────────────── */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 700px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: -0.01em;
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ── Pipeline flow diagram ─────────────────────────────────────────────── */
+.flow-panel {
+  min-height: unset;
+  max-height: unset;
+  margin-bottom: 20px;
+}
+
+.flow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 4px 2px;
+  overflow-x: auto;
+}
+
+.flow-stage {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 90px;
+}
+
+.flow-stage:last-child {
+  flex: 0;
+}
+
+.flow-node {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: #10121f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.flow-node.lit {
+  border-color: var(--gold);
+  background: radial-gradient(circle, #2a2410, #10121f 70%);
+  box-shadow: 0 0 14px rgba(232, 196, 104, 0.25);
+}
+
+.flow-node.pulsing {
+  border-color: var(--green);
+  box-shadow: 0 0 22px rgba(95, 217, 138, 0.55);
+}
+
+.flow-line {
+  height: 2px;
+  flex: 1;
+  background: var(--panel-border);
+  margin: 24px -2px 0;
+}
+
+.flow-line.lit {
+  background: linear-gradient(90deg, var(--gold), var(--gold));
+}
+
+.flow-stage-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.flow-label {
+  position: absolute;
+  margin-top: 56px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  width: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.flow-label.lit {
+  color: var(--text);
+}
+
+.flow-stage {
+  position: relative;
+  padding-bottom: 40px;
+}
+
+/* ── Post a quest ──────────────────────────────────────────────────────── */
+.post-quest {
+  background: linear-gradient(135deg, #171425, #0d0f1a);
+  border: 1px solid #3f3a70;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.post-quest-label {
+  font-size: 13px;
+  color: var(--purple);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.post-quest-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.post-quest textarea {
+  flex: 1;
+  background: #0b0c14;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.post-quest textarea:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.post-quest button {
+  background: linear-gradient(135deg, var(--purple), #6a5cd6);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: stretch;
+}
+
+.post-quest button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.post-quest-msg {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.post-quest-msg.ok {
+  color: var(--green);
+}
+
+.post-quest-msg.error {
+  color: var(--red);
+}
+
+/* ── Injection toasts ──────────────────────────────────────────────────── */
+.toast-stack {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 340px;
+}
+
+.toast {
+  background: #2a0f14;
+  border: 1px solid var(--red);
+  color: #ffd7d7;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(255, 107, 107, 0.25);
+}
+
+.card-alert {
+  border-color: var(--red) !important;
+}

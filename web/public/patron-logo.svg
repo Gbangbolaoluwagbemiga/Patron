@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 580" width="500" height="580">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F5DC72"/>
+      <stop offset="50%" stop-color="#C9A84C"/>
+      <stop offset="100%" stop-color="#8B6410"/>
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0A1020"/>
+      <stop offset="100%" stop-color="#111828"/>
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="500" height="580" fill="url(#bgGrad)" rx="24"/>
+
+  <!-- Outer decorative dashed ring -->
+  <circle cx="250" cy="222" r="152" fill="none" stroke="#C9A84C"
+    stroke-width="1.2" stroke-dasharray="4 8" opacity="0.3"/>
+
+  <!-- Coin / Seal body -->
+  <circle cx="250" cy="222" r="136" fill="#0C1320" stroke="url(#gold)" stroke-width="3.5"/>
+
+  <!-- Inner accent ring -->
+  <circle cx="250" cy="222" r="120" fill="none" stroke="#C9A84C"
+    stroke-width="0.8" opacity="0.18"/>
+
+  <!-- ── KEY MARK ── -->
+
+  <!-- Key ring (bow) -->
+  <circle cx="250" cy="192" r="35" fill="none" stroke="url(#gold)"
+    stroke-width="7" filter="url(#softGlow)"/>
+
+  <!-- Keyhole (circle) -->
+  <circle cx="250" cy="191" r="13" fill="#0C1320"/>
+
+  <!-- Keyhole slot -->
+  <rect x="244" y="196" width="12" height="16" fill="#0C1320"/>
+
+  <!-- Key shaft -->
+  <rect x="243" y="222" width="14" height="58" fill="url(#gold)" rx="3"/>
+
+  <!-- Key teeth — right side -->
+  <rect x="257" y="239" width="20" height="9" fill="url(#gold)" rx="2.5"/>
+  <rect x="257" y="256" width="14" height="9" fill="url(#gold)" rx="2.5"/>
+
+  <!-- Cardinal dot accents on coin ring -->
+  <circle cx="250" cy="88"  r="4" fill="#C9A84C" opacity="0.55"/>
+  <circle cx="116" cy="222" r="4" fill="#C9A84C" opacity="0.55"/>
+  <circle cx="384" cy="222" r="4" fill="#C9A84C" opacity="0.55"/>
+
+  <!-- Subtle payment arcs below seal (payments flowing outward) -->
+  <path d="M 185 335 Q 250 375 315 335"
+    fill="none" stroke="#C9A84C" stroke-width="1.2"
+    stroke-dasharray="3 6" opacity="0.28"/>
+  <path d="M 160 352 Q 250 408 340 352"
+    fill="none" stroke="#C9A84C" stroke-width="0.8"
+    stroke-dasharray="2 7" opacity="0.16"/>
+
+  <!-- ── WORDMARK ── -->
+  <text
+    x="250" y="445"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="50"
+    font-weight="700"
+    fill="url(#gold)"
+    text-anchor="middle"
+    letter-spacing="13">PATRON</text>
+
+  <!-- Rule lines flanking tagline -->
+  <line x1="90"  y1="466" x2="178" y2="466" stroke="#C9A84C" stroke-width="0.7" opacity="0.35"/>
+  <line x1="322" y1="466" x2="410" y2="466" stroke="#C9A84C" stroke-width="0.7" opacity="0.35"/>
+
+  <!-- Tagline -->
+  <text
+    x="250" y="466"
+    font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="10"
+    fill="#68788E"
+    text-anchor="middle"
+    letter-spacing="4">AI EMPLOYER · HUMAN TALENT</text>
+
+  <!-- Bottom attribution -->
+  <text
+    x="250" y="520"
+    font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="8.5"
+    fill="#252E40"
+    text-anchor="middle"
+    letter-spacing="2.5">BUILT ON ARC · POWERED BY CIRCLE</text>
+</svg>

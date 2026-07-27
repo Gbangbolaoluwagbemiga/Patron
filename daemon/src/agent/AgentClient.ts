@@ -42,6 +42,8 @@ export interface AgentEvent {
   decision?: AgentDecision;
   escrowId?: string;
   txHash?: string;
+  /** USDC amount tied to this event (job budget on post, milestone amount on release) — surfaced in the payment feed. */
+  amountUsdc?: string;
   timestamp: number;
 }
 
@@ -81,7 +83,10 @@ export class AgentClient {
       // altered after the escrow is live — freelancers and Patron both check it.
       projectDescription: JSON.stringify({ description: instruction, briefHash: brief.briefHash }),
     });
-    this.emit("job_posted", `Job posted on-chain. Escrow ID: ${escrowId}.`, { escrowId: escrowId.toString() });
+    this.emit("job_posted", `Job posted on-chain. Escrow ID: ${escrowId}.`, {
+      escrowId: escrowId.toString(),
+      amountUsdc: brief.budget.toString(),
+    });
 
     return { brief, escrowId };
   }
@@ -171,7 +176,12 @@ export class AgentClient {
       });
 
       const txHash = await secureflow.approveMilestone(escrowId, milestoneIndex);
-      this.emit("payment_released", "Payment released. Milestone complete.", { escrowId: escrowId.toString(), txHash });
+      const milestoneAmount = brief.milestones[Number(milestoneIndex)]?.amount;
+      this.emit("payment_released", "Payment released. Milestone complete.", {
+        escrowId: escrowId.toString(),
+        txHash,
+        amountUsdc: milestoneAmount != null ? milestoneAmount.toString() : undefined,
+      });
       this.reviewHistoryByMilestone.delete(historyKey);
       return;
     }

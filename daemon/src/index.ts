@@ -50,7 +50,7 @@ const agent = new AgentClient((event) => {
       id: randomUUID(),
       direction,
       escrowId: event.escrowId,
-      amountUsdc: "",
+      amountUsdc: event.amountUsdc ?? "",
       txHash: event.txHash,
       reason: event.type,
     });

@@ -1,4 +1,6 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { ARC_EXPLORER, useDaemonFeed } from "./api";
+import { InjectionToasts, PipelineFlow, PostQuest, StatsBar } from "./components";
 import type { DecisionRow, PaymentRow, TaskRow } from "./types";
 
 function timeAgo(ts: number): string {
@@ -14,9 +16,16 @@ function shorten(addr: string | null | undefined): string {
   return addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
 }
 
+const cardMotion = {
+  layout: true,
+  initial: { opacity: 0, y: -12, scale: 0.98 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: { duration: 0.35, ease: "easeOut" as const },
+};
+
 function TaskCard({ task }: { task: TaskRow }) {
   return (
-    <div className="card">
+    <motion.div className="card" {...cardMotion}>
       <div className="card-row">
         <span className={`badge ${task.clientType}`}>{task.clientType === "agent" ? "AI Agent" : "Human"}</span>
         <span className={`badge status-${task.status}`}>{task.status}</span>
@@ -30,21 +39,21 @@ function TaskCard({ task }: { task: TaskRow }) {
           </a>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function DecisionCard({ decision }: { decision: DecisionRow }) {
   const isInjection = decision.reasoning.includes("[PROMPT INJECTION DETECTED]");
   return (
-    <div className="card">
+    <motion.div className={`card ${isInjection ? "card-alert" : ""}`} {...cardMotion}>
       <div className="card-row">
         <span className="badge">{decision.type.replace(/_/g, " ")}</span>
         {decision.score != null && <span className="amount">{decision.score}/100</span>}
       </div>
       <div className={`card-reasoning ${isInjection ? "injection" : ""}`}>{decision.reasoning}</div>
       {decision.target && <div className="card-row" style={{ marginTop: 6, marginBottom: 0 }}>{shorten(decision.target)}</div>}
-    </div>
+    </motion.div>
   );
 }
 
@@ -56,7 +65,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
     escrow_release: "Escrow → Human",
   };
   return (
-    <div className="card">
+    <motion.div className="card" {...cardMotion}>
       <div className="card-row">
         <span className={`badge direction-${payment.direction}`}>{label[payment.direction]}</span>
         <span className="amount">{payment.amount_usdc ? `$${payment.amount_usdc}` : ""}</span>
@@ -69,25 +78,39 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
           </a>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function App() {
-  const { connected, tasks, decisions, payments } = useDaemonFeed();
+  const { connected, tasks, decisions, payments, lastEvent, refresh } = useDaemonFeed();
 
   return (
     <div className="app">
+      <InjectionToasts decisions={decisions} />
+
       <div className="header">
         <div className="brand">
-          <h1>PATRON</h1>
-          <span>Command Center — the human-labor endpoint of the agent economy</span>
+          <img src="/patron-logo.svg" alt="" className="logo" />
+          <div>
+            <h1>PATRON</h1>
+            <span>Command Center — the human-labor endpoint of the agent economy</span>
+          </div>
         </div>
         <div className="status">
           <span className={`dot ${connected ? "live" : ""}`} />
           {connected ? "Live — connected to the daemon" : "Disconnected"}
         </div>
       </div>
+
+      <StatsBar tasks={tasks} payments={payments} />
+
+      <div className="panel flow-panel">
+        <h2>⚡ The Pipeline — live</h2>
+        <PipelineFlow tasks={tasks} decisions={decisions} payments={payments} lastEvent={lastEvent} />
+      </div>
+
+      <PostQuest onPosted={refresh} />
 
       <div className="keycard">
         <b>The one-way key:</b> Patron's guild-master agent can release escrowed funds to a freelancer — it can{" "}
@@ -99,33 +122,39 @@ function App() {
         <div className="panel">
           <h2>🗺️ Quest Board — jobs</h2>
           <div className="panel-body">
-            {tasks.length === 0 ? (
-              <div className="empty">No jobs yet — waiting for an agent or human to post one.</div>
-            ) : (
-              tasks.map((t) => <TaskCard key={t.id} task={t} />)
-            )}
+            <AnimatePresence initial={false}>
+              {tasks.length === 0 ? (
+                <div className="empty">No jobs yet — post one above to see it move.</div>
+              ) : (
+                tasks.map((t) => <TaskCard key={t.id} task={t} />)
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
         <div className="panel">
           <h2>🧠 Decision Log — Claude's reasoning</h2>
           <div className="panel-body">
-            {decisions.length === 0 ? (
-              <div className="empty">No decisions yet.</div>
-            ) : (
-              decisions.map((d) => <DecisionCard key={d.id} decision={d} />)
-            )}
+            <AnimatePresence initial={false}>
+              {decisions.length === 0 ? (
+                <div className="empty">No decisions yet.</div>
+              ) : (
+                decisions.map((d) => <DecisionCard key={d.id} decision={d} />)
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
         <div className="panel">
           <h2>💸 Payment Feed</h2>
           <div className="panel-body">
-            {payments.length === 0 ? (
-              <div className="empty">No payments yet.</div>
-            ) : (
-              payments.map((p) => <PaymentCard key={p.id} payment={p} />)
-            )}
+            <AnimatePresence initial={false}>
+              {payments.length === 0 ? (
+                <div className="empty">No payments yet.</div>
+              ) : (
+                payments.map((p) => <PaymentCard key={p.id} payment={p} />)
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
