@@ -206,6 +206,15 @@ async function pollOnce() {
             await agent.reviewMilestone(escrowId, BigInt(index), m.description, "", brief, m.description);
           }
         }
+
+        // EscrowStatus.Released (2) — SecureFlow itself flips this once the last
+        // milestone is approved and paid out. Re-fetch rather than trust the
+        // pre-review snapshot above, since a review just above may have just paid it.
+        const refreshed = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
+        if (refreshed.escrow?.status === 2) {
+          store.updateTaskStatus(task.id, "completed", task.escrowId);
+          broadcast({ type: "task_completed", message: "Job completed — all milestones approved and paid.", escrowId: task.escrowId, timestamp: Date.now() });
+        }
       }
     } catch (err) {
       console.error(`[poller] task ${task.id} failed:`, err instanceof Error ? err.message : err);

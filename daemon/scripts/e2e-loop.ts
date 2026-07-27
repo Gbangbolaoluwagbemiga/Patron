@@ -38,11 +38,12 @@ async function main() {
 
   // 1. Instruction → brief → escrow (human front door — no x402 fee, simplest for a smoke test)
   console.log("1. Posting instruction...");
+  const budget = process.env.E2E_BUDGET?.trim() || "80";
   const instructRes = await fetch(`${BASE}/api/instruct`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      instruction: "I need a logo for my coffee shop, budget $80, 3 days, needs to work on a sign and a cup.",
+      instruction: `I need a logo for my coffee shop, budget $${budget}, 3 days, needs to work on a sign and a cup.`,
     }),
   });
   if (!instructRes.ok) throw new Error(`/api/instruct failed: ${instructRes.status} ${await instructRes.text()}`);
@@ -86,9 +87,21 @@ async function main() {
   });
   console.log("   ✓ Patron hired the strong applicant\n");
 
-  // 4. Freelancer submits milestone 0
-  console.log("4. Submitting milestone 0 as the hired freelancer...");
+  // 4. Freelancer starts work, then submits milestone 0. startWork() is a required
+  // lifecycle step on SecureFlow — the contract requires status === InProgress before
+  // submitMilestone will accept anything, and only the beneficiary can call it (not
+  // Patron, not the depositor). Real freelancers do this through SecureFlow's own UI.
+  console.log("4. Starting work + submitting milestone 0 as the hired freelancer...");
   const walletClient = createWalletClient({ account: freelancerAccount, chain: arcTestnet, transport: http(rpcUrl) });
+  const startHash = await walletClient.writeContract({
+    chain: arcTestnet,
+    account: freelancerAccount,
+    address: config.secureflowAddress,
+    abi,
+    functionName: "startWork",
+    args: [BigInt(escrowId)],
+  });
+  await publicClient.waitForTransactionReceipt({ hash: startHash });
   const submitHash = await walletClient.writeContract({
     chain: arcTestnet,
     account: freelancerAccount,

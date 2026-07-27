@@ -34,8 +34,7 @@ export const GET_AGENT_JOBS = `
         freelancer
         coverLetter
         proposedTimeline
-        appliedAt
-        status
+        timestamp
       }
     }
   }
@@ -50,8 +49,7 @@ export const GET_JOB_APPLICATIONS = `
         freelancer
         coverLetter
         proposedTimeline
-        appliedAt
-        status
+        timestamp
       }
     }
   }
@@ -84,8 +82,7 @@ export const GET_JOB_BY_ID = `
         freelancer
         coverLetter
         proposedTimeline
-        appliedAt
-        status
+        timestamp
       }
     }
   }
@@ -95,8 +92,7 @@ export interface GQLApplication {
   freelancer: string;
   coverLetter: string;
   proposedTimeline: string;
-  appliedAt: string;
-  status: number;
+  timestamp: string;
 }
 
 export interface GQLMilestone {

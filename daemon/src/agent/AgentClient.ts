@@ -104,7 +104,7 @@ export class AgentClient {
       freelancerAddress: a.freelancer,
       coverLetter: a.coverLetter,
       proposedTimeline: Number(a.proposedTimeline),
-      appliedAt: Number(a.appliedAt) * 1000,
+      appliedAt: Number(a.timestamp) * 1000,
       status: "pending" as const,
     }));
 
