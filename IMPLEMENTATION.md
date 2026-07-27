@@ -1,6 +1,6 @@
 # Patron — Implementation Plan v2
 **Encode Programmable Money Hackathon | Agentic Economy Track**
-**Checkpoint 1 (project page): July 20 | Submission: August 10, 2026 | Demo Day: August 20, 2026**
+**Checkpoint 1: July 20 ✅ | Checkpoint 2: July 27 ✅ | Submission: August 10, 2026 | Demo Day: August 20, 2026**
 
 ---
 
@@ -142,8 +142,8 @@ Patron/
 - [ ] **(your side)** Circle CLI login/ToS + fund Patron's wallet — see below
 - [ ] **(your side)** Install Circle Skills plugin (`circlefin/skills` — Claude Code `/plugin install`)
 - [x] **SPIKE A (critical) — RESOLVED, no hybrid custody needed.** A Circle Programmable Wallet (MPC, via `@circle-fin/developer-controlled-wallets`) wrapped as a viem `WalletClient` (custom EIP-1193 transport, `daemon/src/circle/circleSigner.ts`) executes arbitrary `writeContract` calls — including `createEscrow`'s arrays/strings — the same as a hot wallet, because it's just ABI-encoded calldata under the hood. This pattern is reused from a sibling project (Foreman) that proved it live on Arc under real Gateway settlement. Agent Wallets satisfy "Agent Wallets" via the SDK, not the CLI; Circle CLI is used by the operator for live funding/policy setup during the demo (still a mandatory-tool checkbox), not shelled out to by daemon code.
-- [ ] **SPIKE B (needs live credentials to run):** x402 round trip on Arc testnet — code is written (`circle/gateway.ts`, `circle/x402-seller.ts`); untested end-to-end without `CIRCLE_API_KEY`/`CIRCLE_ENTITY_SECRET`/a funded wallet
-- [ ] **SPIKE C (needs live credentials to run):** Gateway withdraw to Arc wallet — code written in `circle/gateway.ts` (`withdraw()`), untested live
+- [x] **SPIKE B — RESOLVED.** Full x402 round trip proven live on Arc testnet: `buyer-demo/` (its own dedicated Circle Agent Wallet) hit `/api/hire`, got a real 402, signed an EIP-3009 Gateway-batched authorization via Circle MPC, paid, and Patron opened a real escrow off the back of it (escrow #20, #21). Sell side and a real buyer, not a mock.
+- [ ] **SPIKE C (still open):** Gateway `withdraw()` — code written in `circle/gateway.ts`, never run live. Not currently on the critical path (escrow is funded directly from treasury, not via Gateway withdraw) — see Phase 4's cross-chain flourish if there's time.
 
 ### Phase 1 — July 17–20 | The Guild Core + Checkpoint 1
 **Goal: full hire loop runs headless on the server. Project page submitted.** ✅ Checkpoint 1 already done (positioning live on Encode dashboard).
@@ -156,36 +156,64 @@ Patron/
 - [x] `secureflow.ts`: createEscrow / acceptFreelancer / approveMilestone / rejectMilestone / disputeMilestone — code complete, **not yet run against live Arc** (needs a funded wallet)
 - [x] Subgraph poller: watches posted jobs for applications, and active jobs for milestone submissions (15s interval, `index.ts`)
 - [x] Seed scripts: `seed-freelancers.ts` (3 wallets incl. the injection attempt), `seed-submission.ts`
-- [ ] `e2e-loop.ts` written and typechecks green; **not yet run live** — needs `ANTHROPIC_API_KEY`, a funded Patron wallet, and `GRAPH_URL` reachable with a live escrow
-- [ ] **July 20: Checkpoint 1 — Encode project page** with the new positioning ("the human-labor endpoint"), tool mapping, architecture diagram
+- [x] `e2e-loop.ts` run live end-to-end (instruction → brief → escrow → applications incl. a real prompt-injection catch, scored 0/100 → hire → startWork → submit → review → **payment released on-chain**) — currently on **Groq** (`llama-3.3-70b-versatile`), not Anthropic; see Phase 3
+- [x] **Checkpoint 1 & 2 both submitted** on the Encode dashboard.
 
 ### Phase 2 — July 21–27 | The Economy Loop (x402 both ways)
 **Goal: robots can pay Patron; Patron pays robots; money visibly flows.**
 
-- [ ] x402 seller: `POST /api/hire` behind `createGatewayMiddleware` (order fee, e.g. $0.05) + `GET /api/task/:id` status + deliverable return
+- [x] x402 seller: `POST /api/hire` behind `createGatewayMiddleware` ($0.05 order fee) — live, real 402s, real Gateway verifying contract
 - [x] Buyer demo agent (`buyer-demo/`): own dedicated Circle Agent Wallet, discovers Patron's `/api/hire`, gets 402, signs an EIP-3009 Gateway-batched authorization via Circle MPC, pays, receives the opened escrow — verified live end-to-end (escrow #20, #21)
-- [ ] x402 buyer: Patron pays a marketplace web-search service per applicant to verify portfolio claims (real robot→robot payment mid-job, logged in the decision feed)
-- [ ] Revenue plumbing: x402 income (Gateway) → withdraw → Agent Wallet → escrow funding, or escrow funded directly from treasury with x402 as commission fee — pick per Spike C and document
-- [ ] Payment feed persistence: every payment (in / out / escrow lock / escrow release) with tx hash + explorer link
-- [ ] Human front door: same pipeline callable from the UI (a human types the instruction) — keeps v1 story intact
+- [ ] **x402 buyer — still open, and it's half the tool-mapping story.** Patron itself has never *paid* anyone over x402 — only *received* payment. Need Patron to spend mid-decision (e.g. a paid portfolio-verification call on an applicant) so the "Nanopayments (buy)" row in the tool-mapping table is demonstrated, not just coded. Top priority for Phase 4.
+- [x] **Revenue plumbing — decided.** Escrow is funded directly from the treasury (Circle MPC wallet → `approve` → SecureFlow `createEscrow`); the x402 fee is a separate commission that tops up the same treasury. Gateway `withdraw()` (Spike C) is not on this path — it's a nice-to-have flourish, not required plumbing.
+- [x] Payment feed persistence: every payment (in / out / escrow_lock / escrow_release) with tx hash + explorer link — live in the command center's Payment Feed page
+- [x] Human front door: `/api/instruct`, same pipeline, callable from the command center's "Post a Quest" form
 
-### Phase 3 — July 28–Aug 3 | Command Center + Hardening
-**Goal: the demo looks like a product; the edge cases are demo beats, not risks.**
+- [x] Command center UI: live decision log (Claude/Groq reasoning verbatim), payment feed, quest board (open jobs + status), escrow links to SecureFlow — built as a full multi-page app (Dashboard / Quest Board / Job Detail / Decision Log / Payment Feed), not a single scroll
+- [x] Injection defense: delimiter-wrapped untrusted content + explicit injection instructions + structured outputs; **proven live, not simulated** — a seeded applicant's "ignore your instructions" attempt was caught and scored 0/100 in a real run, visible in the UI as a flagged card + a red toast
+- [x] One-way key explainer panel (dashboard `.keycard`) — the spending-policy "second cage" half is described in the pitch but not yet enforced/shown as a distinct, separate UI element; low priority, the escrow one-way-key half is the one that matters most and it's live
+- [ ] Reputation stats: jobs posted / completion rate / USDC released already on the stats bar; **per-freelancer** reputation (completion rate, avg turnaround, on-chain "resume") is not built — see Phase 4
+- [ ] Error handling: subgraph down, LLM timeout, x402 settle failure, revision loop, human escalation — each has been *hit and fixed reactively* while building (subgraph field-name bug, `startWork` lifecycle gap, deposit-before-pay gap), but never *systematically* tried on purpose — see Phase 5
+- [ ] Optional flourish: freelancer chooses payout chain (Gateway cross-chain withdraw, Spike C) — not started
+- [ ] **Deploy: daemon + web are still local-only.** This is the single biggest gap left — nothing is reachable by a judge without your laptop open. Top priority, see Phase 3 below.
 
-- [ ] Command center UI: live decision log (Claude reasoning verbatim), payment feed, quest board (open jobs + applicant counts), escrow links to arcscan
-- [ ] Injection defense: delimiter-wrapped untrusted content + explicit injection instructions + structured outputs; **the scammer applicant on screen gets caught and flagged — rehearsed demo beat**
-- [ ] One-way key + spending-policy explainer panel (the two cages)
-- [ ] Reputation stats: jobs posted, completion rate, avg payment latency, 100% payment rate
-- [ ] Error handling: subgraph down, Claude timeout, x402 settle failure, revision loop, human escalation path
-- [ ] Optional flourish: freelancer chooses payout chain (Gateway cross-chain withdraw)
-- [ ] Deploy: daemon on Railway/Fly, web on Vercel — live URL for submission
+---
 
-### Phase 4 — Aug 4–10 | Demo & Submission
-- [ ] Rehearse the demo script 3× end-to-end on the deployed stack
-- [ ] Record video walkthrough (required)
-- [ ] Submission doc: lead with live demo link + the one-sentence pitch; tool mapping table; "why blockchain" quote
-- [ ] Ask Giles (Encode dashboard) about getting listed on agents.circle.com — even "listing submitted" is a talking point
-- [ ] Submit before Aug 10
+### Phase 3 — July 28–Aug 1 | Ship It Where Judges Can Reach It
+**Goal: nothing left that only works on one laptop. This blocks everything else in value — a judge who can't reach the link doesn't see any of the rest.**
+
+- [ ] Deploy `daemon/` (Railway or Fly) — needs a persistent volume for `data/patron.db` (it's `node:sqlite`, a file, not a managed DB), all of `daemon/.env`'s vars set as platform secrets, CORS is already wide open so no change needed there
+- [ ] Deploy `web/` (Vercel) — trivial, it's a static Vite build; point `VITE_DAEMON_URL` at the deployed daemon's URL
+- [ ] Re-point `buyer-demo/`'s `PATRON_URL` at the deployed daemon and re-verify the whole live loop one more time post-deploy (a deploy always breaks something — CORS, env var typos, cold-start timing)
+- [ ] Fund the deployed Patron wallet properly — $50–100, not the current ~$9, so a judge poking at "Post a Quest" doesn't hit an insufficient-balance wall
+- [ ] **Decide the Claude/Groq question and commit to it in writing:**
+  - Option A: get Anthropic billing sorted and switch `agent/*.ts` back (already scaffolded — the Groq swap left comments at every call site for exactly this)
+  - Option B: keep Groq as primary and reframe it honestly in the README/pitch as a provider-agnostic resilience story (same zod schemas, same injection defenses, swapped LLM vendor with zero business-logic changes when Anthropic billing hit a snag)
+  - Either way, the submission doc must not claim "Claude" if it's not what's actually running when a judge tests it
+- [ ] Update README + presentation deck's "Live Demo" line with the real deployed URL, front and center
+
+### Phase 4 — Aug 2–5 | Close the Tool-Mapping Gap + Build Something Nobody Else Has
+**Goal: every mandatory tool demonstrably load-bearing, and at least one thing in the demo a judge hasn't seen from another team.**
+
+- [ ] **x402 buyer side, for real.** Patron pays a marketplace service mid-decision (portfolio verification on the leading applicant is the original plan) — this is "Payment 2: robot → robot" in the demo script and it's the half of the tool-mapping table that's never actually run
+- [ ] Per-freelancer reputation: completion rate, avg turnaround, "100% payment rate" — even a simple derived stat computed client-side from existing decision/payment history is enough; it's the difference between "a demo" and "this could be a real market"
+- [ ] **Trigger a real rejection → revision → escalation live** and capture it (screenshot or clip) — the dispute path is coded (`shouldEscalateToHuman`, `disputeMilestone`) and has never fired outside a hypothetical Q&A answer
+- [ ] *Stretch:* a second small agent that consumes the first job's deliverable (buyer-demo commissions a logo → a tiny second agent uses that file for something) — turns "one transaction" into "an actual economy," genuinely rare at this scale
+- [ ] *Stretch:* Gateway cross-chain withdraw (Spike C) — freelancer picks a payout chain
+- [ ] Ask about a listing on agents.circle.com — even "submitted" is a talking point per the original plan
+
+### Phase 5 — Aug 6–8 | Harden + Record
+**Goal: nothing embarrassing happens live, and the required video exists.**
+
+- [ ] Deliberately break each failure path once and confirm it degrades gracefully instead of hanging or crashing: kill the subgraph connection, force an LLM timeout, force an x402 settlement failure
+- [ ] Rehearse the 7-beat demo script 3× end-to-end **on the deployed stack**, timed to ~5 minutes
+- [ ] Record the video walkthrough (Encode requires this) — the command center's live pipeline diagram and notification toasts were built specifically to make this visual
+- [ ] Tighten the submission doc: live link first, the one-sentence pitch, the tool-mapping table, the "why blockchain" quote — all already drafted in this file, just needs assembling
+
+### Phase 6 — Aug 9–10 | Submit
+- [ ] Final smoke test of the fully deployed stack (daemon + web + buyer-demo, one more full loop)
+- [ ] Submit before the Aug 10 deadline
+- [ ] Keep the deployed daemon funded and running through Demo Day (Aug 20) — don't let it go quiet between submission and demo
 
 ---
 
@@ -224,12 +252,15 @@ Patron/
 
 | Risk | Mitigation |
 |---|---|
-| Agent Wallet can't execute complex SecureFlow writes | Spike A on day 1. Fallback: hybrid custody (Agent Wallet = payments/treasury, viem hot wallet = contract calls), presented honestly |
-| Marketplace listing needs Circle review | Self-host the x402 endpoint (protocol works regardless); pitch as "service #42, listing submitted"; ask Giles |
-| x402 packages are new / testnet flakiness | arc-nanopayments repo is the reference implementation; record demo video as backup |
-| No real freelancers during demo | Seed scripts from Phase 1; live demo uses seeded applicants + one real submission |
-| Claude output breaks mid-demo | Structured outputs eliminate parse failures; retries + cached fallback responses for the demo path |
-| Prompt injection question from judges | It's a rehearsed demo beat, not a risk |
+| **Nothing is deployed — a judge can't reach it without your laptop** | Phase 3, top priority. Everything else is secondary until this is done. |
+| **Pitch says "Claude," daemon runs Groq** | Decide explicitly (Phase 3): switch back if Anthropic billing gets sorted, or own it as a provider-agnostic resilience story. Don't let a judge discover the mismatch themselves. |
+| **Treasury runs dry mid-demo** | Fund to $50–100 before Demo Day (Phase 3); every test job permanently locks real funds, so balance only ever goes down between top-ups. |
+| Half the x402 story (buyer side) is unproven | Phase 4, top priority — Patron has never paid anyone over x402, only received payment |
+| Marketplace listing needs Circle review | Self-host the x402 endpoint (protocol works regardless); pitch as "service #42, listing submitted"; ask about agents.circle.com |
+| x402 packages are new / testnet flakiness | Proven live twice now (escrow #20, #21) via the real buyer-demo agent — no longer theoretical; record demo video as backup anyway |
+| No real freelancers during demo | Seed scripts from Phase 1; live demo uses seeded applicants + one real submission — already proven live on escrow #19 |
+| LLM output breaks mid-demo | Structured outputs (zod-validated both on Anthropic and Groq) eliminate parse failures; untested: what happens on an actual API timeout or rate limit mid-demo — Phase 5 |
+| Prompt injection question from judges | Not a risk — already caught live on screen, scored 0/100, visible as a flagged card + toast |
 
 ---
 
