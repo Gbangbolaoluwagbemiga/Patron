@@ -128,7 +128,7 @@ Patron/
 │   │   └── e2e-loop.ts          ← full loop test against the running daemon, no UI
 │   ├── package.json / tsconfig.json / .env.example
 ├── web/                         ← command center (no secrets, viewer only)  [NOT YET BUILT]
-├── buyer-demo/                  ← starter-kit buyer agent = the demo's "customer"  [NOT YET BUILT]
+├── buyer-demo/                  ← standalone buyer agent = the demo's "customer"  [BUILT — verified live]
 └── src/                          ← original v1 browser app — superseded by daemon/, kept for reference
 ```
 
@@ -163,7 +163,7 @@ Patron/
 **Goal: robots can pay Patron; Patron pays robots; money visibly flows.**
 
 - [ ] x402 seller: `POST /api/hire` behind `createGatewayMiddleware` (order fee, e.g. $0.05) + `GET /api/task/:id` status + deliverable return
-- [ ] Buyer demo agent (`buyer-demo/`, from starter kit): discovers Patron, pays, commissions a logo, polls for the deliverable
+- [x] Buyer demo agent (`buyer-demo/`): own dedicated Circle Agent Wallet, discovers Patron's `/api/hire`, gets 402, signs an EIP-3009 Gateway-batched authorization via Circle MPC, pays, receives the opened escrow — verified live end-to-end (escrow #20, #21)
 - [ ] x402 buyer: Patron pays a marketplace web-search service per applicant to verify portfolio claims (real robot→robot payment mid-job, logged in the decision feed)
 - [ ] Revenue plumbing: x402 income (Gateway) → withdraw → Agent Wallet → escrow funding, or escrow funded directly from treasury with x402 as commission fee — pick per Spike C and document
 - [ ] Payment feed persistence: every payment (in / out / escrow lock / escrow release) with tx hash + explorer link

@@ -100,7 +100,7 @@ Patron/
 │   │   └── web3/              ← SecureFlow ABI + contract writes
 │   └── scripts/                ← seed-freelancers, seed-submission, e2e-loop
 ├── web/                        ← command center (viewer only) — built: Quest Board, Decision Log, Payment Feed, SSE
-├── buyer-demo/                 ← starter-kit buyer agent, the demo's "customer" — in progress
+├── buyer-demo/                 ← standalone buyer agent, the demo's "customer" — built, verified live
 └── src/                        ← original browser-only prototype, superseded by daemon/
 ```
 
@@ -136,6 +136,21 @@ npm run dev             # open http://localhost:5173
 
 Pure read-only viewer — fetches `/api/tasks`, `/api/decisions`, `/api/payments` on load, then stays live over `/events` (SSE). No wallet connect, no keys, no auth; the daemon must already be running.
 
+## Running the buyer-demo agent
+
+The demo's "customer" — a standalone AI agent with its own Circle Agent Wallet that discovers Patron, pays over x402, and receives the opened escrow. No human types anything into a form.
+
+```bash
+cd buyer-demo
+npm install
+cp .env.example .env    # copy CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET from daemon/.env
+npm run wallet:setup    # provisions the buyer's own dedicated Circle MPC wallet
+# fund that address with a small amount of testnet native currency, then:
+npm run deposit -- 0.5  # deposits into Circle's GatewayWallet — x402 settlement needs a
+                        # DEPOSITED balance there, not just a wallet balance
+npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
+```
+
 **Chain facts (Arc Testnet):** chain ID `5042002` · RPC `https://rpc.drpc.testnet.arc.network` · Explorer `https://testnet.arcscan.app` · SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`.
 
 ---
@@ -156,7 +171,7 @@ Pure read-only viewer — fetches `/api/tasks`, `/api/decisions`, `/api/payments
 - ✅ Patron Agent Wallet provisioned and funded live on Arc testnet (Circle MPC)
 - ✅ x402 seller flow validated live — real `402` response, real Gateway verifying contract
 - ✅ Command Center UI — read-only viewer, live over SSE (Quest Board, Decision Log, Payment Feed)
-- 🔜 Full end-to-end loop run
-- 🔜 Buyer-demo agent for the live walkthrough
+- ✅ Full end-to-end loop run — instruction → brief → escrow → applications (incl. a live prompt-injection catch) → hire → work → review → payment released on-chain
+- ✅ Buyer-demo agent — a standalone AI agent with its own Circle Agent Wallet discovers Patron, pays over x402 (Gateway-batched, EIP-3009), and receives the opened escrow, no human involved
 
 See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full build plan and demo script.

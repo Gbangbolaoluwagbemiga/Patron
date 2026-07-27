@@ -127,6 +127,27 @@ const server = http.createServer(async (req, res) => {
       const proceed = await applyPaywall(req, res);
       if (!proceed) return; // paywall already wrote 402 or an error
 
+      // The x402 commission fee that just cleared — "Payment 1: robot → Patron" in
+      // the demo script. The middleware verifies+settles before we get here but
+      // never persists anything; this is the only place that payment is recorded.
+      const payment = (req as unknown as { payment?: { payer?: string; transaction?: string } }).payment;
+      const paymentEvent: AgentEvent = {
+        type: "payment_released",
+        message: `Received $${ORDER_FEE_USDC} USDC commission from ${payment?.payer ?? "an AI agent"}.`,
+        txHash: payment?.transaction,
+        amountUsdc: ORDER_FEE_USDC,
+        timestamp: Date.now(),
+      };
+      broadcast(paymentEvent);
+      store.recordPayment({
+        id: randomUUID(),
+        direction: "in",
+        amountUsdc: ORDER_FEE_USDC,
+        counterparty: payment?.payer,
+        txHash: payment?.transaction,
+        reason: "x402_hire_fee",
+      });
+
       const body = JSON.parse(await readBody(req)) as { instruction?: string };
       if (!body.instruction) return json(res, 400, { error: "instruction is required" });
 
