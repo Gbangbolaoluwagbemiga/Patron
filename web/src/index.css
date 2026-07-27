@@ -35,33 +35,6 @@ body {
   padding: 28px 24px 64px;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.brand h1 {
-  font-size: 26px;
-  margin: 0;
-  letter-spacing: 0.02em;
-  color: var(--gold);
-}
-
-.brand span {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .status {
   display: flex;
   align-items: center;
@@ -605,4 +578,331 @@ body {
 
 .card-alert {
   border-color: var(--red) !important;
+}
+
+.toast-info {
+  background: #10121f;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.toast-alert {
+  background: #2a0f14;
+  border: 1px solid var(--red);
+  color: #ffd7d7;
+  box-shadow: 0 8px 24px rgba(255, 107, 107, 0.25);
+}
+
+/* ── Nav ───────────────────────────────────────────────────────────────── */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+  line-height: 1.1;
+}
+
+.nav-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-link:hover {
+  color: var(--text);
+}
+
+.nav-link.active {
+  color: #0b0c14;
+  background: var(--gold);
+  font-weight: 600;
+}
+
+/* ── Page shell ────────────────────────────────────────────────────────── */
+.page {
+  animation: page-in 0.3s ease-out;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+
+.page-header h1 {
+  font-size: 22px;
+  color: var(--text);
+  margin: 0;
+}
+
+.page-sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+
+.hero {
+  padding: 8px 0 24px;
+}
+
+.hero h1 {
+  font-size: 34px;
+  line-height: 1.2;
+  margin: 0 0 10px;
+  background: linear-gradient(135deg, var(--gold), #fff6df);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  max-width: 720px;
+}
+
+.hero p {
+  color: var(--muted);
+  font-size: 15px;
+  max-width: 640px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.job-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.panel-body-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  overflow: visible;
+}
+
+@media (max-width: 900px) {
+  .panel-body-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.card-link:hover {
+  border-color: var(--purple);
+  transform: translateY(-1px);
+}
+
+.card-milestones-preview {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ── Job detail: brief + milestones ───────────────────────────────────── */
+.brief-field {
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.brief-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.criteria-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.criteria-list li {
+  margin-bottom: 4px;
+}
+
+.milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.milestone {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #10121f;
+}
+
+.milestone-index {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: #1a1c2c;
+  color: var(--muted);
+}
+
+.milestone-paid .milestone-index {
+  background: #163523;
+  color: var(--green);
+}
+
+.milestone-in_review .milestone-index {
+  background: #2a2410;
+  color: var(--gold);
+}
+
+.milestone-body {
+  flex: 1;
+}
+
+.milestone-desc {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.milestone-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.milestone-state-paid {
+  color: var(--green);
+}
+
+.milestone-state-in_review {
+  color: var(--gold);
+}
+
+.milestone-state-pending {
+  color: var(--muted);
+}
+
+/* ── Treasury: wallet connect ──────────────────────────────────────────── */
+.treasury-connect {
+  padding-left: 20px;
+  border-left: 1px solid var(--panel-border);
+  min-width: 200px;
+}
+
+.treasury-connect-btn {
+  background: linear-gradient(135deg, var(--gold), #cca648);
+  color: #1a1400;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.treasury-connect-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.treasury-fund-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.treasury-fund-row input {
+  width: 70px;
+  background: #0b0c14;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .treasury {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .treasury-fund,
+  .treasury-connect {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--panel-border);
+    padding-top: 14px;
+  }
 }

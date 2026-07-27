@@ -63,3 +63,46 @@ export interface AgentEvent {
   txHash?: string;
   timestamp: number;
 }
+
+export interface BriefMilestone {
+  description: string;
+  amount: number;
+}
+
+export interface TaskBrief {
+  title: string;
+  budget: number;
+  durationDays: number;
+  criteria: string[];
+  deliverableFormat: string;
+  revisionRounds: number;
+  milestones: BriefMilestone[];
+  briefHash: string;
+}
+
+/** task.briefJson is a raw string from SQLite — null until BriefGenerator has run. */
+export function parseBrief(task: TaskRow): TaskBrief | null {
+  if (!task.briefJson) return null;
+  try {
+    return JSON.parse(task.briefJson) as TaskBrief;
+  } catch {
+    return null;
+  }
+}
+
+export type MilestoneState = "paid" | "in_review" | "pending";
+
+/** No per-milestone status is tracked server-side — approximated from how many
+ * escrow_release payments exist for this job (paid in order) plus whether work is
+ * currently mid-review. Good enough to show progress; not a substitute for reading
+ * the contract directly if exact per-milestone on-chain state is ever needed. */
+export function milestoneStates(task: TaskRow, payments: PaymentRow[]): MilestoneState[] {
+  const brief = parseBrief(task);
+  if (!brief) return [];
+  const paidCount = payments.filter((p) => p.escrow_id === task.escrowId && p.direction === "escrow_release").length;
+  return brief.milestones.map((_, i) => {
+    if (i < paidCount) return "paid";
+    if (i === paidCount && task.status === "active") return "in_review";
+    return "pending";
+  });
+}

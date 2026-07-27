@@ -1,8 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
-import type { AgentEvent, DecisionRow, PaymentRow, TaskRow } from "./types";
+import { Link, NavLink } from "react-router-dom";
 
+const MotionLink = motion(Link);
+import { ARC_EXPLORER, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
+import { hasInjectedWallet, useWalletConnect } from "./wallet-connect";
+import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
+
+const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
+
+export function timeAgo(ts: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+export function shorten(addr: string | null | undefined): string {
+  if (!addr) return "—";
+  return addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
+}
+
+export const cardMotion = {
+  layout: true,
+  initial: { opacity: 0, y: -12, scale: 0.98 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: { duration: 0.35, ease: "easeOut" as const },
+};
+
+// ── Nav ──────────────────────────────────────────────────────────────────────
+export function Nav({ connected }: { connected: boolean }) {
+  const links = [
+    { to: "/", label: "Dashboard", end: true },
+    { to: "/jobs", label: "Quest Board" },
+    { to: "/decisions", label: "Decision Log" },
+    { to: "/payments", label: "Payment Feed" },
+  ];
+  return (
+    <div className="nav">
+      <div className="nav-brand">
+        <img src="/patron-logo.svg" alt="" className="logo" />
+        <div>
+          <div className="nav-title">PATRON</div>
+          <div className="nav-subtitle">the human-labor endpoint of the agent economy</div>
+        </div>
+      </div>
+      <div className="nav-links">
+        {links.map((l) => (
+          <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+            {l.label}
+          </NavLink>
+        ))}
+      </div>
+      <div className="status">
+        <span className={`dot ${connected ? "live" : ""}`} />
+        {connected ? "Live" : "Disconnected"}
+      </div>
+    </div>
+  );
+}
+
+// ── Pipeline ─────────────────────────────────────────────────────────────────
 const STAGES: { key: Stage; icon: string; label: string }[] = [
   { key: "intake", icon: "📨", label: "Client Instructs" },
   { key: "brief", icon: "🧠", label: "Claude Writes Brief" },
@@ -66,6 +125,7 @@ export function PipelineFlow({
   );
 }
 
+// ── Stats ────────────────────────────────────────────────────────────────────
 export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: PaymentRow[] }) {
   const totalJobs = tasks.length;
   const active = tasks.filter((t) => t.status === "posted" || t.status === "active" || t.status === "briefing").length;
@@ -94,14 +154,28 @@ export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: Paym
   );
 }
 
-export function Treasury({ wallet }: { wallet: WalletInfo | null }) {
+// ── Treasury (+ real wallet-connect funding) ─────────────────────────────────
+export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFunded: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [amount, setAmount] = useState("5");
+  const [fundedTx, setFundedTx] = useState<string | null>(null);
+  const { address, connecting, funding, error, connect, fund } = useWalletConnect();
 
   function copy() {
     if (!wallet) return;
     void navigator.clipboard.writeText(wallet.address);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function handleFund() {
+    if (!wallet) return;
+    setFundedTx(null);
+    const hash = await fund(wallet.address, amount);
+    if (hash) {
+      setFundedTx(hash);
+      onFunded();
+    }
   }
 
   return (
@@ -111,8 +185,9 @@ export function Treasury({ wallet }: { wallet: WalletInfo | null }) {
         <div className="treasury-balance">{wallet ? `$${parseFloat(wallet.balance).toFixed(2)}` : "…"}</div>
         <div className="treasury-sub">available to fund new jobs</div>
       </div>
+
       <div className="treasury-fund">
-        <div className="treasury-fund-label">Fund it — send testnet USDC on Arc to:</div>
+        <div className="treasury-fund-label">Fund it</div>
         <div className="treasury-address-row">
           <code className="treasury-address">{wallet ? wallet.address : "…"}</code>
           <button className="treasury-copy" onClick={copy} disabled={!wallet}>
@@ -125,10 +200,33 @@ export function Treasury({ wallet }: { wallet: WalletInfo | null }) {
           </a>
         )}
       </div>
+
+      <div className="treasury-connect">
+        {!hasInjectedWallet() ? (
+          <div className="treasury-fund-label">No browser wallet detected — send funds to the address instead.</div>
+        ) : !address ? (
+          <button className="treasury-connect-btn" onClick={connect} disabled={connecting}>
+            {connecting ? "Connecting…" : "Connect Wallet"}
+          </button>
+        ) : (
+          <>
+            <div className="treasury-fund-label">Connected: {shorten(address)}</div>
+            <div className="treasury-fund-row">
+              <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <button className="treasury-connect-btn" onClick={handleFund} disabled={funding || !wallet}>
+                {funding ? "Sending…" : `Fund $${amount}`}
+              </button>
+            </div>
+          </>
+        )}
+        {error && <div className="post-quest-msg error">⚠ {error}</div>}
+        {fundedTx && <div className="post-quest-msg ok">✓ Sent — tx {shorten(fundedTx)}</div>}
+      </div>
     </div>
   );
 }
 
+// ── Post a quest ─────────────────────────────────────────────────────────────
 export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: WalletInfo | null }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -215,33 +313,167 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
   );
 }
 
-export function InjectionToasts({ decisions }: { decisions: DecisionRow[] }) {
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const flagged = decisions.filter((d) => d.reasoning.includes("[PROMPT INJECTION DETECTED]") && !dismissed.has(d.id)).slice(0, 3);
+// ── Live notification center (every event type, not just injection) ─────────
+const EVENT_ICON: Record<string, string> = {
+  brief_generated: "🧠",
+  job_posted: "🔒",
+  applications_fetched: "📨",
+  application_scored: "⚔️",
+  applicant_accepted: "🤝",
+  no_suitable_applicant: "🤷",
+  work_submitted: "📤",
+  work_approved: "✅",
+  work_rejected: "✍️",
+  revision_requested: "✍️",
+  escalated_to_human: "🧑‍⚖️",
+  payment_released: "💰",
+  task_completed: "🏁",
+};
+
+export function NotificationCenter({ liveEvents }: { liveEvents: AgentEvent[] }) {
+  const [visible, setVisible] = useState<(AgentEvent & { key: string })[]>([]);
+  const seen = useRef(new Set<string>());
 
   useEffect(() => {
-    if (flagged.length === 0) return;
-    const timers = flagged.map((d) =>
-      setTimeout(() => setDismissed((prev) => new Set(prev).add(d.id)), 8000),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [flagged.map((f) => f.id).join(",")]);
+    const fresh = liveEvents[0];
+    if (!fresh) return;
+    const key = `${fresh.type}-${fresh.timestamp}`;
+    if (seen.current.has(key)) return;
+    seen.current.add(key);
+    setVisible((prev) => [{ ...fresh, key }, ...prev].slice(0, 4));
+    const t = setTimeout(() => setVisible((prev) => prev.filter((e) => e.key !== key)), 6000);
+    return () => clearTimeout(t);
+  }, [liveEvents[0]]);
+
+  const isInjection = (e: AgentEvent) => e.decision?.reasoning?.includes("[PROMPT INJECTION DETECTED]");
 
   return (
     <div className="toast-stack">
       <AnimatePresence>
-        {flagged.map((d) => (
+        {visible.map((e) => (
           <motion.div
-            key={d.id}
-            className="toast"
+            key={e.key}
+            className={`toast ${isInjection(e) ? "toast-alert" : "toast-info"}`}
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 40 }}
           >
-            🚨 <b>Prompt injection blocked</b> — applicant scored near-zero and rejected automatically.
+            {isInjection(e) ? (
+              <>🚨 <b>Prompt injection blocked</b> — applicant scored near-zero and rejected automatically.</>
+            ) : (
+              <>
+                {EVENT_ICON[e.type] ?? "•"} {e.message}
+              </>
+            )}
           </motion.div>
         ))}
       </AnimatePresence>
     </div>
   );
 }
+
+// ── Shared cards ─────────────────────────────────────────────────────────────
+export function TaskCard({ task, linkToDetail = true }: { task: TaskRow; linkToDetail?: boolean }) {
+  const brief = parseBrief(task);
+  const inner = (
+    <>
+      <div className="card-row">
+        <span className={`badge ${task.clientType}`}>{task.clientType === "agent" ? "AI Agent" : "Human"}</span>
+        <span className={`badge status-${task.status}`}>{task.status}</span>
+      </div>
+      <div className="card-title">{brief?.title ?? task.instruction}</div>
+      {brief && (
+        <div className="card-milestones-preview">
+          {brief.milestones.length} milestone{brief.milestones.length !== 1 ? "s" : ""} · ${brief.budget} total
+        </div>
+      )}
+      <div className="card-row" style={{ marginTop: 8, marginBottom: 0 }}>
+        <span>{timeAgo(task.createdAt)}</span>
+        {task.escrowId && <span className="tx-link">escrow #{task.escrowId} →</span>}
+      </div>
+    </>
+  );
+  return linkToDetail && task.escrowId ? (
+    <MotionLink className="card card-link" to={`/jobs/${task.escrowId}`} {...cardMotion}>
+      {inner}
+    </MotionLink>
+  ) : (
+    <motion.div className="card" {...cardMotion}>
+      {inner}
+    </motion.div>
+  );
+}
+
+export function DecisionCard({ decision }: { decision: DecisionRow }) {
+  const isInjection = decision.reasoning.includes("[PROMPT INJECTION DETECTED]");
+  return (
+    <motion.div className={`card ${isInjection ? "card-alert" : ""}`} {...cardMotion}>
+      <div className="card-row">
+        <span className="badge">{decision.type.replace(/_/g, " ")}</span>
+        {decision.score != null && <span className="amount">{decision.score}/100</span>}
+      </div>
+      <div className={`card-reasoning ${isInjection ? "injection" : ""}`}>{decision.reasoning}</div>
+      {decision.target && (
+        <div className="card-row" style={{ marginTop: 6, marginBottom: 0 }}>
+          {shorten(decision.target)}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+export function PaymentCard({ payment }: { payment: PaymentRow }) {
+  const label: Record<PaymentRow["direction"], string> = {
+    in: "Robot → Patron",
+    out: "Patron → Service",
+    escrow_lock: "Locked in Escrow",
+    escrow_release: "Escrow → Human",
+  };
+  return (
+    <motion.div className="card" {...cardMotion}>
+      <div className="card-row">
+        <span className={`badge direction-${payment.direction}`}>{label[payment.direction]}</span>
+        <span className="amount">{payment.amount_usdc ? `$${payment.amount_usdc}` : ""}</span>
+      </div>
+      <div className="card-row" style={{ marginBottom: 0 }}>
+        <span>{timeAgo(payment.timestamp)}</span>
+        {payment.tx_hash && (
+          <a className="tx-link" href={`${ARC_EXPLORER}/tx/${payment.tx_hash}`} target="_blank" rel="noreferrer">
+            view tx ↗
+          </a>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+const MILESTONE_LABEL: Record<MilestoneState, string> = {
+  paid: "✓ Paid",
+  in_review: "◐ In review",
+  pending: "○ Pending",
+};
+
+export function MilestoneList({ task, payments }: { task: TaskRow; payments: PaymentRow[] }) {
+  const brief = parseBrief(task);
+  if (!brief) return <div className="empty">No brief yet.</div>;
+  const states = milestoneStates(task, payments);
+
+  return (
+    <div className="milestones">
+      {brief.milestones.map((m, i) => (
+        <div className={`milestone milestone-${states[i]}`} key={i}>
+          <div className="milestone-index">{i + 1}</div>
+          <div className="milestone-body">
+            <div className="milestone-desc">{m.description}</div>
+            <div className="milestone-meta">
+              <span className="amount">${m.amount}</span>
+              <span className={`milestone-state milestone-state-${states[i]}`}>{MILESTONE_LABEL[states[i]]}</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export { SECUREFLOW_JOBS_URL };
