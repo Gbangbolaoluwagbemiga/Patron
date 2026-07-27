@@ -49,6 +49,34 @@ export function stageForEventType(type: string): Stage | null {
   }
 }
 
+export interface WalletInfo {
+  address: string;
+  balance: string;
+  explorerUrl: string;
+}
+
+/** Patron's treasury address + live balance — read-only, no keys involved. Polled
+ * rather than pushed over SSE since it changes only when a job is posted/paid. */
+export function useWallet() {
+  const [wallet, setWallet] = useState<WalletInfo | null>(null);
+
+  async function refresh() {
+    try {
+      setWallet(await getJson<WalletInfo>("/api/wallet"));
+    } catch {
+      // leave the last known value in place rather than blanking it on a hiccup
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+    const interval = window.setInterval(refresh, 15_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return { wallet, refreshWallet: refresh };
+}
+
 /** Polls a REST snapshot once, then keeps it fresh by prepending live SSE events. */
 export function useDaemonFeed() {
   const [connected, setConnected] = useState(false);
@@ -78,7 +106,14 @@ export function useDaemonFeed() {
     void refresh();
 
     const source = new EventSource(`${DAEMON_URL}/events`);
-    source.onopen = () => setConnected(true);
+    source.onopen = () => {
+      setConnected(true);
+      // The browser's EventSource auto-reconnects silently after any daemon restart
+      // or network blip — without this, whatever happened during the gap (a hire, a
+      // payment) never reaches this tab, and the pipeline/stats visibly desync from
+      // reality until the next unrelated live event papers over it.
+      void refresh();
+    };
     source.onerror = () => setConnected(false);
     source.onmessage = (msg) => {
       try {
@@ -93,7 +128,14 @@ export function useDaemonFeed() {
       }
     };
 
-    return () => source.close();
+    // Belt-and-braces: resync periodically regardless of SSE state, so a long-open
+    // tab can never drift far from the daemon even if a reconnect is itself missed.
+    const fallback = window.setInterval(() => void refresh(), 20_000);
+
+    return () => {
+      source.close();
+      window.clearInterval(fallback);
+    };
   }, []);
 
   return { connected, tasks, decisions, payments, liveEvents, lastEvent, refresh };

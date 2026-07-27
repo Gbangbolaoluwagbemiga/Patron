@@ -404,14 +404,9 @@ body {
   margin-bottom: 10px;
 }
 
-.post-quest-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
+.post-quest-title,
 .post-quest textarea {
-  flex: 1;
+  width: 100%;
   background: #0b0c14;
   border: 1px solid var(--panel-border);
   border-radius: 10px;
@@ -419,28 +414,62 @@ body {
   padding: 10px 12px;
   font-size: 13px;
   font-family: inherit;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+.post-quest textarea {
   resize: vertical;
 }
 
-.post-quest textarea:focus {
+.post-quest-title:focus,
+.post-quest textarea:focus,
+.post-quest-field input:focus {
   outline: none;
   border-color: var(--purple);
 }
 
-.post-quest button {
+.post-quest-fields {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.post-quest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.post-quest-field input {
+  background: #0b0c14;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 110px;
+}
+
+.post-quest-fields button {
   background: linear-gradient(135deg, var(--purple), #6a5cd6);
   color: white;
   border: none;
   border-radius: 10px;
   padding: 0 20px;
+  height: 38px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  align-self: stretch;
 }
 
-.post-quest button:disabled {
+.post-quest-fields button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -456,6 +485,100 @@ body {
 
 .post-quest-msg.error {
   color: var(--red);
+}
+
+.post-quest-msg.warn {
+  color: var(--gold);
+}
+
+/* ── Treasury ──────────────────────────────────────────────────────────── */
+.treasury {
+  display: flex;
+  gap: 20px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.treasury-main {
+  min-width: 160px;
+}
+
+.treasury-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.treasury-balance {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.treasury-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.treasury-fund {
+  flex: 1;
+  border-left: 1px solid var(--panel-border);
+  padding-left: 20px;
+}
+
+.treasury-fund-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.treasury-address-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.treasury-address {
+  font-size: 12px;
+  background: #0b0c14;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--text);
+}
+
+.treasury-copy {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.treasury-copy:hover {
+  border-color: var(--purple);
+}
+
+/* ── Panel header link ─────────────────────────────────────────────────── */
+.panel-header-link {
+  float: right;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.panel-header-link:hover {
+  text-decoration: underline;
 }
 
 /* ── Injection toasts ──────────────────────────────────────────────────── */

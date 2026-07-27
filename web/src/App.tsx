@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ARC_EXPLORER, useDaemonFeed } from "./api";
-import { InjectionToasts, PipelineFlow, PostQuest, StatsBar } from "./components";
+import { ARC_EXPLORER, useDaemonFeed, useWallet } from "./api";
+import { InjectionToasts, PipelineFlow, PostQuest, StatsBar, Treasury } from "./components";
 import type { DecisionRow, PaymentRow, TaskRow } from "./types";
+
+const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
 
 function timeAgo(ts: number): string {
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -34,8 +36,8 @@ function TaskCard({ task }: { task: TaskRow }) {
       <div className="card-row" style={{ marginTop: 8, marginBottom: 0 }}>
         <span>{timeAgo(task.createdAt)}</span>
         {task.escrowId && (
-          <a className="tx-link" href={`${ARC_EXPLORER}/address/${task.escrowId}`} target="_blank" rel="noreferrer">
-            escrow #{task.escrowId} ↗
+          <a className="tx-link" href={SECUREFLOW_JOBS_URL} target="_blank" rel="noreferrer">
+            escrow #{task.escrowId} on SecureFlow ↗
           </a>
         )}
       </div>
@@ -84,6 +86,7 @@ function PaymentCard({ payment }: { payment: PaymentRow }) {
 
 function App() {
   const { connected, tasks, decisions, payments, lastEvent, refresh } = useDaemonFeed();
+  const { wallet, refreshWallet } = useWallet();
 
   return (
     <div className="app">
@@ -105,12 +108,20 @@ function App() {
 
       <StatsBar tasks={tasks} payments={payments} />
 
+      <Treasury wallet={wallet} />
+
       <div className="panel flow-panel">
         <h2>⚡ The Pipeline — live</h2>
         <PipelineFlow tasks={tasks} decisions={decisions} payments={payments} lastEvent={lastEvent} />
       </div>
 
-      <PostQuest onPosted={refresh} />
+      <PostQuest
+        wallet={wallet}
+        onPosted={() => {
+          void refresh();
+          void refreshWallet();
+        }}
+      />
 
       <div className="keycard">
         <b>The one-way key:</b> Patron's guild-master agent can release escrowed funds to a freelancer — it can{" "}
@@ -120,7 +131,12 @@ function App() {
 
       <div className="grid">
         <div className="panel">
-          <h2>🗺️ Quest Board — jobs</h2>
+          <h2>
+            🗺️ Quest Board — jobs
+            <a className="panel-header-link" href={SECUREFLOW_JOBS_URL} target="_blank" rel="noreferrer">
+              view on SecureFlow ↗
+            </a>
+          </h2>
           <div className="panel-body">
             <AnimatePresence initial={false}>
               {tasks.length === 0 ? (

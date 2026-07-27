@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { postInstruction, stageForEventType, type Stage } from "./api";
+import { postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
 import type { AgentEvent, DecisionRow, PaymentRow, TaskRow } from "./types";
 
 const STAGES: { key: Stage; icon: string; label: string }[] = [
@@ -94,21 +94,67 @@ export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: Paym
   );
 }
 
-export function PostQuest({ onPosted }: { onPosted: () => void }) {
-  const [instruction, setInstruction] = useState("");
+export function Treasury({ wallet }: { wallet: WalletInfo | null }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    if (!wallet) return;
+    void navigator.clipboard.writeText(wallet.address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="treasury">
+      <div className="treasury-main">
+        <div className="treasury-label">Patron's Treasury</div>
+        <div className="treasury-balance">{wallet ? `$${parseFloat(wallet.balance).toFixed(2)}` : "…"}</div>
+        <div className="treasury-sub">available to fund new jobs</div>
+      </div>
+      <div className="treasury-fund">
+        <div className="treasury-fund-label">Fund it — send testnet USDC on Arc to:</div>
+        <div className="treasury-address-row">
+          <code className="treasury-address">{wallet ? wallet.address : "…"}</code>
+          <button className="treasury-copy" onClick={copy} disabled={!wallet}>
+            {copied ? "Copied ✓" : "Copy"}
+          </button>
+        </div>
+        {wallet && (
+          <a className="tx-link" href={wallet.explorerUrl} target="_blank" rel="noreferrer">
+            view balance & history on Arcscan ↗
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: WalletInfo | null }) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [budget, setBudget] = useState("");
+  const [days, setDays] = useState("3");
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "done">("idle");
   const [result, setResult] = useState<{ taskId: string; escrowId: string } | null>(null);
   const [error, setError] = useState("");
 
+  const available = wallet ? parseFloat(wallet.balance) : null;
+  const overBudget = available != null && budget !== "" && parseFloat(budget) > available;
+  const canSubmit = description.trim() !== "" && budget !== "" && parseFloat(budget) > 0 && days !== "" && status !== "loading";
+
   async function submit() {
-    if (!instruction.trim()) return;
+    if (!canSubmit) return;
     setStatus("loading");
     setError("");
+    const instruction = `${title.trim() ? title.trim() + " — " : ""}${description.trim()}. Budget $${budget}, ${days} day(s).`;
     try {
-      const res = await postInstruction(instruction.trim());
+      const res = await postInstruction(instruction);
       setResult(res);
       setStatus("done");
-      setInstruction("");
+      setTitle("");
+      setDescription("");
+      setBudget("");
+      setDays("3");
       onPosted();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -119,17 +165,46 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
   return (
     <div className="post-quest">
       <div className="post-quest-label">Try it yourself — hire Patron right now</div>
-      <div className="post-quest-row">
-        <textarea
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder='e.g. "I need a logo for my coffee shop, budget $50, 3 days."'
-          rows={2}
-        />
-        <button onClick={submit} disabled={status === "loading" || !instruction.trim()}>
+
+      <input
+        className="post-quest-title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Job title (optional) — e.g. Coffee shop logo"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="What do you need? Be specific — this becomes the acceptance brief."
+        rows={2}
+      />
+
+      <div className="post-quest-fields">
+        <label className="post-quest-field">
+          <span>Budget (USDC)</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            placeholder="50"
+          />
+        </label>
+        <label className="post-quest-field">
+          <span>Duration (days)</span>
+          <input type="number" min="1" step="1" value={days} onChange={(e) => setDays(e.target.value)} />
+        </label>
+        <button onClick={submit} disabled={!canSubmit}>
           {status === "loading" ? "Posting…" : "Post Quest →"}
         </button>
       </div>
+
+      {overBudget && (
+        <div className="post-quest-msg warn">
+          ⚠ Patron only has ${available?.toFixed(2)} available — this will likely fail. Fund the treasury below first, or lower the budget.
+        </div>
+      )}
       {status === "error" && <div className="post-quest-msg error">⚠ {error}</div>}
       {status === "done" && result && (
         <div className="post-quest-msg ok">
