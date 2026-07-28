@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { useDaemon } from "../daemon-context";
 import { DecisionCard, MilestoneList, PaymentCard, SECUREFLOW_JOBS_URL, timeAgo } from "../components";
 import { parseBrief } from "../types";
+import { IconBrain, IconCoin, IconScroll, IconSplit } from "../Icon";
 
 export default function JobDetail() {
   const { escrowId } = useParams();
@@ -51,7 +52,9 @@ export default function JobDetail() {
       ) : (
         <div className="grid-2">
           <div className="panel">
-            <h2>📋 Acceptance Brief</h2>
+            <h2>
+              <IconScroll size={15} /> Acceptance Brief
+            </h2>
             <div className="panel-body">
               <div className="brief-field">
                 <div className="brief-label">Instruction</div>
@@ -83,7 +86,9 @@ export default function JobDetail() {
           </div>
 
           <div className="panel">
-            <h2>🧩 Milestones — how the budget is split</h2>
+            <h2>
+              <IconSplit size={15} /> Milestones — how the budget is split
+            </h2>
             <div className="panel-body">
               <MilestoneList task={task} payments={jobPayments} />
             </div>
@@ -93,7 +98,9 @@ export default function JobDetail() {
 
       <div className="grid-2" style={{ marginTop: 20 }}>
         <div className="panel">
-          <h2>🧠 Decisions for this job</h2>
+          <h2>
+            <IconBrain size={15} /> Decisions for this job
+          </h2>
           <div className="panel-body">
             {jobDecisions.length === 0 ? (
               <div className="empty">No decisions yet.</div>
@@ -103,7 +110,9 @@ export default function JobDetail() {
           </div>
         </div>
         <div className="panel">
-          <h2>💸 Payments for this job</h2>
+          <h2>
+            <IconCoin size={15} /> Payments for this job
+          </h2>
           <div className="panel-body">
             {jobPayments.length === 0 ? (
               <div className="empty">No payments yet.</div>

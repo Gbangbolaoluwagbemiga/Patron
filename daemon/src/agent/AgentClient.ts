@@ -79,9 +79,11 @@ export class AgentClient {
       milestoneAmounts: brief.milestones.map((m) => parseUnits(m.amount.toString(), 6)),
       milestoneDescriptions: brief.milestones.map((m) => m.description),
       projectTitle: brief.title,
-      // briefHash embedded in projectDescription so the brief can't be silently
-      // altered after the escrow is live — freelancers and Patron both check it.
-      projectDescription: JSON.stringify({ description: instruction, briefHash: brief.briefHash }),
+      // briefHash appended so the brief can't be silently altered after the escrow
+      // is live, but as plain readable text — SecureFlow's own UI renders this field
+      // raw for freelancers, and nothing downstream ever parses it back as JSON, so
+      // JSON.stringify()-ing it just showed up as gibberish on a real, live-facing surface.
+      projectDescription: `${instruction}\n\nCriteria hash (verifies the brief hasn't changed): ${brief.briefHash}`,
     });
     this.emit("job_posted", `Job posted on-chain. Escrow ID: ${escrowId}.`, {
       escrowId: escrowId.toString(),

@@ -6,6 +6,22 @@ const MotionLink = motion(Link);
 import { ARC_EXPLORER, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
 import { hasInjectedWallet, useWalletConnect } from "./wallet-connect";
 import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
+import {
+  IconAlert,
+  IconBrain,
+  IconCheck,
+  IconCoin,
+  IconDot,
+  IconFlag,
+  IconGavel,
+  IconLock,
+  IconPen,
+  IconScroll,
+  IconSearch,
+  IconShrug,
+  IconSwords,
+  type IconComponent,
+} from "./Icon";
 
 const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
 
@@ -62,13 +78,13 @@ export function Nav({ connected }: { connected: boolean }) {
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
-const STAGES: { key: Stage; icon: string; label: string }[] = [
-  { key: "intake", icon: "📨", label: "Client Instructs" },
-  { key: "brief", icon: "🧠", label: "Claude Writes Brief" },
-  { key: "escrow", icon: "🔒", label: "Locked in Escrow" },
-  { key: "applicants", icon: "⚔️", label: "Humans Apply" },
-  { key: "review", icon: "🔍", label: "Work Reviewed" },
-  { key: "payout", icon: "💰", label: "USDC Released" },
+const STAGES: { key: Stage; icon: IconComponent; label: string }[] = [
+  { key: "intake", icon: IconScroll, label: "Client Instructs" },
+  { key: "brief", icon: IconBrain, label: "Brief Generated" },
+  { key: "escrow", icon: IconLock, label: "Locked in Escrow" },
+  { key: "applicants", icon: IconSwords, label: "Humans Apply" },
+  { key: "review", icon: IconSearch, label: "Work Reviewed" },
+  { key: "payout", icon: IconCoin, label: "USDC Released" },
 ];
 
 function highestStageIndex(tasks: TaskRow[], decisions: DecisionRow[], payments: PaymentRow[]): number {
@@ -115,7 +131,7 @@ export function PipelineFlow({
             animate={pulseKey === s.key ? { scale: [1, 1.12, 1] } : {}}
             transition={{ duration: 0.6 }}
           >
-            <span className="flow-icon">{s.icon}</span>
+            <s.icon size={19} />
           </motion.div>
           <div className={`flow-label ${i <= reached ? "lit" : ""}`}>{s.label}</div>
           {i < STAGES.length - 1 && <div className={`flow-line ${i < reached ? "lit" : ""}`} />}
@@ -314,20 +330,20 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
 }
 
 // ── Live notification center (every event type, not just injection) ─────────
-const EVENT_ICON: Record<string, string> = {
-  brief_generated: "🧠",
-  job_posted: "🔒",
-  applications_fetched: "📨",
-  application_scored: "⚔️",
-  applicant_accepted: "🤝",
-  no_suitable_applicant: "🤷",
-  work_submitted: "📤",
-  work_approved: "✅",
-  work_rejected: "✍️",
-  revision_requested: "✍️",
-  escalated_to_human: "🧑‍⚖️",
-  payment_released: "💰",
-  task_completed: "🏁",
+const EVENT_ICON: Record<string, IconComponent> = {
+  brief_generated: IconBrain,
+  job_posted: IconLock,
+  applications_fetched: IconScroll,
+  application_scored: IconSwords,
+  applicant_accepted: IconCheck,
+  no_suitable_applicant: IconShrug,
+  work_submitted: IconPen,
+  work_approved: IconCheck,
+  work_rejected: IconPen,
+  revision_requested: IconPen,
+  escalated_to_human: IconGavel,
+  payment_released: IconCoin,
+  task_completed: IconFlag,
 };
 
 export function NotificationCenter({ liveEvents }: { liveEvents: AgentEvent[] }) {
@@ -350,23 +366,29 @@ export function NotificationCenter({ liveEvents }: { liveEvents: AgentEvent[] })
   return (
     <div className="toast-stack">
       <AnimatePresence>
-        {visible.map((e) => (
-          <motion.div
-            key={e.key}
-            className={`toast ${isInjection(e) ? "toast-alert" : "toast-info"}`}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40 }}
-          >
-            {isInjection(e) ? (
-              <>🚨 <b>Prompt injection blocked</b> — applicant scored near-zero and rejected automatically.</>
-            ) : (
-              <>
-                {EVENT_ICON[e.type] ?? "•"} {e.message}
-              </>
-            )}
-          </motion.div>
-        ))}
+        {visible.map((e) => {
+          const EventIcon = EVENT_ICON[e.type] ?? IconDot;
+          return (
+            <motion.div
+              key={e.key}
+              className={`toast ${isInjection(e) ? "toast-alert" : "toast-info"}`}
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+            >
+              <span className="toast-icon">{isInjection(e) ? <IconAlert size={16} /> : <EventIcon size={16} />}</span>
+              <span>
+                {isInjection(e) ? (
+                  <>
+                    <b>Prompt injection blocked</b> — applicant scored near-zero and rejected automatically.
+                  </>
+                ) : (
+                  e.message
+                )}
+              </span>
+            </motion.div>
+          );
+        })}
       </AnimatePresence>
     </div>
   );
@@ -448,9 +470,15 @@ export function PaymentCard({ payment }: { payment: PaymentRow }) {
 }
 
 const MILESTONE_LABEL: Record<MilestoneState, string> = {
-  paid: "✓ Paid",
-  in_review: "◐ In review",
-  pending: "○ Pending",
+  paid: "Paid",
+  in_review: "In review",
+  pending: "Pending",
+};
+
+const MILESTONE_ICON: Record<MilestoneState, IconComponent> = {
+  paid: IconCheck,
+  in_review: IconSearch,
+  pending: IconDot,
 };
 
 export function MilestoneList({ task, payments }: { task: TaskRow; payments: PaymentRow[] }) {
@@ -460,18 +488,23 @@ export function MilestoneList({ task, payments }: { task: TaskRow; payments: Pay
 
   return (
     <div className="milestones">
-      {brief.milestones.map((m, i) => (
-        <div className={`milestone milestone-${states[i]}`} key={i}>
-          <div className="milestone-index">{i + 1}</div>
-          <div className="milestone-body">
-            <div className="milestone-desc">{m.description}</div>
-            <div className="milestone-meta">
-              <span className="amount">${m.amount}</span>
-              <span className={`milestone-state milestone-state-${states[i]}`}>{MILESTONE_LABEL[states[i]]}</span>
+      {brief.milestones.map((m, i) => {
+        const StateIcon = MILESTONE_ICON[states[i]];
+        return (
+          <div className={`milestone milestone-${states[i]}`} key={i}>
+            <div className="milestone-index">{i + 1}</div>
+            <div className="milestone-body">
+              <div className="milestone-desc">{m.description}</div>
+              <div className="milestone-meta">
+                <span className="amount">${m.amount}</span>
+                <span className={`milestone-state milestone-state-${states[i]}`}>
+                  <StateIcon size={13} /> {MILESTONE_LABEL[states[i]]}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -19,7 +19,7 @@ import { createPatronGateway } from "./circle/gateway.js";
 import { createPatronPaywall, ORDER_FEE_USDC } from "./circle/x402-seller.js";
 import * as secureflow from "./web3/secureflow.js";
 import { graphQuery, isGraphConfigured } from "./graph/client.js";
-import { GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
+import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
 import * as store from "./store.js";
 
 const PORT = config.port;
@@ -219,6 +219,13 @@ server.listen(PORT, () => {
 // confirm against the live contract in scripts/e2e-loop.ts before the demo.
 const reviewedMilestones = new Set<string>();
 
+// Last application count Patron has actually SCORED for a given job. Without this,
+// a job with zero (or unchanged) applicants gets re-queried and re-scored every
+// 15s forever — burning LLM calls for nothing and flooding the command center
+// with the same "no suitable applicant" notification on a loop. Only re-run
+// reviewApplications when the applicant count has actually grown since last check.
+const lastScoredApplicationCount = new Map<string, number>();
+
 async function pollOnce() {
   if (!isGraphConfigured()) return;
   const tasks = store.listTasks(50).filter((t) => t.escrowId && (t.status === "posted" || t.status === "active"));
@@ -230,6 +237,14 @@ async function pollOnce() {
 
     try {
       if (task.status === "posted") {
+        const appsResult = await graphQuery<{ escrow: { applications: unknown[] } | null }>(GET_JOB_APPLICATIONS, {
+          escrowId: task.escrowId,
+        });
+        const currentCount = appsResult.escrow?.applications.length ?? 0;
+        const lastScored = lastScoredApplicationCount.get(task.escrowId) ?? -1;
+        if (currentCount === 0 || currentCount === lastScored) continue; // nothing new to score
+
+        lastScoredApplicationCount.set(task.escrowId, currentCount);
         const winner = await agent.reviewApplications(escrowId, brief);
         if (winner) store.updateTaskStatus(task.id, "active", task.escrowId);
         continue;

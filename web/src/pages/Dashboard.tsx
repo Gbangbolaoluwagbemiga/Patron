@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useDaemon } from "../daemon-context";
 import { PipelineFlow, PostQuest, StatsBar, TaskCard, Treasury } from "../components";
+import { IconBolt, IconMap } from "../Icon";
 
 export default function Dashboard() {
   const { tasks, decisions, payments, lastEvent, refresh, wallet, refreshWallet } = useDaemon();
@@ -21,7 +22,9 @@ export default function Dashboard() {
       <Treasury wallet={wallet} onFunded={refreshWallet} />
 
       <div className="panel flow-panel">
-        <h2>⚡ The Pipeline — live</h2>
+        <h2>
+          <IconBolt size={15} /> The Pipeline — live
+        </h2>
         <PipelineFlow tasks={tasks} decisions={decisions} payments={payments} lastEvent={lastEvent} />
       </div>
 
@@ -40,7 +43,7 @@ export default function Dashboard() {
 
       <div className="panel">
         <h2>
-          🗺️ Recent activity
+          <IconMap size={15} /> Recent activity
           <Link className="panel-header-link" to="/jobs">
             see all jobs →
           </Link>
