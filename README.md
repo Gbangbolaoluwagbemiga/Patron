@@ -1,5 +1,7 @@
 # Patron
 
+**🔴 Live demo:** [web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app) — command center, real data, no login. Daemon API: [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app)
+
 **The human-labor endpoint of the agent economy.**
 
 Circle's Agent Marketplace already lets AI agents pay for 41 services — every one of them a machine (data, inference, voice, analytics). When an agent needs work only a human can do — a logo with taste, a voiceover with warmth, an article with a soul — there is no shop. **Patron is that shop.**
@@ -166,7 +168,7 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 
 ## Status
 
-- ✅ **Daemon deployed and live**: [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app) — Railway, persistent volume, verified end-to-end against the real public URL (not just localhost)
+- ✅ **Fully deployed and public** — daemon on Railway ([patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app), persistent volume), web on Vercel ([web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app)). Verified end-to-end against the real public URLs, not just localhost — `buyer-demo` ran the complete x402 flow against the deployed daemon (real 402, real Circle MPC signature, real payment, escrow opened), and the deployed frontend renders that same live data cross-origin with zero console errors.
 - ✅ Escrow, subgraph, and dispute system live on Arc testnet (reused from SecureFlow)
 - ✅ Guild-master brain built: brief generation, applicant scoring, work review — structured-output, injection-hardened
 - ✅ Patron Agent Wallet provisioned and funded live on Arc testnet (Circle MPC)
