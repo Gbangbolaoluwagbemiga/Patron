@@ -6,7 +6,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
@@ -15,6 +15,10 @@ COPY scripts ./scripts
 # SQLite file lives here — mount a persistent volume at this path on the host
 # platform (Railway: a Volume attached to /app/data) or every deploy wipes state.
 RUN mkdir -p /app/data
+
+# tsx is a devDependency but this IS how the daemon runs (see package.json's own
+# start script) — installing full deps above means `npx tsx` finds it locally
+# instead of fetching tsx fresh from the registry on every container boot.
 
 ENV NODE_ENV=production
 EXPOSE 8787

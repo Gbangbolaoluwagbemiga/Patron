@@ -16,7 +16,7 @@ Built for the **Encode Programmable Money Hackathon — Agentic Economy Track**.
 |---|---|
 | 🏰 Quest givers | AI agents (any framework). Humans can walk in too. |
 | ⚔️ Adventurers | Human freelancers — apply, work, get paid in USDC. |
-| 🧙 Guild master | Claude — writes the brief, picks the applicant, inspects the work, releases payment. |
+| 🧙 Guild master | An LLM brain — writes the brief, picks the applicant, inspects the work, releases payment. Built on Anthropic's structured-output API; currently running on Groq (`llama-3.3-70b-versatile`) while the Anthropic account's billing gets sorted — same zod schemas, same injection defenses, one provider swapped for another with zero business-logic changes. |
 | 🔒 The vault | [SecureFlow](https://testnet.arcscan.app/address/0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59) escrow on Arc — funds locked from moment one. |
 
 **The one-way key:** the guild master can pay the adventurer. It can never pocket the gold. Rejection triggers a revision round with written feedback, not theft — and after max revisions, a human arbiter steps in via SecureFlow's dispute system.
@@ -32,7 +32,7 @@ Buyer Agent (any framework, funded Circle Agent Wallet)
 ┌────────────────────── PATRON DAEMON (Node, runs 24/7) ──────────────────────┐
 │  x402 seller middleware → POST /api/hire                                    │
 │  Patron Agent Wallet (Circle MPC, owner-set spending policies)              │
-│  Guild-master brain (Claude, structured outputs):                          │
+│  Guild-master brain (provider-agnostic structured outputs; Groq today):    │
 │     BriefGenerator → ApplicationScorer → WorkReviewer                       │
 │  Buyer side: pays marketplace services per-decision (e.g. portfolio check)  │
 │  SecureFlow on Arc: createEscrow / acceptFreelancer /                      │
@@ -78,9 +78,9 @@ Every mandatory Circle tool is load-bearing here — remove any one row and the 
 | x402 buy side | `GatewayClient` + `BatchEvmScheme` from `@circle-fin/x402-batching/client` |
 | Agent wallet | Circle MPC wallet (`@circle-fin/developer-controlled-wallets`), wrapped as a viem `WalletClient` via a custom EIP-1193 transport — handles arbitrary SecureFlow calldata (arrays, strings) exactly like a hot wallet |
 | Chain writes | SecureFlow ABI via the Agent Wallet's `writeContract` — `createEscrow` / `acceptFreelancer` / `approveMilestone` / `rejectMilestone` / `disputeMilestone` |
-| AI decisions | Anthropic Claude, structured outputs (`output_config.format` via `zodOutputFormat` + `client.messages.parse()`) — `claude-sonnet-5` for brief generation & applicant scoring, `claude-opus-4-8` for work review (highest-stakes call — it decides whether USDC releases) |
+| AI decisions | Structured outputs, zod-validated both ways. Built for Anthropic (`output_config.format` + `client.messages.parse()`); **currently running on Groq** (`groq-sdk`, `llama-3.3-70b-versatile`) via a matching `groqStructured()` helper (`daemon/src/groq/structured.ts`) — same schemas, same prompts, same injection defenses, different vendor. Swap-back to Anthropic is a one-line change per call site once billing is sorted. |
 | Data | SecureFlow GoldSky subgraph v3 (read), `node:sqlite` for daemon state + payment feed |
-| Frontend | React + Vite + Tailwind — read-only viewer, SSE client, no wallet-connect, no keys |
+| Frontend | React + Vite, multi-page (React Router) — Dashboard / Quest Board / Job Detail / Decision Log / Payment Feed. Read-only against the daemon (SSE + REST, no keys ever touch it); a "Connect Wallet" button exists only so a *visitor* can fund Patron's treasury from their *own* wallet — it never touches Patron's own custody. |
 
 ---
 
@@ -166,6 +166,7 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 
 ## Status
 
+- ✅ **Daemon deployed and live**: [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app) — Railway, persistent volume, verified end-to-end against the real public URL (not just localhost)
 - ✅ Escrow, subgraph, and dispute system live on Arc testnet (reused from SecureFlow)
 - ✅ Guild-master brain built: brief generation, applicant scoring, work review — structured-output, injection-hardened
 - ✅ Patron Agent Wallet provisioned and funded live on Arc testnet (Circle MPC)
