@@ -241,17 +241,14 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 - ✅ x402 seller flow validated live — real `402` response, real Gateway verifying contract
 - ✅ Command Center UI — "The Ledger", six pages, live over SSE, real per-freelancer reputation derived from actual history
 - ✅ Full end-to-end loop run — instruction → brief → escrow → applications (incl. a live prompt-injection catch) → hire → work → review → payment released on-chain
+- ✅ **Multi-milestone job driven to full completion** — escrow #29, three milestones reviewed and approved independently ($0.50 / $0.25 / $0.25), **$1.00 of $1.00 released to the human**, job auto-marked complete only once the last milestone landed. Partial-payout states were checked at every step: the job correctly stayed *active* at 1-of-3 and 2-of-3.
 - ✅ Buyer-demo agent — a standalone AI agent with its own Circle Agent Wallet discovers Patron, pays over x402 (Gateway-batched, EIP-3009), and receives the opened escrow, no human involved
 - ✅ **x402 buy side proven** — `services/portfolio-check/` (its own Circle wallet, deployed to Railway) is a real marketplace service Patron pays over x402 to verify an applicant's track record before hiring. Both directions of the x402 story are now live, not just the sell side.
 - ✅ **Dispute path proven live** — deliberately failed a milestone twice on purpose; the guild master rejected with real actionable feedback both times, then escalated to SecureFlow's dispute system with a real on-chain `disputeMilestone` transaction. Found and fixed a real bug in the process (a resubmission after rejection was silently never getting re-reviewed).
 
 ### Known gaps, stated plainly
 
-- **No multi-milestone job has yet run to full completion.** Single-milestone jobs complete
-  and pay out end-to-end; multi-milestone jobs have been driven through hire → submit →
-  approve on their *first* milestone only. The completion logic is correct and tested
-  against real data, but the full multi-milestone payout has not been watched happen.
-- **Treasury is thin** (~$5 at time of writing) and its funding source is nearly empty.
+- **Treasury is thin** (~$4 at time of writing) and its funding source is nearly empty.
   Every demo run spends real testnet USDC.
 - **Error paths are not systematically tested.** Subgraph outage, LLM timeout, and x402
   settlement failure have each been hit and fixed reactively while building, never
