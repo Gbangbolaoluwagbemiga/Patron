@@ -292,6 +292,8 @@ const scoredCountKey = (escrowId: string) => `scored_applications:${escrowId}`;
 
 /** True while every task in a pass is failing — i.e. the subgraph is unreachable. */
 let pollerDegraded = false;
+/** True once the LLM has reported a rate limit, so the warning is sent once, not every 15s. */
+let llmExhausted = false;
 
 async function pollOnce() {
   if (!isGraphConfigured()) return;
@@ -312,8 +314,14 @@ async function pollOnce() {
         const lastScored = store.getPollerInt(scoredCountKey(task.escrowId)) ?? -1;
         if (currentCount === 0 || currentCount <= lastScored) continue; // nothing new to score
 
-        store.setPollerInt(scoredCountKey(task.escrowId), currentCount);
+        // Mark AFTER the pass succeeds, never before. Recording the count first
+        // meant a single transient LLM failure — a rate limit, a timeout — burned
+        // the marker anyway and the job was skipped forever: escrow #32 took a
+        // 429 on its only scoring attempt and would never have been looked at
+        // again. The dedup marker exists to prevent repeated SUCCESSFUL work, so
+        // it has to record success, not intent.
         const winner = await agent.reviewApplications(escrowId, brief);
+        store.setPollerInt(scoredCountKey(task.escrowId), currentCount);
         if (winner) store.updateTaskStatus(task.id, "active", task.escrowId);
         continue;
       }
@@ -380,8 +388,24 @@ async function pollOnce() {
         }
       }
     } catch (err) {
-      console.error(`[poller] task ${task.id} failed:`, err instanceof Error ? err.message : err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[poller] task ${task.id} failed:`, msg);
       pollFailures++;
+
+      // An exhausted LLM budget stops hiring dead while everything else looks
+      // perfectly healthy — the API answers, the chain is fine, jobs just never
+      // move. Announce it once. Discovered the hard way: the daily token budget
+      // ran out and the only visible symptom was a schema-validation error.
+      if (/rate limit|rate_limit|429/i.test(msg) && !llmExhausted) {
+        llmExhausted = true;
+        broadcast({
+          type: "error",
+          message: "The guild master's language model has hit its rate limit — hiring and reviews are paused until it resets. Escrowed funds are unaffected.",
+          timestamp: Date.now(),
+        });
+      } else if (!/rate limit|rate_limit|429/i.test(msg) && llmExhausted) {
+        llmExhausted = false;
+      }
     }
   }
 

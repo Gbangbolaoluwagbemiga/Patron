@@ -14,8 +14,11 @@ import { arcTestnet, config, rpcUrl } from "../src/config.js";
 import secureFlowAbi from "../src/web3/SecureFlowABI.json" with { type: "json" };
 
 const abi = secureFlowAbi as Abi;
+// PATRON_URL lets the same loop run against the DEPLOYED daemon, not just a
+// local one. That matters: the loop is what puts real history behind the public
+// link, and "it works on localhost" is not the thing a judge clicks.
 const PORT = process.argv[2] ?? String(config.port);
-const BASE = `http://localhost:${PORT}`;
+const BASE = process.env.PATRON_URL?.trim().replace(/\/$/, "") || `http://localhost:${PORT}`;
 
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
 

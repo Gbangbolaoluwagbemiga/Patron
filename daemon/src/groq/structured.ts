@@ -19,6 +19,13 @@ export interface GroqStructuredOpts<T> {
   schema: z.ZodType<T>;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Optional shape-fixer applied to the parsed JSON before validation, for
+   * variations that carry the right data in the wrong place (a bare array, an
+   * aliased key). Kept separate from `schema` so the JSON schema advertised in
+   * the prompt stays the strict, canonical one.
+   */
+  normalize?: (raw: unknown) => unknown;
 }
 
 export async function groqStructured<T>(opts: GroqStructuredOpts<T>): Promise<T> {
@@ -27,6 +34,13 @@ export async function groqStructured<T>(opts: GroqStructuredOpts<T>): Promise<T>
 
   const models = [...new Set([opts.model ?? config.groqModel, config.groqFallbackModel].filter(Boolean))];
   let lastErr: unknown;
+  // Tracked separately so the FINAL error names the real cause. When the primary
+  // model is rate-limited the request silently falls through to the weaker
+  // fallback, which then fails schema validation — and the only error anyone
+  // ever saw was "output failed schema validation". That sends you debugging a
+  // schema when the actual problem is an exhausted daily token budget. This is
+  // not hypothetical: it took hiring down and read as a schema bug throughout.
+  const rateLimited: string[] = [];
 
   // Two attempts per model before falling through to the next one. A schema
   // violation is a STOCHASTIC failure — the same model given the same prompt
@@ -62,7 +76,7 @@ export async function groqStructured<T>(opts: GroqStructuredOpts<T>): Promise<T>
           throw new Error(`Groq (${model}) returned invalid JSON: ${raw.slice(0, 300)}`);
         }
 
-        const result = opts.schema.safeParse(json);
+        const result = opts.schema.safeParse(opts.normalize ? opts.normalize(json) : json);
         if (!result.success) {
           correction = `Your previous response did not match the required schema. Fix exactly these problems and return the corrected JSON object only:\n${result.error.message}`;
           throw new Error(`Groq (${model}) output failed schema validation: ${result.error.message}`);
@@ -71,10 +85,23 @@ export async function groqStructured<T>(opts: GroqStructuredOpts<T>): Promise<T>
         return result.data;
       } catch (err) {
         lastErr = err;
-        // Retry the same model once with corrective feedback, then fall through
-        // to the next model (e.g. primary rate-limited).
+        const status = (err as { status?: number })?.status;
+        if (status === 429) {
+          if (!rateLimited.includes(model)) rateLimited.push(model);
+          break; // retrying a rate-limited model immediately is pointless
+        }
+        // Otherwise retry the same model once with corrective feedback, then
+        // fall through to the next model.
       }
     }
+  }
+
+  if (rateLimited.length > 0) {
+    throw new Error(
+      `Groq rate limit reached on ${rateLimited.join(", ")} — the daily token budget is exhausted. ` +
+        `Any schema errors below are a symptom of falling back to a weaker model, not the cause. ` +
+        `Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    );
   }
 
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
