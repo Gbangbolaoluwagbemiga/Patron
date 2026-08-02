@@ -52,6 +52,7 @@ export function Nav({ connected }: { connected: boolean }) {
     { to: "/jobs", label: "Quest Board" },
     { to: "/decisions", label: "Decision Log" },
     { to: "/payments", label: "Payment Feed" },
+    { to: "/freelancers", label: "Freelancers" },
   ];
   return (
     <div className="nav">
@@ -91,7 +92,7 @@ function highestStageIndex(tasks: TaskRow[], decisions: DecisionRow[], payments:
   let idx = tasks.length > 0 ? 0 : -1;
   if (tasks.some((t) => t.briefJson)) idx = Math.max(idx, 1);
   if (tasks.some((t) => t.escrowId)) idx = Math.max(idx, 2);
-  if (decisions.some((d) => ["application_scored", "applicant_accepted", "no_suitable_applicant"].includes(d.type)))
+  if (decisions.some((d) => ["application_scored", "applicant_accepted", "no_suitable_applicant", "portfolio_verified"].includes(d.type)))
     idx = Math.max(idx, 3);
   if (decisions.some((d) => ["work_approved", "work_rejected", "revision_requested", "escalated_to_human", "escalated"].includes(d.type)))
     idx = Math.max(idx, 4);
@@ -337,6 +338,7 @@ const EVENT_ICON: Record<string, IconComponent> = {
   application_scored: IconSwords,
   applicant_accepted: IconCheck,
   no_suitable_applicant: IconShrug,
+  portfolio_verified: IconSearch,
   work_submitted: IconPen,
   work_approved: IconCheck,
   work_rejected: IconPen,

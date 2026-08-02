@@ -9,6 +9,7 @@ import Jobs from "./pages/Jobs.tsx";
 import JobDetail from "./pages/JobDetail.tsx";
 import Decisions from "./pages/Decisions.tsx";
 import Payments from "./pages/Payments.tsx";
+import Freelancers from "./pages/Freelancers.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -21,6 +22,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="jobs/:escrowId" element={<JobDetail />} />
             <Route path="decisions" element={<Decisions />} />
             <Route path="payments" element={<Payments />} />
+            <Route path="freelancers" element={<Freelancers />} />
           </Route>
         </Routes>
       </DaemonProvider>

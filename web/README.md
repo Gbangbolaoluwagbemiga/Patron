@@ -1,6 +1,6 @@
 # Patron — Command Center
 
-Read-only viewer for the Patron daemon: Quest Board, Decision Log (Claude's reasoning verbatim), and Payment Feed, all live over SSE. No wallet connect, no keys, no auth — see the [root README](../README.md) for the full project.
+Multi-page command center for the Patron daemon: Dashboard, Quest Board, Job Detail, Decision Log (the LLM brain's reasoning verbatim), and Payment Feed — all live over SSE. Read-only against Patron's own keys (none of them ever reach the browser); the one "Connect Wallet" button only lets a visitor fund the treasury from their own wallet. See the [root README](../README.md) for the full project.
 
 ```bash
 npm install

@@ -31,6 +31,15 @@ function broadcast(event: AgentEvent) {
   for (const res of sseClients) res.write(payload);
 }
 
+// Patron's Gateway-backed treasury (MPC). Lazily created so the daemon still boots
+// (and /api/tasks etc. still work) if Circle env vars aren't set yet — only x402
+// routes need it.
+let gatewayInstance: ReturnType<typeof createPatronGateway> | null = null;
+function getGateway() {
+  if (!gatewayInstance) gatewayInstance = createPatronGateway();
+  return gatewayInstance;
+}
+
 const agent = new AgentClient((event) => {
   broadcast(event);
   if (event.decision) {
@@ -46,26 +55,24 @@ const agent = new AgentClient((event) => {
   }
   if (event.txHash && event.escrowId) {
     const direction =
-      event.type === "job_posted" ? "escrow_lock" : event.type === "payment_released" ? "escrow_release" : "escrow_lock";
+      event.type === "job_posted"
+        ? "escrow_lock"
+        : event.type === "payment_released"
+          ? "escrow_release"
+          : event.type === "portfolio_verified"
+            ? "out"
+            : "escrow_lock";
     store.recordPayment({
       id: randomUUID(),
       direction,
       escrowId: event.escrowId,
       amountUsdc: event.amountUsdc ?? "",
+      counterparty: event.counterparty,
       txHash: event.txHash,
       reason: event.type,
     });
   }
-});
-
-// Patron's Gateway-backed treasury (MPC). Lazily created so the daemon still boots
-// (and /api/tasks etc. still work) if Circle env vars aren't set yet — only x402
-// routes need it.
-let gatewayInstance: ReturnType<typeof createPatronGateway> | null = null;
-function getGateway() {
-  if (!gatewayInstance) gatewayInstance = createPatronGateway();
-  return gatewayInstance;
-}
+}, getGateway);
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
@@ -254,7 +261,13 @@ async function pollOnce() {
         const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
         const milestones = result.escrow?.milestones ?? [];
         for (const [index, m] of milestones.entries()) {
-          const key = `${task.escrowId}:${index}`;
+          // Keyed on submittedAt, not just index — a rejected milestone gets
+          // resubmitted at the SAME index with a NEW submittedAt. Keying on index
+          // alone meant a resubmission after rejection was permanently skipped:
+          // the first review's key stayed in the set forever, so the revision the
+          // freelancer actually sent in response to feedback never got looked at.
+          // Caught by actually driving a real reject -> resubmit cycle end to end.
+          const key = `${task.escrowId}:${index}:${m.submittedAt ?? ""}`;
           if (m.status === 1 && !reviewedMilestones.has(key)) {
             reviewedMilestones.add(key);
             await agent.reviewMilestone(escrowId, BigInt(index), m.description, "", brief, m.description);

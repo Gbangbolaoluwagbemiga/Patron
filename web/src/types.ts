@@ -36,6 +36,7 @@ export type AgentEventType =
   | "application_scored"
   | "applicant_accepted"
   | "no_suitable_applicant"
+  | "portfolio_verified"
   | "work_submitted"
   | "work_approved"
   | "work_rejected"
@@ -105,4 +106,61 @@ export function milestoneStates(task: TaskRow, payments: PaymentRow[]): Mileston
     if (i === paidCount && task.status === "active") return "in_review";
     return "pending";
   });
+}
+
+export interface FreelancerStats {
+  address: string;
+  hires: number;
+  completedJobs: number;
+  totalEarnedUsdc: number;
+  completionRate: number; // 0-100
+  lastActiveAt: number;
+}
+
+/** No dedicated reputation table server-side — derived client-side from decisions
+ * (who got hired for which escrow) + tasks (which of those escrows completed) +
+ * payments (what actually got paid out). Real numbers from real history, not a
+ * separate score anyone could drift out of sync with the underlying events. */
+export function computeFreelancerStats(tasks: TaskRow[], decisions: DecisionRow[], payments: PaymentRow[]): FreelancerStats[] {
+  const escrowToFreelancer = new Map<string, string>();
+  const byAddress = new Map<string, { hires: Set<string>; earned: number; lastActive: number }>();
+
+  for (const d of decisions) {
+    if (d.type === "applicant_accepted" && d.target) {
+      const addr = d.target.toLowerCase();
+      escrowToFreelancer.set(d.task_id, addr);
+      const entry = byAddress.get(addr) ?? { hires: new Set<string>(), earned: 0, lastActive: 0 };
+      entry.hires.add(d.task_id);
+      entry.lastActive = Math.max(entry.lastActive, d.timestamp);
+      byAddress.set(addr, entry);
+    }
+  }
+
+  for (const p of payments) {
+    if (p.direction === "escrow_release" && p.escrow_id) {
+      const addr = escrowToFreelancer.get(p.escrow_id);
+      const entry = addr ? byAddress.get(addr) : undefined;
+      if (entry) entry.earned += parseFloat(p.amount_usdc || "0");
+    }
+  }
+
+  const taskByEscrow = new Map(tasks.filter((t) => t.escrowId).map((t) => [t.escrowId as string, t]));
+
+  const stats: FreelancerStats[] = [];
+  for (const [address, entry] of byAddress) {
+    let completed = 0;
+    for (const escrowId of entry.hires) {
+      if (taskByEscrow.get(escrowId)?.status === "completed") completed++;
+    }
+    stats.push({
+      address,
+      hires: entry.hires.size,
+      completedJobs: completed,
+      totalEarnedUsdc: entry.earned,
+      completionRate: entry.hires.size > 0 ? Math.round((completed / entry.hires.size) * 100) : 0,
+      lastActiveAt: entry.lastActive,
+    });
+  }
+
+  return stats.sort((a, b) => b.totalEarnedUsdc - a.totalEarnedUsdc || b.hires - a.hires);
 }

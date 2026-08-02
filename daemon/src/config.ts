@@ -42,6 +42,10 @@ export const config = {
     process.env.GATEWAY_FACILITATOR_URL?.trim() || "https://gateway-api-testnet.circle.com",
   x402OrderFee: process.env.X402_ORDER_FEE?.trim() || "0.05",
 
+  // x402 BUY side — Patron paying a marketplace service (services/portfolio-check)
+  // to verify the leading applicant before hiring. Unset = skip verification.
+  portfolioCheckUrl: process.env.PORTFOLIO_CHECK_URL?.trim() || "",
+
   // Application-level spending policy — the second cage. The Developer-Controlled
   // Wallets SDK has no native policy engine, so Patron enforces caps itself before
   // every signed spend (see circle/gateway.ts).

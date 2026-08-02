@@ -1,0 +1,24 @@
+{
+  "name": "portfolio-check-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A standalone, x402-paywalled marketplace service — the thing Patron pays over x402 mid-decision (portfolio verification on the leading applicant) to prove the buy side of the protocol, not just the sell side. Its own dedicated Circle Agent Wallet, completely independent of Patron's treasury — a real seller Patron transacts with, not Patron paying itself.",
+  "scripts": {
+    "wallet:setup": "tsx src/wallet-setup.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^10.8.0",
+    "@circle-fin/x402-batching": "^3.2.0",
+    "@x402/evm": "^2.20.0",
+    "dotenv": "^16.4.5",
+    "viem": "^2.55.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

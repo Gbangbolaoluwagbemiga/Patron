@@ -10,7 +10,7 @@ export default function Decisions() {
       <div className="page-header">
         <h1>Decision Log</h1>
       </div>
-      <p className="page-sub">Claude's actual reasoning, verbatim, for every applicant score, hire, and work review Patron has ever made.</p>
+      <p className="page-sub">The guild master's actual reasoning, verbatim, for every applicant score, portfolio check, hire, and work review Patron has ever made.</p>
 
       <div className="job-grid">
         <AnimatePresence initial={false}>

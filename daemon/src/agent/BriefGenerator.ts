@@ -73,7 +73,7 @@ export async function generateBrief(instruction: string): Promise<BriefGeneratio
   const milestoneSum = parsed.milestones.reduce((sum, m) => sum + m.amount, 0);
   if (Math.abs(milestoneSum - parsed.budget) > 0.01) {
     throw new Error(
-      `Brief milestones (${milestoneSum}) do not sum to budget (${parsed.budget}) — Claude produced an inconsistent brief`,
+      `Brief milestones (${milestoneSum}) do not sum to budget (${parsed.budget}) — the LLM produced an inconsistent brief`,
     );
   }
 

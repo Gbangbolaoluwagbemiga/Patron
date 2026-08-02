@@ -34,6 +34,7 @@ export function stageForEventType(type: string): Stage | null {
     case "application_scored":
     case "applicant_accepted":
     case "no_suitable_applicant":
+    case "portfolio_verified":
       return "applicants";
     case "work_submitted":
     case "work_approved":

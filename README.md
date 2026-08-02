@@ -101,8 +101,11 @@ Patron/
 │   │   ├── circle/            ← MPC signer, wallet setup, Gateway client, x402 seller
 │   │   └── web3/              ← SecureFlow ABI + contract writes
 │   └── scripts/                ← seed-freelancers, seed-submission, e2e-loop
-├── web/                        ← command center (viewer only) — built: Quest Board, Decision Log, Payment Feed, SSE
+├── web/                        ← command center — multi-page, live over SSE, wallet-connect funding
 ├── buyer-demo/                 ← standalone buyer agent, the demo's "customer" — built, verified live
+├── services/
+│   └── portfolio-check/        ← standalone x402-paywalled marketplace service Patron pays over x402
+│                                  mid-decision — its own Circle wallet, deployed independently
 └── src/                        ← original browser-only prototype, superseded by daemon/
 ```
 
@@ -173,8 +176,10 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 - ✅ Guild-master brain built: brief generation, applicant scoring, work review — structured-output, injection-hardened
 - ✅ Patron Agent Wallet provisioned and funded live on Arc testnet (Circle MPC)
 - ✅ x402 seller flow validated live — real `402` response, real Gateway verifying contract
-- ✅ Command Center UI — read-only viewer, live over SSE (Quest Board, Decision Log, Payment Feed)
+- ✅ Command Center UI — multi-page (Dashboard / Quest Board / Job Detail / Decision Log / Payment Feed / Freelancers), live over SSE, real per-freelancer reputation derived from actual history
 - ✅ Full end-to-end loop run — instruction → brief → escrow → applications (incl. a live prompt-injection catch) → hire → work → review → payment released on-chain
 - ✅ Buyer-demo agent — a standalone AI agent with its own Circle Agent Wallet discovers Patron, pays over x402 (Gateway-batched, EIP-3009), and receives the opened escrow, no human involved
+- ✅ **x402 buy side proven** — `services/portfolio-check/` (its own Circle wallet, deployed to Railway) is a real marketplace service Patron pays over x402 to verify an applicant's track record before hiring. Both directions of the x402 story are now live, not just the sell side.
+- ✅ **Dispute path proven live** — deliberately failed a milestone twice on purpose; the guild master rejected with real actionable feedback both times, then escalated to SecureFlow's dispute system with a real on-chain `disputeMilestone` transaction. Found and fixed a real bug in the process (a resubmission after rejection was silently never getting re-reviewed).
 
 See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full build plan and demo script.

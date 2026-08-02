@@ -18,6 +18,8 @@ import type { AcceptanceBrief, AgentDecision, Application } from "../web3/types.
 import { graphQuery, isGraphConfigured } from "../graph/client.js";
 import { GET_JOB_APPLICATIONS, type GQLApplication } from "../graph/queries.js";
 import * as secureflow from "../web3/secureflow.js";
+import type { PatronGateway } from "../circle/gateway.js";
+import { config } from "../config.js";
 import { parseUnits } from "viem";
 
 export type AgentEventType =
@@ -27,6 +29,7 @@ export type AgentEventType =
   | "application_scored"
   | "applicant_accepted"
   | "no_suitable_applicant"
+  | "portfolio_verified"
   | "work_submitted"
   | "work_approved"
   | "work_rejected"
@@ -44,6 +47,8 @@ export interface AgentEvent {
   txHash?: string;
   /** USDC amount tied to this event (job budget on post, milestone amount on release) — surfaced in the payment feed. */
   amountUsdc?: string;
+  /** Who Patron paid/was paid by — only set on payment-bearing events. */
+  counterparty?: string;
   timestamp: number;
 }
 
@@ -54,9 +59,12 @@ export class AgentClient {
   private decisions: AgentDecision[] = [];
   /** Full review history per milestone — the fix for the escalation-counter bug. Key: `${escrowId}:${milestoneIndex}`. */
   private reviewHistoryByMilestone = new Map<string, WorkReviewResult[]>();
+  /** Lazily resolved — the daemon still boots without Circle configured; only this buy-side call needs it. */
+  private getGateway?: () => PatronGateway;
 
-  constructor(onEvent: AgentEventCallback) {
+  constructor(onEvent: AgentEventCallback, getGateway?: () => PatronGateway) {
     this.onEvent = onEvent;
+    this.getGateway = getGateway;
   }
 
   private emit(type: AgentEventType, message: string, extra?: Partial<AgentEvent>) {
@@ -110,7 +118,7 @@ export class AgentClient {
       status: "pending" as const,
     }));
 
-    this.emit("applications_fetched", `${applications.length} application(s) received. Scoring comparatively with Claude...`);
+    this.emit("applications_fetched", `${applications.length} application(s) received. Scoring comparatively...`);
 
     const { winner } = await pickBestApplicant(applications, brief, (decision) => {
       this.decisions.push({ ...decision, taskId: escrowId.toString() });
@@ -125,6 +133,41 @@ export class AgentClient {
         escrowId: escrowId.toString(),
       });
       return null;
+    }
+
+    // Buy-side x402: pay a marketplace service to verify the leading applicant's
+    // portfolio before committing to hire — real robot-to-robot payment, mid-decision.
+    // Non-fatal: a verification-service outage shouldn't block hiring a real human.
+    if (config.portfolioCheckUrl && this.getGateway) {
+      try {
+        const gateway = this.getGateway();
+        const result = await gateway.pay<{ reputationScore: number; verified: boolean; summary: string }>(
+          `${config.portfolioCheckUrl}/verify?address=${winner.freelancerAddress}`,
+        );
+        const verifyDecision: AgentDecision = {
+          id: crypto.randomUUID(),
+          taskId: escrowId.toString(),
+          type: "portfolio_verified",
+          reasoning: `Paid $${result.formattedAmount} to verify ${winner.freelancerAddress.slice(0, 8)}...'s track record: score ${result.data.reputationScore}/100 — ${result.data.summary}`,
+          target: winner.freelancerAddress,
+          score: result.data.reputationScore,
+          timestamp: Date.now(),
+        };
+        this.decisions.push(verifyDecision);
+        this.emit("portfolio_verified", verifyDecision.reasoning, {
+          decision: verifyDecision,
+          escrowId: escrowId.toString(),
+          txHash: result.transaction,
+          amountUsdc: result.formattedAmount,
+          counterparty: "PortfolioCheck service",
+        });
+      } catch (err) {
+        this.emit(
+          "portfolio_verified",
+          `Portfolio verification unavailable (${err instanceof Error ? err.message : String(err)}) — proceeding on application score alone.`,
+          { escrowId: escrowId.toString() },
+        );
+      }
     }
 
     const txHash = await secureflow.acceptFreelancer(escrowId, winner.freelancerAddress as `0x${string}`);
