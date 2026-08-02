@@ -38,21 +38,26 @@ export function shorten(addr: string | null | undefined): string {
   return addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
 }
 
+// Quiet on purpose. The previous entrance (y: -12 with a scale pop) read as
+// springy app-chrome; ink appearing on paper shouldn't bounce. A short fade
+// with a few pixels of lift is enough to show that a row is new.
 export const cardMotion = {
   layout: true,
-  initial: { opacity: 0, y: -12, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  transition: { duration: 0.35, ease: "easeOut" as const },
+  initial: { opacity: 0, y: -5 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.28, ease: "easeOut" as const },
 };
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 export function Nav({ connected }: { connected: boolean }) {
+  // Named as sections of a guild's account book rather than as dashboard tabs.
+  // Same routes, same data — the voice is what changes.
   const links = [
-    { to: "/", label: "Dashboard", end: true },
-    { to: "/jobs", label: "Quest Board" },
-    { to: "/decisions", label: "Decision Log" },
-    { to: "/payments", label: "Payment Feed" },
-    { to: "/freelancers", label: "Freelancers" },
+    { to: "/", label: "The Ledger", end: true },
+    { to: "/jobs", label: "Open Commissions" },
+    { to: "/decisions", label: "The Guild Master's Hand" },
+    { to: "/payments", label: "Account of Monies" },
+    { to: "/freelancers", label: "Register of Adventurers" },
   ];
   return (
     <div className="nav">
@@ -152,21 +157,31 @@ export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: Paym
     .reduce((sum, p) => sum + parseFloat(p.amount_usdc || "0"), 0);
   const completionRate = totalJobs > 0 ? Math.round((completed / totalJobs) * 100) : 0;
 
-  const stats = [
-    { label: "Quests Posted", value: totalJobs.toString() },
-    { label: "Active", value: active.toString() },
-    { label: "USDC Released", value: `$${released.toFixed(2)}` },
+  // Deliberate hierarchy, not four equal boxes: money actually paid to humans
+  // is the entire point of the project, so it is set enormous and everything
+  // else is small. Uniform mid-sized stat cards are the clearest tell of a
+  // generated layout — this is the opposite on purpose.
+  const rest = [
+    { label: "Commissions", value: totalJobs.toString() },
+    { label: "In Progress", value: active.toString() },
+    { label: "Completed", value: completed.toString() },
     { label: "Completion Rate", value: `${completionRate}%` },
   ];
 
   return (
     <div className="stats">
-      {stats.map((s) => (
-        <div className="stat" key={s.label}>
-          <div className="stat-value">{s.value}</div>
-          <div className="stat-label">{s.label}</div>
-        </div>
-      ))}
+      <div className="stat stat-hero">
+        <div className="stat-value">${released.toFixed(2)}</div>
+        <div className="stat-label">paid to humans, on-chain</div>
+      </div>
+      <div className="stat-rest">
+        {rest.map((s) => (
+          <div className="stat" key={s.label}>
+            <div className="stat-value">{s.value}</div>
+            <div className="stat-label">{s.label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -399,10 +414,17 @@ export function NotificationCenter({ liveEvents }: { liveEvents: AgentEvent[] })
 // ── Shared cards ─────────────────────────────────────────────────────────────
 export function TaskCard({ task, linkToDetail = true }: { task: TaskRow; linkToDetail?: boolean }) {
   const brief = parseBrief(task);
+  // Every commission carries a ledger entry number — the escrow id, zero-padded
+  // like a folio. It's the same number that's on-chain, so a judge can read it
+  // here and find it on Arcscan.
+  const entryNo = task.escrowId ? task.escrowId.padStart(4, "0") : null;
   const inner = (
     <>
       <div className="card-row">
-        <span className={`badge ${task.clientType}`}>{task.clientType === "agent" ? "AI Agent" : "Human"}</span>
+        <span>
+          {entryNo && <span className="entry-no">ENTRY {entryNo}&nbsp;&nbsp;·&nbsp;&nbsp;</span>}
+          <span className={`badge ${task.clientType}`}>{task.clientType === "agent" ? "AI Agent" : "Human"}</span>
+        </span>
         <span className={`badge status-${task.status}`}>{task.status}</span>
       </div>
       <div className="card-title">{brief?.title ?? task.instruction}</div>
@@ -413,7 +435,7 @@ export function TaskCard({ task, linkToDetail = true }: { task: TaskRow; linkToD
       )}
       <div className="card-row" style={{ marginTop: 8, marginBottom: 0 }}>
         <span>{timeAgo(task.createdAt)}</span>
-        {task.escrowId && <span className="tx-link">escrow #{task.escrowId} →</span>}
+        {task.escrowId && <span className="tx-link">read the entry →</span>}
       </div>
     </>
   );

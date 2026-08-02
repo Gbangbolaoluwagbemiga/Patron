@@ -10,11 +10,12 @@ export default function Payments() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Payment Feed</h1>
+        <h1>Account of Monies</h1>
       </div>
       <p className="page-sub">
-        Every payment Patron has ever made or received — ${totalIn.toFixed(2)} received from agents over x402, $
-        {totalOut.toFixed(2)} released to humans from escrow. Every entry links to Arc Testnet.
+        Every sum Patron has taken in or paid out — ${totalIn.toFixed(2)} received from machines over x402, $
+        {totalOut.toFixed(2)} released to humans out of escrow. Each line is a real transaction on Arc; follow any
+        one of them to the explorer.
       </p>
 
       <div className="job-grid">

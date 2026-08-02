@@ -23,7 +23,7 @@ export default function Dashboard() {
 
       <div className="panel flow-panel">
         <h2>
-          <IconBolt size={15} /> The Pipeline — live
+          <IconBolt size={15} /> How a commission moves
         </h2>
         <PipelineFlow tasks={tasks} decisions={decisions} payments={payments} lastEvent={lastEvent} />
       </div>
@@ -43,14 +43,14 @@ export default function Dashboard() {
 
       <div className="panel">
         <h2>
-          <IconMap size={15} /> Recent activity
+          <IconMap size={15} /> Latest entries
           <Link className="panel-header-link" to="/jobs">
-            see all jobs →
+            the full ledger →
           </Link>
         </h2>
         <div className="panel-body panel-body-grid">
           {recent.length === 0 ? (
-            <div className="empty">No jobs yet — post one above to see it move.</div>
+            <div className="empty">The ledger is empty — post a commission above and watch it move.</div>
           ) : (
             recent.map((t) => <TaskCard key={t.id} task={t} />)
           )}

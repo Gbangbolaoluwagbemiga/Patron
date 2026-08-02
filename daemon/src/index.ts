@@ -53,15 +53,20 @@ const agent = new AgentClient((event) => {
       timestamp: event.decision.timestamp,
     });
   }
-  if (event.txHash && event.escrowId) {
-    const direction =
-      event.type === "job_posted"
-        ? "escrow_lock"
-        : event.type === "payment_released"
-          ? "escrow_release"
-          : event.type === "portfolio_verified"
-            ? "out"
-            : "escrow_lock";
+  // Only actual movements of money belong in the payment feed. This used to end
+  // in a catch-all `: "escrow_lock"`, which meant every on-chain write carrying
+  // a txHash — accepting an applicant, requesting a revision, escalating a
+  // dispute — was filed as a payment. Escrow #28 alone showed five phantom
+  // "Locked in Escrow" rows with no amount against a $1 job. Those are real
+  // transactions, but they are not payments, and padding the ledger with them
+  // is exactly the kind of thing that makes a real feed look fabricated.
+  const PAYMENT_DIRECTIONS = {
+    job_posted: "escrow_lock",
+    payment_released: "escrow_release",
+    portfolio_verified: "out",
+  } as const;
+  const direction = PAYMENT_DIRECTIONS[event.type as keyof typeof PAYMENT_DIRECTIONS];
+  if (event.txHash && event.escrowId && direction) {
     store.recordPayment({
       id: randomUUID(),
       direction,

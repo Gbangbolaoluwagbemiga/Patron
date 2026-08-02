@@ -10,22 +10,23 @@ export default function Freelancers() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Freelancers</h1>
+        <h1>Register of Adventurers</h1>
       </div>
       <p className="page-sub">
-        No separate reputation table — every number here is derived live from real hire, completion, and payment
-        history. Nothing to drift out of sync.
+        Every human who has taken a commission from Patron. There is no separate reputation score kept anywhere —
+        each number below is read straight out of real hire, completion, and payment history, so there is nothing
+        that can drift out of step with what actually happened.
       </p>
 
       {stats.length === 0 ? (
-        <div className="empty">No freelancer has been hired yet.</div>
+        <div className="empty">No adventurer has taken a commission yet.</div>
       ) : (
         <div className="rep-table-wrap">
           <table className="rep-table">
             <thead>
               <tr>
-                <th>Freelancer</th>
-                <th>Hires</th>
+                <th>Adventurer</th>
+                <th>Commissions</th>
                 <th>Completed</th>
                 <th>Completion Rate</th>
                 <th>Total Earned</th>

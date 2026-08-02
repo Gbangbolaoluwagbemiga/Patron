@@ -8,11 +8,14 @@ export default function Decisions() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Decision Log</h1>
+        <h1>The Guild Master's Hand</h1>
       </div>
-      <p className="page-sub">The guild master's actual reasoning, verbatim, for every applicant score, portfolio check, hire, and work review Patron has ever made.</p>
+      <p className="page-sub">
+        Written in the margin beside every entry: the guild master's actual reasoning, verbatim and unedited, for
+        every applicant scored, portfolio checked, human hired, and piece of work inspected.
+      </p>
 
-      <div className="job-grid">
+      <div className="job-grid marginalia">
         <AnimatePresence initial={false}>
           {decisions.length === 0 ? (
             <div className="empty">No decisions yet.</div>

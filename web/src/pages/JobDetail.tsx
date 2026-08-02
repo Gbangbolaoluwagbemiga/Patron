@@ -14,7 +14,7 @@ export default function JobDetail() {
     return (
       <div className="page">
         <Link className="tx-link" to="/jobs">
-          ← back to Quest Board
+          ← back to Open Commissions
         </Link>
         <div className="empty" style={{ marginTop: 20 }}>
           Job #{escrowId} not found (yet — if you just posted it, give the daemon a moment and refresh).
@@ -30,7 +30,7 @@ export default function JobDetail() {
   return (
     <div className="page">
       <Link className="tx-link" to="/jobs">
-        ← back to Quest Board
+        ← back to Open Commissions
       </Link>
 
       <div className="page-header" style={{ marginTop: 12 }}>
@@ -99,7 +99,7 @@ export default function JobDetail() {
       <div className="grid-2" style={{ marginTop: 20 }}>
         <div className="panel">
           <h2>
-            <IconBrain size={15} /> Decisions for this job
+            <IconBrain size={15} /> The guild master's hand, on this entry
           </h2>
           <div className="panel-body">
             {jobDecisions.length === 0 ? (
@@ -111,7 +111,7 @@ export default function JobDetail() {
         </div>
         <div className="panel">
           <h2>
-            <IconCoin size={15} /> Payments for this job
+            <IconCoin size={15} /> Monies against this entry
           </h2>
           <div className="panel-body">
             {jobPayments.length === 0 ? (

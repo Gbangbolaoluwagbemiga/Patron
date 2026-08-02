@@ -8,12 +8,15 @@ export default function Jobs() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Quest Board</h1>
+        <h1>Open Commissions</h1>
         <a className="tx-link" href={SECUREFLOW_JOBS_URL} target="_blank" rel="noreferrer">
           view all on SecureFlow ↗
         </a>
       </div>
-      <p className="page-sub">Every job Patron has posted — human or AI-agent client. Click one for the full brief, milestones, and history.</p>
+      <p className="page-sub">
+        Every commission Patron has posted, whether the client was a human or another machine. Open an entry for its
+        full brief, milestones, and history.
+      </p>
 
       <div className="job-grid">
         <AnimatePresence initial={false}>
