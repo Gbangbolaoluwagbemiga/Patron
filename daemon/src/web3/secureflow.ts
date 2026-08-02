@@ -57,7 +57,15 @@ export interface CreateEscrowParams {
 }
 
 /** Posts an open job on SecureFlow (beneficiary = zero address = open for applications). Returns the escrowId. */
-export async function createEscrow(params: CreateEscrowParams): Promise<bigint> {
+/**
+ * Returns the new escrow id AND the creating transaction hash. The hash used to
+ * be discarded, which meant the moment the money is actually locked — the
+ * single most important payment in the whole story, and the one the pitch tells
+ * a judge to click through to Arcscan — was never recorded in the payment feed
+ * at all. Every "Locked in Escrow" row that ever appeared there came from an
+ * unrelated event falling through a catch-all.
+ */
+export async function createEscrow(params: CreateEscrowParams): Promise<{ escrowId: bigint; txHash: `0x${string}` }> {
   const signer = createCircleSigner();
   const client = getPublicClient();
 
@@ -111,7 +119,7 @@ export async function createEscrow(params: CreateEscrowParams): Promise<bigint> 
     abi,
     functionName: "nextEscrowId",
   })) as bigint;
-  return nextId - 1n;
+  return { escrowId: nextId - 1n, txHash: hash };
 }
 
 export async function acceptFreelancer(escrowId: bigint, freelancer: `0x${string}`): Promise<`0x${string}`> {

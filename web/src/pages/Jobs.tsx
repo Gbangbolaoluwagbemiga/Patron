@@ -3,7 +3,10 @@ import { useDaemon } from "../daemon-context";
 import { SECUREFLOW_JOBS_URL, TaskCard } from "../components";
 
 export default function Jobs() {
-  const { tasks } = useDaemon();
+  const { tasks: allTasks } = useDaemon();
+  // A "failed" row never opened an escrow — the brief or the createEscrow call
+  // threw — so it isn't a commission and doesn't belong on the commission board.
+  const tasks = allTasks.filter((t) => t.status !== "failed");
 
   return (
     <div className="page">

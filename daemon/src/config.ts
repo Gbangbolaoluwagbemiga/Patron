@@ -52,6 +52,14 @@ export const config = {
   dailySpendCapUsdc: Number(process.env.DAILY_SPEND_CAP_USDC ?? 50),
   x402BuySpendCapUsdc: Number(process.env.X402_BUY_SPEND_CAP_USDC ?? 5),
 
+  // Hard ceiling on any single commission, enforced before escrow is opened.
+  // The budget in a brief is produced by an LLM, and an LLM will happily invent
+  // one: a live e2e run asking for a "$1" logo came back with milestones of
+  // $50/$25/$25 and tried to lock $100. That attempt only failed because the
+  // treasury was too small to cover it — with a funded wallet it would have
+  // quietly locked 100x the requested amount.
+  maxJobBudgetUsdc: Number(process.env.MAX_JOB_BUDGET_USDC ?? 100),
+
   port: Number(process.env.PORT ?? 8787),
 };
 

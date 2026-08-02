@@ -82,7 +82,7 @@ export class AgentClient {
     );
 
     this.emit("job_posted", "Posting job to SecureFlow escrow on Arc...");
-    const escrowId = await secureflow.createEscrow({
+    const { escrowId, txHash } = await secureflow.createEscrow({
       totalAmount: parseUnits(brief.budget.toString(), 6),
       durationDays: BigInt(brief.durationDays),
       milestoneAmounts: brief.milestones.map((m) => parseUnits(m.amount.toString(), 6)),
@@ -94,9 +94,11 @@ export class AgentClient {
       // JSON.stringify()-ing it just showed up as gibberish on a real, live-facing surface.
       projectDescription: `${instruction}\n\nCriteria hash (verifies the brief hasn't changed): ${brief.briefHash}`,
     });
-    this.emit("job_posted", `Job posted on-chain. Escrow ID: ${escrowId}.`, {
+    this.emit("job_posted", `Job posted on-chain. Escrow ID: ${escrowId}. $${brief.budget} locked in escrow.`, {
       escrowId: escrowId.toString(),
       amountUsdc: brief.budget.toString(),
+      txHash,
+      counterparty: "SecureFlow escrow",
     });
 
     return { brief, escrowId };

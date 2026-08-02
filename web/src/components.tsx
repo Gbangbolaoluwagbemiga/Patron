@@ -149,13 +149,23 @@ export function PipelineFlow({
 
 // ── Stats ────────────────────────────────────────────────────────────────────
 export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: PaymentRow[] }) {
-  const totalJobs = tasks.length;
-  const active = tasks.filter((t) => t.status === "posted" || t.status === "active" || t.status === "briefing").length;
-  const completed = tasks.filter((t) => t.status === "completed").length;
+  // "failed" jobs never opened an escrow at all (the LLM call or createEscrow
+  // threw), so they aren't commissions and don't belong in any of these counts.
+  const real = tasks.filter((t) => t.status !== "failed");
+  const totalJobs = real.length;
+  const active = real.filter((t) => t.status === "posted" || t.status === "active" || t.status === "briefing").length;
+  const completed = real.filter((t) => t.status === "completed").length;
+  const disputed = real.filter((t) => t.status === "disputed").length;
   const released = payments
     .filter((p) => p.direction === "escrow_release" && p.amount_usdc)
     .reduce((sum, p) => sum + parseFloat(p.amount_usdc || "0"), 0);
-  const completionRate = totalJobs > 0 ? Math.round((completed / totalJobs) * 100) : 0;
+
+  // Of the jobs that actually reached a conclusion, how many finished cleanly.
+  // Dividing by ALL jobs (the old behaviour) counts everything still in flight
+  // as a failure, which permanently pins the number near zero and says nothing
+  // true about how well the agent performs.
+  const concluded = completed + disputed;
+  const completionRate = concluded > 0 ? Math.round((completed / concluded) * 100) : 0;
 
   // Deliberate hierarchy, not four equal boxes: money actually paid to humans
   // is the entire point of the project, so it is set enormous and everything
@@ -165,7 +175,8 @@ export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: Paym
     { label: "Commissions", value: totalJobs.toString() },
     { label: "In Progress", value: active.toString() },
     { label: "Completed", value: completed.toString() },
-    { label: "Completion Rate", value: `${completionRate}%` },
+    ...(disputed > 0 ? [{ label: "With Arbiter", value: disputed.toString() }] : []),
+    { label: concluded > 0 ? "Completed Cleanly" : "Completion Rate", value: `${completionRate}%` },
   ];
 
   return (

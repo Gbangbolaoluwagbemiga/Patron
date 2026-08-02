@@ -39,12 +39,16 @@ async function main() {
   // 1. Instruction → brief → escrow (human front door — no x402 fee, simplest for a smoke test)
   console.log("1. Posting instruction...");
   const budget = process.env.E2E_BUDGET?.trim() || "80";
+  // Overridable so the loop can be run against a single-milestone job, which is
+  // the only shape that reaches the "all milestones approved → completed"
+  // transition in one pass (this script submits milestone 0 and stops).
+  const instruction =
+    process.env.E2E_INSTRUCTION?.trim() ||
+    `I need a logo for my coffee shop, budget $${budget}, 3 days, needs to work on a sign and a cup.`;
   const instructRes = await fetch(`${BASE}/api/instruct`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      instruction: `I need a logo for my coffee shop, budget $${budget}, 3 days, needs to work on a sign and a cup.`,
-    }),
+    body: JSON.stringify({ instruction }),
   });
   if (!instructRes.ok) throw new Error(`/api/instruct failed: ${instructRes.status} ${await instructRes.text()}`);
   const { escrowId, brief } = (await instructRes.json()) as { taskId: string; escrowId: string; brief: any };

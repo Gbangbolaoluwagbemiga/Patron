@@ -496,6 +496,18 @@ code {
   border-color: var(--gold);
 }
 
+/* A disputed job is with a human arbiter — the one status that should stop a
+   reader, so it gets the seal. */
+.badge.status-disputed {
+  color: var(--seal-red);
+  border-color: var(--seal-red);
+}
+
+.badge.status-failed {
+  color: var(--ink-faint);
+  border-color: var(--paper-edge);
+}
+
 .badge.direction-in {
   color: var(--agent);
   border-color: var(--agent);

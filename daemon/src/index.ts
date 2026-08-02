@@ -97,11 +97,25 @@ async function runHireFlow(instruction: string, clientType: "agent" | "human") {
   const taskId = randomUUID();
   store.insertTask({ id: taskId, escrowId: null, instruction, clientType, status: "briefing", briefJson: null });
 
-  const { brief, escrowId } = await agent.processInstruction(instruction);
-  store.updateTaskBrief(taskId, JSON.stringify(brief));
-  store.updateTaskStatus(taskId, "posted", escrowId.toString());
-
-  return { taskId, escrowId: escrowId.toString(), brief };
+  try {
+    const { brief, escrowId } = await agent.processInstruction(instruction);
+    store.updateTaskBrief(taskId, JSON.stringify(brief));
+    store.updateTaskStatus(taskId, "posted", escrowId.toString());
+    return { taskId, escrowId: escrowId.toString(), brief };
+  } catch (err) {
+    // Without this the row stays "briefing" forever — the LLM call or the
+    // createEscrow write failed (insufficient treasury, RPC hiccup, bad
+    // instruction) and nothing ever moved it on. Six such ghosts had piled up
+    // locally, and because the stats bar counts briefing as in-progress they
+    // were silently inflating "in progress" while never being real work.
+    store.updateTaskStatus(taskId, "failed");
+    broadcast({
+      type: "error",
+      message: `Could not open this commission: ${err instanceof Error ? err.message : String(err)}`,
+      timestamp: Date.now(),
+    });
+    throw err;
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -229,6 +243,12 @@ server.listen(PORT, () => {
 // MilestoneStatus enum ordering assumed 0=pending,1=submitted,2=approved,
 // 3=rejected,4=disputed,5=resolved (matches the app's original type comments) —
 // confirm against the live contract in scripts/e2e-loop.ts before the demo.
+const MILESTONE_SUBMITTED = 1;
+const MILESTONE_APPROVED = 2;
+const MILESTONE_DISPUTED = 4;
+const ESCROW_RELEASED = 2;
+const ESCROW_DISPUTED = 4;
+
 const reviewedMilestones = new Set<string>();
 
 // Last application count Patron has actually SCORED for a given job. Without this,
@@ -273,17 +293,52 @@ async function pollOnce() {
           // freelancer actually sent in response to feedback never got looked at.
           // Caught by actually driving a real reject -> resubmit cycle end to end.
           const key = `${task.escrowId}:${index}:${m.submittedAt ?? ""}`;
-          if (m.status === 1 && !reviewedMilestones.has(key)) {
+          if (m.status === MILESTONE_SUBMITTED && !reviewedMilestones.has(key)) {
             reviewedMilestones.add(key);
             await agent.reviewMilestone(escrowId, BigInt(index), m.description, "", brief, m.description);
           }
         }
 
-        // EscrowStatus.Released (2) — SecureFlow itself flips this once the last
-        // milestone is approved and paid out. Re-fetch rather than trust the
-        // pre-review snapshot above, since a review just above may have just paid it.
+        // Re-fetch rather than trust the pre-review snapshot above, since a
+        // review in the loop above may have just approved and paid a milestone.
         const refreshed = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
-        if (refreshed.escrow?.status === 2) {
+        const finalMilestones = refreshed.escrow?.milestones ?? [];
+
+        // A disputed job is not "active" — it's out of the agent's hands and
+        // waiting on a human arbiter. Surfacing this matters: escalation is the
+        // answer to "what if the AI wrongly rejects good work", and it was
+        // invisible here. Escrow #28 sat on-chain as status 4 for a day while
+        // the command center still displayed it as merrily active.
+        const disputed =
+          refreshed.escrow?.status === ESCROW_DISPUTED || finalMilestones.some((m) => m.status === MILESTONE_DISPUTED);
+
+        // Completion is derived from the MILESTONES, not from escrow.status.
+        // The old check was `escrow.status === 2` (Released), which never fires:
+        // SecureFlow leaves an escrow at status 1 even after every milestone is
+        // approved and the money is out the door. Escrow #19 had all milestones
+        // approved and $4 genuinely paid to a human, and still showed as active —
+        // so the dashboard reported "0 completed, 0% completion rate" forever,
+        // which is both the worst possible number to show and simply untrue.
+        // Count approved milestones against the BRIEF's milestone count, not
+        // against the list the subgraph returns. The subgraph only indexes
+        // milestones that have been interacted with, so a 3-milestone job whose
+        // first milestone was just approved comes back as a single-element list
+        // — and `every(approved)` over that is trivially true. Escrow #29 was
+        // marked complete after $0.50 of its $1 had been paid, with two
+        // milestones still outstanding.
+        const expectedMilestones = Array.isArray(brief?.milestones) ? brief.milestones.length : 0;
+        const approvedCount = finalMilestones.filter((m) => m.status === MILESTONE_APPROVED).length;
+        const allApproved = expectedMilestones > 0 && approvedCount >= expectedMilestones;
+
+        if (disputed) {
+          store.updateTaskStatus(task.id, "disputed", task.escrowId);
+          broadcast({
+            type: "escalated_to_human",
+            message: "Job escalated — a human arbiter now holds this milestone via SecureFlow's dispute system.",
+            escrowId: task.escrowId,
+            timestamp: Date.now(),
+          });
+        } else if (allApproved || refreshed.escrow?.status === ESCROW_RELEASED) {
           store.updateTaskStatus(task.id, "completed", task.escrowId);
           broadcast({ type: "task_completed", message: "Job completed — all milestones approved and paid.", escrowId: task.escrowId, timestamp: Date.now() });
         }

@@ -62,6 +62,67 @@ db.exec(`
     ON review_history (escrow_id, milestone_index);
 `);
 
+// ── One-time repairs ────────────────────────────────────────────────────────
+// Guarded by a marker table so each runs exactly once per database, ever. The
+// completed-task re-check in particular MUST NOT run on every boot: it would
+// hand every finished job back to the poller on each restart and re-broadcast
+// its completion, so the command center would replay old jobs finishing every
+// time the daemon redeployed.
+db.exec(`CREATE TABLE IF NOT EXISTS applied_repairs (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);`);
+
+function repairOnce(name: string, run: () => void): void {
+  const done = db.prepare(`SELECT 1 FROM applied_repairs WHERE name = ?`).get(name);
+  if (done) return;
+  run();
+  db.prepare(`INSERT INTO applied_repairs (name, applied_at) VALUES (?, ?)`).run(name, Date.now());
+}
+
+// ── Repair of rows written by three now-fixed bugs ──────────────────────────
+// Both fixes above stop BAD rows being written from here on, but a database
+// that already has them (including the deployed one, which sits on a
+// persistent volume and is never rebuilt) would keep showing them forever.
+// Both WHERE clauses are deliberately narrow, and both log what they touched
+// rather than repairing silently.
+repairOnce("2026-08-remove-phantom-payments-and-stranded-tasks", () => {
+  // 1. Payments that were never payments. The direction ternary used to fall
+  //    through to "escrow_lock" for ANY event carrying a txHash, so accepting
+  //    an applicant / requesting a revision / escalating a dispute all got
+  //    filed as money movements — always with an empty amount, since no money
+  //    moved. Real transactions, but not payments.
+  const phantom = db
+    .prepare(
+      `DELETE FROM payments
+        WHERE direction = 'escrow_lock'
+          AND (amount_usdc IS NULL OR amount_usdc = '')
+          AND reason NOT IN ('job_posted', 'payment_released', 'portfolio_verified', 'x402_hire_fee')`,
+    )
+    .run();
+  if (phantom.changes) console.log(`[store] removed ${phantom.changes} phantom payment row(s) — see the payment-direction fix`);
+
+  // 2. Jobs stranded mid-brief. runHireFlow inserted the row as "briefing"
+  //    before calling the LLM and opening escrow; if either threw, nothing
+  //    ever moved the row on. No escrow id means no commission was ever
+  //    opened, so these are failures, and counting them as in-progress
+  //    overstated the amount of live work.
+  const stranded = db
+    .prepare(`UPDATE tasks SET status = 'failed' WHERE status = 'briefing' AND escrow_id IS NULL AND created_at < ?`)
+    .run(Date.now() - 10 * 60 * 1000);
+  if (stranded.changes) console.log(`[store] marked ${stranded.changes} stranded briefing task(s) as failed`);
+
+  // 3. Jobs marked complete on a partial payout. Completion was briefly derived
+  //    from the milestone list the subgraph returns, but the subgraph only
+  //    indexes milestones that have been interacted with — so a 3-milestone job
+  //    with its first milestone approved came back as a one-element, all-approved
+  //    list and was declared finished with two thirds of the budget unpaid.
+  //    Rather than guess which rows are affected (that needs subgraph reads this
+  //    module has no business making at import time), hand every completed job
+  //    back to the poller: it re-derives completion against the brief's real
+  //    milestone count on its next pass and re-marks the genuinely finished ones
+  //    within a cycle.
+  const recheck = db.prepare(`UPDATE tasks SET status = 'active' WHERE status = 'completed' AND escrow_id IS NOT NULL`).run();
+  if (recheck.changes) console.log(`[store] re-queued ${recheck.changes} completed task(s) for completion re-check`);
+});
+
 export interface TaskRow {
   id: string;
   escrowId: string | null;
