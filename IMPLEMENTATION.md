@@ -200,18 +200,126 @@ Patron/
 - [ ] *Stretch:* Gateway cross-chain withdraw (Spike C) — freelancer picks a payout chain
 - [ ] Ask about a listing on agents.circle.com — even "submitted" is a talking point per the original plan
 
-### Phase 5 — Aug 6–8 | Harden + Record
-**Goal: nothing embarrassing happens live, and the required video exists.**
+---
 
-- [ ] Deliberately break each failure path once and confirm it degrades gracefully instead of hanging or crashing: kill the subgraph connection, force an LLM timeout, force an x402 settlement failure
-- [ ] Rehearse the 7-beat demo script 3× end-to-end **on the deployed stack**, timed to ~5 minutes
-- [ ] Record the video walkthrough (Encode requires this) — the command center's live pipeline diagram and notification toasts were built specifically to make this visual
-- [ ] Tighten the submission doc: live link first, the one-sentence pitch, the tool-mapping table, the "why blockchain" quote — all already drafted in this file, just needs assembling
+## THE FINAL PUSH — Aug 2–10 (drafted Aug 2)
 
-### Phase 6 — Aug 9–10 | Submit
+### Where we actually stand
+
+Of ~3,780 registrations, realistically 200–400 submit something that runs; maybe 30 will have a live
+link, real on-chain transactions, and a coherent story. **Patron is in that 30 on substance** — both
+directions of x402 proven, a real dispute escalation on-chain, an independent second service with its
+own wallet, a live prompt-injection catch. Very few teams will have all four.
+
+The remaining risk is **not capability. It is legibility.** A judge gives us ~4 minutes. Two things
+currently stop the idea from landing in that window:
+
+1. 🔴 **The live link doesn't tell the story.** Production has 2 tasks / 3 payments. Every dramatic
+   moment we built lives in a *local* SQLite file. A judge clicking our link sees an empty app.
+   This single gap outweighs every remaining feature on the roadmap.
+2. 🔴 **The UI reads as AI-generated.** Not a vague feeling — it's the literal template: radial
+   gradient on near-black, uniform `14px` radius cards in a `1.1fr 1fr 1fr` grid, uppercase
+   letterspaced micro-labels on every panel, four evenly-weighted stat numbers, no scale hierarchy.
+   Fraunces and the hand-drawn icons were real improvements, but they are decoration on a generic
+   skeleton. The skeleton is the problem.
+
+**Decision (Aug 2): feature-maximal track.** Ship the second-agent economy loop, cross-chain payout,
+error hardening *and* the redesign. The known risk — accepted deliberately — is that the video and
+rehearsal compress into the final days. **Safeguard: record a rough backup walkthrough by Aug 5**, so
+a compressed endgame can never leave us at zero.
+
+---
+
+### Phase 5 — Aug 2–3 | Make the Live Link Tell the Story
+**Highest leverage work remaining. Nothing else matters if the link is empty.**
+
+- [ ] **Seed the production database with the full dramatic arc** — drive real flows against the
+      *deployed* daemon, not localhost: buyer-demo commissions a job over x402 → seeded applicants
+      including the injection attempt (caught, flagged, scored ~0) → portfolio check paid over x402 →
+      hire → submission → approval → escrow release. Then one deliberate rejection→revision→approval
+      cycle so the revision path is visible in history too. Target: enough entries that the Ledger,
+      Decision Log, Payment Feed and Register of Adventurers all read as a *working economy* on load.
+- [ ] **Treasury** — currently **$6.91**, and Foreman (the funding source) is down to ~$2.80. This is
+      the one open problem with no clean answer yet. Needs a real top-up path before seeding burns it
+      down further; every demo run costs real testnet funds.
+- [ ] **Persist `reviewHistoryByMilestone` to SQLite** — the escalation counter is in-memory only, so
+      a Railway redeploy silently resets someone's revision count. Small fix, real bug, and a judge
+      could ask. Do it before seeding so the seeded history survives a restart.
+
+### Phase 6 — Aug 4–5 | The Ledger (UI redesign)
+**Goal: a judge's screen after forty dark dashboards. Distinctive UI comes from a committed concept
+and aggressive subtraction — not more motion, more gradients, more glow.**
+
+**Concept: THE LEDGER.** The guild's commission account book. Not emoji-medieval — the real object:
+cream paper, heavy ink rules, tabular figures, wide margins, one gold accent used *rarely*. The
+guild metaphor already lives in our copy and has never been expressed visually. **Going light is the
+single highest-contrast move available** — ~95% of hackathon submissions are dark mode.
+
+**Design system:**
+
+| Token | Value | Note |
+|---|---|---|
+| `--paper` | `#f4f0e6` | flat cream — **no gradient**, subtle inline SVG grain only |
+| `--paper-deep` | `#eae4d5` | ledger row banding |
+| `--ink` | `#16140f` | body + rules |
+| `--ink-soft` | `#55503f` | secondary text (replaces `--muted`) |
+| `--gold` | `#9a6f1a` | darkened — the current `#d4a94f` is invisible on cream |
+| `--seal-red` | `#8f2c26` | rejections, injection flags — like a wax seal |
+| `--verified` | `#2f5d3f` | approvals, releases |
+| Display | Fraunces | keep — reads far better on cream than on black |
+| Figures | a mono (IBM Plex Mono / `ui-monospace`) | **all** amounts, addresses, entry numbers — tabular |
+
+**Subtractions (each one is a specific line in today's `index.css`):**
+- [ ] Delete `radial-gradient(ellipse at top, …)` — flat paper
+- [ ] Delete `border-radius: 14px` everywhere — **square corners, hairline rules instead of boxes**
+- [ ] Delete `text-transform: uppercase; letter-spacing: 0.08em` panel labels — small-caps serif
+      headers separated by a rule
+- [ ] Delete the even 3-column `.grid` — single column, generous, ~880px measure for reading; full
+      width only for actual ledger tables
+- [ ] Replace `.card` grids with **ledger rows** — a job is a line item, not a floating box
+
+**Additions:**
+- [ ] **Scale contrast** — one enormous figure (total USDC released to humans), everything else small.
+      AI-generated layouts are uniformly mid-sized; extreme contrast reads as authored.
+- [ ] **Entry numbers** — every commission gets a ledger no. (we already have the escrow id)
+- [ ] **The Decision Log as marginalia** — the guild master's reasoning set in italic serif in a
+      margin column, like annotations in a real book. This is the one element no template has, and
+      it's also our best content: verbatim AI reasoning is what judges remember.
+- [ ] Commit to a single look — no theme toggle. One confident page.
+
+**Page renaming (structure stays, voice changes):**
+
+| Now | Becomes |
+|---|---|
+| Dashboard | **The Ledger** — masthead, running totals, latest entries |
+| Quest Board | **Open Commissions** |
+| Decision Log | **The Guild Master's Hand** |
+| Payment Feed | **Account of Monies** |
+| Freelancers | **Register of Adventurers** (already a table — perfect fit) |
+
+### Phase 7 — Aug 6–7 | Features: the Economy Loop + Hardening
+- [ ] **Second-agent chain** — buyer-demo commissions a deliverable; a second small agent consumes
+      that deliverable for something. Turns "one transaction" into *an actual economy*. This is the
+      one remaining feature that genuinely upgrades the story rather than the surface area.
+- [ ] **Gateway cross-chain withdraw (Spike C)** — freelancer picks a payout chain. Closes the last
+      unproven row in the tool-mapping table.
+- [ ] **Error-path hardening** — deliberately break each one and confirm graceful degradation, not a
+      hang or crash: kill the subgraph connection, force an LLM timeout/rate-limit, force an x402
+      settlement failure.
+- [ ] **Rough backup video recorded by Aug 5** *(safeguard — pulled earlier than this phase)*
+
+### Phase 8 — Aug 8–9 | Record + Rehearse
+- [ ] Rehearse the 7-beat script end-to-end **on the deployed stack**, timed to ~5 minutes
+- [ ] Record the real video walkthrough (Encode requires this) — the live pipeline and notification
+      toasts were built specifically to make this visual
+- [ ] Assemble the submission doc: live link first, the one-sentence pitch, the tool-mapping table,
+      the "why blockchain" quote — all already drafted in this file
+
+### Phase 9 — Aug 10 | Submit
 - [ ] Final smoke test of the fully deployed stack (daemon + web + buyer-demo, one more full loop)
 - [ ] Submit before the Aug 10 deadline
-- [ ] Keep the deployed daemon funded and running through Demo Day (Aug 20) — don't let it go quiet between submission and demo
+- [ ] Keep the deployed daemon funded and running through Demo Day (Aug 20) — don't let it go quiet
+      between submission and demo
 
 ---
 

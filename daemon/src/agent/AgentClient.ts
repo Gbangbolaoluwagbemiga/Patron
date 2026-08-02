@@ -4,9 +4,11 @@
 //
 // Two bugs fixed from the v1 (browser) prototype:
 //   1. Escalation counter — `shouldEscalateToHuman` now receives the FULL review
-//      history for a milestone (accumulated in `reviewHistoryByMilestone` below)
-//      and a FIXED max (brief.revisionRounds), instead of a single-element array
-//      and a number that shrank every call (which meant it could never escalate).
+//      history for a milestone (persisted in SQLite via store.appendReview) and
+//      a FIXED max (brief.revisionRounds), instead of a single-element array and
+//      a number that shrank every call (which meant it could never escalate).
+//      History is persisted rather than held in memory because a daemon restart
+//      mid-dispute would otherwise reset the rejection count to zero.
 //   2. Application scoring is one comparative call across all applicants
 //      (ApplicationScorer.pickBestApplicant), not N isolated calls with no
 //      cross-applicant context and a bigger prompt-injection surface.
@@ -20,6 +22,7 @@ import { GET_JOB_APPLICATIONS, type GQLApplication } from "../graph/queries.js";
 import * as secureflow from "../web3/secureflow.js";
 import type { PatronGateway } from "../circle/gateway.js";
 import { config } from "../config.js";
+import * as store from "../store.js";
 import { parseUnits } from "viem";
 
 export type AgentEventType =
@@ -57,8 +60,6 @@ export type AgentEventCallback = (event: AgentEvent) => void;
 export class AgentClient {
   private onEvent: AgentEventCallback;
   private decisions: AgentDecision[] = [];
-  /** Full review history per milestone — the fix for the escalation-counter bug. Key: `${escrowId}:${milestoneIndex}`. */
-  private reviewHistoryByMilestone = new Map<string, WorkReviewResult[]>();
   /** Lazily resolved — the daemon still boots without Circle configured; only this buy-side call needs it. */
   private getGateway?: () => PatronGateway;
 
@@ -201,10 +202,14 @@ export class AgentClient {
     this.emit("work_submitted", "Work submitted. Reviewing against acceptance brief...", { escrowId: escrowId.toString() });
 
     const review = await reviewWork(submissionDescription, submissionLink, brief, milestoneDescription);
-    const historyKey = `${escrowId}:${milestoneIndex}`;
-    const history = this.reviewHistoryByMilestone.get(historyKey) ?? [];
-    history.push(review);
-    this.reviewHistoryByMilestone.set(historyKey, history);
+
+    // Persisted, not in-memory: a daemon restart used to wipe this Map and hand
+    // the freelancer unlimited fresh revision rounds. Append first, then read
+    // the whole history back, so `history` always includes this review.
+    const eId = escrowId.toString();
+    const mIdx = milestoneIndex.toString();
+    store.appendReview(eId, mIdx, review);
+    const history = store.listReviews<WorkReviewResult>(eId, mIdx);
 
     if (review.approved) {
       const decision: AgentDecision = {
@@ -227,7 +232,7 @@ export class AgentClient {
         txHash,
         amountUsdc: milestoneAmount != null ? milestoneAmount.toString() : undefined,
       });
-      this.reviewHistoryByMilestone.delete(historyKey);
+      store.clearReviews(eId, mIdx);
       return;
     }
 

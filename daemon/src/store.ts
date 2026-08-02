@@ -43,6 +43,23 @@ db.exec(`
     reason TEXT,
     timestamp INTEGER NOT NULL
   );
+
+  -- Every work review, per milestone, in order. This backs the escalation
+  -- counter: shouldEscalateToHuman() needs the FULL rejection history for a
+  -- milestone, and it used to live in an in-memory Map — so a daemon restart
+  -- (or any Railway redeploy) silently reset someone's revision count to zero
+  -- and handed them unlimited extra rounds. Persisted here so a redeploy
+  -- mid-dispute can't quietly extend a revision cycle forever.
+  CREATE TABLE IF NOT EXISTS review_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    escrow_id TEXT NOT NULL,
+    milestone_index TEXT NOT NULL,
+    review_json TEXT NOT NULL,
+    timestamp INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS review_history_milestone
+    ON review_history (escrow_id, milestone_index);
 `);
 
 export interface TaskRow {
@@ -123,4 +140,28 @@ export function recordPayment(p: {
 
 export function listPayments(limit = 100): any[] {
   return db.prepare(`SELECT * FROM payments ORDER BY timestamp DESC LIMIT ?`).all(limit);
+}
+
+// ── Review history (backs the escalation counter) ───────────────────────────
+// Keyed by escrow + milestone. Stored as JSON because WorkReviewResult is the
+// LLM's structured output and we want the whole thing back verbatim — the
+// escalation decision reads `approved`, but the reasoning is what a human
+// arbiter needs if it ever gets that far.
+
+export function appendReview(escrowId: string, milestoneIndex: string, review: unknown): void {
+  db.prepare(
+    `INSERT INTO review_history (escrow_id, milestone_index, review_json, timestamp) VALUES (?, ?, ?, ?)`,
+  ).run(escrowId, milestoneIndex, JSON.stringify(review), Date.now());
+}
+
+export function listReviews<T>(escrowId: string, milestoneIndex: string): T[] {
+  const rows = db
+    .prepare(`SELECT review_json FROM review_history WHERE escrow_id = ? AND milestone_index = ? ORDER BY id ASC`)
+    .all(escrowId, milestoneIndex) as { review_json: string }[];
+  return rows.map((r) => JSON.parse(r.review_json) as T);
+}
+
+/** Called once a milestone is approved — that cycle is closed, the next one starts fresh. */
+export function clearReviews(escrowId: string, milestoneIndex: string): void {
+  db.prepare(`DELETE FROM review_history WHERE escrow_id = ? AND milestone_index = ?`).run(escrowId, milestoneIndex);
 }
