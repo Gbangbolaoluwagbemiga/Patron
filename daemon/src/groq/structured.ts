@@ -28,38 +28,52 @@ export async function groqStructured<T>(opts: GroqStructuredOpts<T>): Promise<T>
   const models = [...new Set([opts.model ?? config.groqModel, config.groqFallbackModel].filter(Boolean))];
   let lastErr: unknown;
 
+  // Two attempts per model before falling through to the next one. A schema
+  // violation is a STOCHASTIC failure — the same model given the same prompt
+  // usually complies on a second pass — so the old behaviour of abandoning a
+  // model after a single malformed response threw away good attempts and, when
+  // both models happened to miss, killed a whole scoring pass. On the retry we
+  // hand the model its own validation error so it can correct the specific
+  // field rather than re-rolling blind.
   for (const model of models) {
-    try {
-      const completion = await groq.chat.completions.create({
-        model,
-        max_tokens: opts.maxTokens ?? 2048,
-        temperature: opts.temperature ?? 0.4,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: opts.user },
-        ],
-      });
+    let correction = "";
 
-      const choice = completion.choices[0];
-      const raw = choice?.message?.content;
-      if (!raw) throw new Error(`Groq (${model}) returned no content (finish_reason: ${choice?.finish_reason})`);
-
-      let json: unknown;
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        json = JSON.parse(raw);
-      } catch {
-        throw new Error(`Groq (${model}) returned invalid JSON: ${raw.slice(0, 300)}`);
-      }
+        const completion = await groq.chat.completions.create({
+          model,
+          max_tokens: opts.maxTokens ?? 2048,
+          temperature: opts.temperature ?? 0.4,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: correction ? `${opts.user}\n\n${correction}` : opts.user },
+          ],
+        });
 
-      const result = opts.schema.safeParse(json);
-      if (!result.success) {
-        throw new Error(`Groq (${model}) output failed schema validation: ${result.error.message}`);
+        const choice = completion.choices[0];
+        const raw = choice?.message?.content;
+        if (!raw) throw new Error(`Groq (${model}) returned no content (finish_reason: ${choice?.finish_reason})`);
+
+        let json: unknown;
+        try {
+          json = JSON.parse(raw);
+        } catch {
+          throw new Error(`Groq (${model}) returned invalid JSON: ${raw.slice(0, 300)}`);
+        }
+
+        const result = opts.schema.safeParse(json);
+        if (!result.success) {
+          correction = `Your previous response did not match the required schema. Fix exactly these problems and return the corrected JSON object only:\n${result.error.message}`;
+          throw new Error(`Groq (${model}) output failed schema validation: ${result.error.message}`);
+        }
+        if (attempt > 1) console.warn(`[groq] ${model} succeeded on retry ${attempt}`);
+        return result.data;
+      } catch (err) {
+        lastErr = err;
+        // Retry the same model once with corrective feedback, then fall through
+        // to the next model (e.g. primary rate-limited).
       }
-      return result.data;
-    } catch (err) {
-      lastErr = err;
-      // try the next model (e.g. primary rate-limited) before giving up
     }
   }
 

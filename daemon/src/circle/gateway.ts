@@ -86,6 +86,14 @@ const BURN_INTENT_TYPES = {
 const GATEWAY_API_TESTNET = "https://gateway-api-testnet.circle.com/v1";
 
 /**
+ * Ceiling on any single x402 buy-side leg. A portfolio check is a sub-second
+ * call; 20s is generous while still bounded. The value that matters is that
+ * there IS one — an unbounded fetch on this path hangs the hire loop with no
+ * error and no way for a viewer to tell what happened.
+ */
+const X402_TIMEOUT_MS = 20_000;
+
+/**
  * The Patron Agent Wallet treasury as a Circle Programmable Wallet (MPC) on Arc.
  *
  * Circle holds the key shares — no raw private key ever touches Patron. Every
@@ -118,7 +126,12 @@ export function createPatronGateway(): PatronGateway {
           : JSON.stringify(options.body)
         : undefined;
 
-    const initial = await fetch(url, { method, headers, body: serializedBody });
+    // Every leg of the x402 buy flow is bounded. Without this a marketplace
+    // service that accepts the connection and never answers hangs Patron
+    // forever *mid-hire*: the job never advances, nothing errors, and there is
+    // nothing on screen to explain it. Verified against a deliberately hanging
+    // server — an un-timeouted fetch here simply never returns.
+    const initial = await fetch(url, { method, headers, body: serializedBody, signal: AbortSignal.timeout(X402_TIMEOUT_MS) });
     if (initial.status !== 402) {
       if (initial.ok) {
         return { data: (await initial.json()) as T, amount: 0n, formattedAmount: "0", transaction: "", status: initial.status };
@@ -150,7 +163,12 @@ export function createPatronGateway(): PatronGateway {
       JSON.stringify({ ...paymentPayload, resource: paymentRequired.resource, accepted: batchingOption }),
     ).toString("base64");
 
-    const paid = await fetch(url, { method, headers: { ...headers, "Payment-Signature": paymentHeader }, body: serializedBody });
+    const paid = await fetch(url, {
+      method,
+      headers: { ...headers, "Payment-Signature": paymentHeader },
+      body: serializedBody,
+      signal: AbortSignal.timeout(X402_TIMEOUT_MS),
+    });
     if (!paid.ok) {
       const err = await paid.json().catch(() => ({}));
       throw new Error(`Payment failed: ${(err as { error?: string }).error || paid.statusText}`);
@@ -212,6 +230,7 @@ export function createPatronGateway(): PatronGateway {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify([{ burnIntent, signature }], (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+      signal: AbortSignal.timeout(X402_TIMEOUT_MS),
     });
     const result = (await resp.json()) as { attestation?: `0x${string}`; signature?: `0x${string}`; error?: string; message?: string };
     if (!resp.ok || result.error || !result.attestation || !result.signature) {

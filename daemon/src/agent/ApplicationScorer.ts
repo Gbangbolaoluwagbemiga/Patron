@@ -27,7 +27,12 @@ const ScoredApplicationSchema = z.object({
 
 const ScoringResultSchema = z.object({
   scores: z.array(ScoredApplicationSchema),
-  comparativeSummary: z.string().describe("1-2 sentences on how the applicant pool compares"),
+  // Optional on purpose. Nothing reads this field — it exists to nudge the model
+  // into comparing applicants against each other rather than in isolation. It was
+  // required, and the model intermittently omitted it, which failed schema
+  // validation and threw away a whole scoring pass: a decorative field was able
+  // to block real hiring. Anything not load-bearing must not be able to.
+  comparativeSummary: z.string().optional().describe("1-2 sentences on how the applicant pool compares"),
 });
 
 const SYSTEM_PROMPT = `You are Patron's Application Reviewer. You score every freelancer application for a

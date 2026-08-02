@@ -79,6 +79,33 @@ const agent = new AgentClient((event) => {
   }
 }, getGateway);
 
+/**
+ * What a caller is allowed to see when something upstream breaks. The full
+ * error still goes to the server log — but `/api/instruct` is a public endpoint,
+ * and echoing the raw failure put a verbatim Groq 401 payload (provider name,
+ * error taxonomy, response shape) straight into an HTTP response body. Known
+ * failure modes get a sentence a human can act on; anything else is generic.
+ */
+function clientError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  console.error("[api]", raw);
+
+  if (/insufficient|exceeds balance/i.test(raw)) {
+    return "Patron's treasury doesn't hold enough USDC to fund this commission. Fund the treasury or lower the budget.";
+  }
+  if (/exceeds the maximum single-commission cap/i.test(raw)) return raw; // ours, already phrased for a human
+  if (/budget must be positive/i.test(raw)) return raw;
+  if (/401|invalid api key|unauthorized/i.test(raw)) {
+    return "The guild master's language model rejected the request (credentials). This is a server-side configuration problem, not a problem with your instruction.";
+  }
+  if (/429|rate.?limit/i.test(raw)) return "The guild master's language model is rate-limited right now. Try again shortly.";
+  if (/timeout|timed out|aborted/i.test(raw)) return "That took too long and was cancelled. Nothing was charged and no escrow was opened.";
+  if (/inconsistent brief|do not sum/i.test(raw)) {
+    return "Could not produce a coherent brief from that instruction. Try stating the deliverable, budget, and deadline explicitly.";
+  }
+  return "Could not open this commission. The failure has been logged.";
+}
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let raw = "";
@@ -180,7 +207,7 @@ const server = http.createServer(async (req, res) => {
       const result = await runHireFlow(body.instruction, "agent");
       json(res, 200, result);
     } catch (err) {
-      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      json(res, 500, { error: clientError(err) });
     }
     return;
   }
@@ -193,7 +220,7 @@ const server = http.createServer(async (req, res) => {
       const result = await runHireFlow(body.instruction, "human");
       json(res, 200, result);
     } catch (err) {
-      json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      json(res, 500, { error: clientError(err) });
     }
     return;
   }
@@ -256,11 +283,20 @@ const reviewedMilestones = new Set<string>();
 // 15s forever — burning LLM calls for nothing and flooding the command center
 // with the same "no suitable applicant" notification on a loop. Only re-run
 // reviewApplications when the applicant count has actually grown since last check.
-const lastScoredApplicationCount = new Map<string, number>();
+//
+// PERSISTED, not a Map: as an in-memory Map this survived only until the next
+// restart, so every redeploy re-scored every open job's applicants from scratch.
+// Escrow #31 ended up with 27 decision rows for 3 applicants — the same verdicts
+// repeated — and each repeat was a real LLM call on a job that was already done.
+const scoredCountKey = (escrowId: string) => `scored_applications:${escrowId}`;
+
+/** True while every task in a pass is failing — i.e. the subgraph is unreachable. */
+let pollerDegraded = false;
 
 async function pollOnce() {
   if (!isGraphConfigured()) return;
   const tasks = store.listTasks(50).filter((t) => t.escrowId && (t.status === "posted" || t.status === "active"));
+  let pollFailures = 0;
 
   for (const task of tasks) {
     if (!task.escrowId || !task.briefJson) continue;
@@ -273,10 +309,10 @@ async function pollOnce() {
           escrowId: task.escrowId,
         });
         const currentCount = appsResult.escrow?.applications.length ?? 0;
-        const lastScored = lastScoredApplicationCount.get(task.escrowId) ?? -1;
-        if (currentCount === 0 || currentCount === lastScored) continue; // nothing new to score
+        const lastScored = store.getPollerInt(scoredCountKey(task.escrowId)) ?? -1;
+        if (currentCount === 0 || currentCount <= lastScored) continue; // nothing new to score
 
-        lastScoredApplicationCount.set(task.escrowId, currentCount);
+        store.setPollerInt(scoredCountKey(task.escrowId), currentCount);
         const winner = await agent.reviewApplications(escrowId, brief);
         if (winner) store.updateTaskStatus(task.id, "active", task.escrowId);
         continue;
@@ -345,7 +381,26 @@ async function pollOnce() {
       }
     } catch (err) {
       console.error(`[poller] task ${task.id} failed:`, err instanceof Error ? err.message : err);
+      pollFailures++;
     }
+  }
+
+  // The poller is how every job advances. If the subgraph is unreachable it
+  // fails silently per-task forever: the daemon stays healthy, the API keeps
+  // answering, and jobs simply stop moving with nothing on screen to say why.
+  // Announce the outage ONCE, and announce recovery once, so the command
+  // center can tell a viewer that Patron has gone blind rather than idle.
+  const nowDegraded = tasks.length > 0 && pollFailures >= tasks.length;
+  if (nowDegraded && !pollerDegraded) {
+    pollerDegraded = true;
+    broadcast({
+      type: "error",
+      message: "Lost contact with the SecureFlow subgraph — jobs will not advance until it returns. Escrowed funds are unaffected.",
+      timestamp: Date.now(),
+    });
+  } else if (!nowDegraded && pollerDegraded) {
+    pollerDegraded = false;
+    broadcast({ type: "error", message: "Subgraph contact restored — the guild master is reading the chain again.", timestamp: Date.now() });
   }
 }
 

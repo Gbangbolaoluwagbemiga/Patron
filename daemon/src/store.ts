@@ -60,6 +60,12 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS review_history_milestone
     ON review_history (escrow_id, milestone_index);
+
+  CREATE TABLE IF NOT EXISTS poller_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `);
 
 // ── One-time repairs ────────────────────────────────────────────────────────
@@ -121,6 +127,34 @@ repairOnce("2026-08-remove-phantom-payments-and-stranded-tasks", () => {
   //    within a cycle.
   const recheck = db.prepare(`UPDATE tasks SET status = 'active' WHERE status = 'completed' AND escrow_id IS NOT NULL`).run();
   if (recheck.changes) console.log(`[store] re-queued ${recheck.changes} completed task(s) for completion re-check`);
+});
+
+repairOnce("2026-08-dedupe-rescored-decisions-v2", () => {
+  // The poller's scored-applicant counter was in-memory, so each restart made it
+  // re-score every open job. Escrow #31 held 27 rows for 3 applicants.
+  //
+  // Text-matching can't find these: the model reworded every re-score, so all 27
+  // reasonings are byte-distinct while describing the same three verdicts. The
+  // real key is (job, applicant) — an applicant is scored once per job, verified
+  // once, and hired once.
+  //
+  // Scoped deliberately to those three types. work_approved / work_rejected /
+  // escalated legitimately repeat for the same freelancer on the same job —
+  // that IS the revision cycle — and must not be collapsed.
+  // Grouped on rowid, not id: `decisions.id` is a random UUID, so MIN(id) would
+  // pick the lexicographically smallest rather than the one written first.
+  const dupes = db
+    .prepare(
+      `DELETE FROM decisions
+        WHERE type IN ('application_scored', 'portfolio_verified', 'applicant_accepted')
+          AND rowid NOT IN (
+            SELECT MIN(rowid) FROM decisions
+             WHERE type IN ('application_scored', 'portfolio_verified', 'applicant_accepted')
+             GROUP BY task_id, type, COALESCE(target, '')
+          )`,
+    )
+    .run();
+  if (dupes.changes) console.log(`[store] removed ${dupes.changes} re-scored duplicate decision row(s)`);
 });
 
 export interface TaskRow {
@@ -225,4 +259,27 @@ export function listReviews<T>(escrowId: string, milestoneIndex: string): T[] {
 /** Called once a milestone is approved — that cycle is closed, the next one starts fresh. */
 export function clearReviews(escrowId: string, milestoneIndex: string): void {
   db.prepare(`DELETE FROM review_history WHERE escrow_id = ? AND milestone_index = ?`).run(escrowId, milestoneIndex);
+}
+
+// ── Poller state ────────────────────────────────────────────────────────────
+// Small durable key/value for the background poller's dedup counters. These
+// used to be in-memory Maps, which meant every daemon restart — including every
+// Railway redeploy — made the poller forget what it had already done and score
+// every open job's applicants again from scratch. Escrow #31 accumulated 27
+// decision rows for 3 applicants, the same verdicts over and over, and each
+// repeat was a real LLM call. Worse, a re-score can re-enter the hire path for
+// a job that already has a freelancer.
+
+export function getPollerInt(key: string): number | null {
+  const row = db.prepare(`SELECT value FROM poller_state WHERE key = ?`).get(key) as { value: string } | undefined;
+  if (!row) return null;
+  const n = Number(row.value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function setPollerInt(key: string, value: number): void {
+  db.prepare(
+    `INSERT INTO poller_state (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).run(key, String(value), Date.now());
 }
