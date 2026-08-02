@@ -129,6 +129,30 @@ repairOnce("2026-08-remove-phantom-payments-and-stranded-tasks", () => {
   if (recheck.changes) console.log(`[store] re-queued ${recheck.changes} completed task(s) for completion re-check`);
 });
 
+repairOnce("2026-08-clear-stranded-scoring-markers", () => {
+  // The poller used to write its "already scored N applicants" marker BEFORE
+  // doing the scoring, so a job whose only attempt failed (a rate limit, a
+  // timeout) kept a marker claiming work that never happened and was skipped
+  // forever after. The ordering is fixed going forward, but a database that
+  // already holds one of those markers stays stuck on its own.
+  //
+  // Narrow by construction: only jobs still sitting at 'posted' that have no
+  // decision rows at all. A job with any decision was genuinely scored, and a
+  // job past 'posted' has moved on regardless.
+  const cleared = db
+    .prepare(
+      `DELETE FROM poller_state
+        WHERE key LIKE 'scored_applications:%'
+          AND SUBSTR(key, LENGTH('scored_applications:') + 1) IN (
+            SELECT t.escrow_id FROM tasks t
+             WHERE t.status = 'posted' AND t.escrow_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM decisions d WHERE d.task_id = t.escrow_id)
+          )`,
+    )
+    .run();
+  if (cleared.changes) console.log(`[store] cleared ${cleared.changes} stranded scoring marker(s) — those jobs will be scored on the next poll`);
+});
+
 repairOnce("2026-08-dedupe-rescored-decisions-v2", () => {
   // The poller's scored-applicant counter was in-memory, so each restart made it
   // re-score every open job. Escrow #31 held 27 rows for 3 applicants.
