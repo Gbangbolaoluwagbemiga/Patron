@@ -1,8 +1,20 @@
 # Patron
 
-**🔴 Live demo:** [web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app) — command center, real data, no login. Daemon API: [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app)
-
 **The human-labor endpoint of the agent economy.**
+
+| | |
+|---|---|
+| 🖥️ **Command center** | **[web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app)** — live data, no login |
+| 🙋 **Get hired (no wallet needed)** | **[web-plum-one-12.vercel.app/work](https://web-plum-one-12.vercel.app/work)** |
+| 💬 **Telegram** | **[@PatronGuildbot](https://t.me/PatronGuildbot)** — `/start` to join the guild |
+| ⚙️ **Daemon API** | [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app) |
+| 🔍 **Escrow contract** | [`0x6142…ab59` on Arcscan](https://testnet.arcscan.app/address/0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59) |
+| 🌐 **Third-party view** | [secureflow-arc.vercel.app/jobs](https://secureflow-arc.vercel.app/jobs) — our jobs on an interface we don't control |
+
+> **Try it in 20 seconds:** open [/work](https://web-plum-one-12.vercel.app/work) or the bot, type a
+> name, and you are a freelancer with a real on-chain wallet who can apply to a funded job.
+> No install, no extension, no seed phrase.
+
 
 Circle's Agent Marketplace already lets AI agents pay for 41 services — every one of them a machine (data, inference, voice, analytics). When an agent needs work only a human can do — a logo with taste, a voiceover with warmth, an article with a soul — there is no shop. **Patron is that shop.**
 
@@ -40,19 +52,18 @@ Buyer Agent (any framework, funded Circle Agent Wallet)
 │  SecureFlow on Arc: createEscrow / acceptFreelancer /                      │
 │     approveMilestone / rejectMilestone / disputeMilestone                   │
 │  Subgraph poller — applications & submissions arrive                        │
+│  Worker layer — a Circle MPC wallet per human, signed on their instruction   │
 │  SQLite persistence + SSE event stream                                      │
-└────────────────────────────────┬─────────────────────────────────────────────┘
-│  Worker layer: a Circle MPC wallet per human, signed on their instruction     │
 └──────────┬──────────────────────────────────────┬───────────────────────────┘
            │ SSE (read-only, no keys in browser)  │ /api/worker/*
            ▼                                      ▼
-  React Command Center                   THE HUMAN FRONT DOOR
-  decision log · payment feed            ├─ /work        (no install)
-  escrow links · on-chain ratings        ├─ Telegram bot (native push)
-                                         └─ own wallet   (SecureFlow dApp)
-                                                  │
-                              a human applies, delivers, and is paid in USDC
-                              — without ever installing a wallet
+  React Command Center                     THE HUMAN FRONT DOOR
+  decision log · payment feed              ├─ /work        (no install)
+  escrow links · on-chain ratings          ├─ Telegram bot (native push)
+                                           └─ own wallet   (SecureFlow dApp)
+                                                    │
+                                a human applies, delivers, and is paid in USDC
+                                — without ever installing a wallet
 ```
 
 **Why a daemon and not a browser app:** the agent's brain runs server-side, 24/7. Close the laptop — Patron keeps hiring, reviewing, and paying. It also means no private keys ever touch the browser bundle.
@@ -128,6 +139,128 @@ identically on mainnet with no code change. Turning it into spendable local cash
 off-ramp integration and genuinely out of scope — USDC is simply the easiest asset in the
 world to off-ramp when that day comes.
 
+## The complete flow, end to end
+
+Every step below has been run live on Arc testnet. Nothing here is a mock.
+
+```
+1. AN AGENT COMMISSIONS WORK
+   buyer-demo hits POST /api/hire → 402 Payment Required
+   → signs an EIP-3009 authorisation with its OWN Circle MPC wallet (gasless)
+   → pays the $0.05 order fee                        [x402 SELL SIDE — payment 1]
+
+2. THE GUILD MASTER WRITES A BRIEF
+   instruction → structured output (zod-validated) → title, acceptance criteria,
+   milestones, duration, revision rounds, keccak256 briefHash
+   → budget cross-checked against what the CLIENT actually asked for   [guardrail]
+
+3. MONEY IS LOCKED BEFORE ANYONE APPLIES
+   approve → createEscrow on SecureFlow                      [ARC — escrow_lock]
+   the briefHash goes on-chain so the brief cannot be silently altered later
+
+4. HUMANS APPLY — THROUGH ANY DOOR
+   /work · Telegram · SecureFlow's own dApp with their own wallet
+   all land as applyToJob on the same public subgraph, signed by the APPLICANT
+
+5. THE GUILD MASTER SCORES THEM, COMPARATIVELY
+   one call ranking all applicants against each other
+   prompt-injection attempts are caught, flagged and scored ~0     [proven live]
+
+6. IT PAYS A THIRD PARTY TO CHECK THE LEADER
+   $0.01 over x402 to services/portfolio-check — its own Circle wallet,
+   a genuinely independent counterparty          [x402 BUY SIDE — payment 2]
+
+7. IT HIRES
+   acceptFreelancer on-chain; the human is DM'd if they came via Telegram
+
+8. WORK IS SUBMITTED AND INSPECTED
+   submitMilestone signed by the freelancer
+   → reviewed criterion by criterion, and the delivered FILE is opened when a
+     vision model is available; when it isn't, the review says so explicitly
+     rather than asserting facts about a file it never saw          [guardrail]
+
+9. APPROVED → PAID, OR REJECTED → REVISION
+   approveMilestone releases USDC straight to the human   [ARC — payment 3]
+   rejection returns specific written feedback and another round
+   after the brief's fixed revision rounds → disputeMilestone, a human arbiter
+                                                            [proven live]
+
+10. REPUTATION IS WRITTEN TO THE CONTRACT
+    submitRating — 5 stars clean, one off per revision round needed
+    readable by anyone, including SecureFlow's own dApp     [not our database]
+```
+
+**Money moved three times, in three different directions**: machine → Patron (x402),
+Patron → machine (x402), escrow → human (on-chain). No human approved any of it, and at no
+point could any machine in the chain take the money back.
+
+---
+
+## HTTP API
+
+Everything the command center and both worker doors run on.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/hire` | **x402-gated.** How an AI agent commissions work. Returns 402 until paid. |
+| `POST` | `/api/instruct` | The human/unguarded front door — same pipeline, no fee. |
+| `GET` | `/api/tasks` | Every commission and its status. |
+| `GET` | `/api/decisions` | The guild master's reasoning, verbatim. |
+| `GET` | `/api/payments` | Every real movement of money, with tx hashes. |
+| `GET` | `/api/wallet` | Treasury address + live balance. |
+| `GET` | `/api/ratings?addresses=` | On-chain ratings, read from the contract. |
+| `GET` | `/api/workers` | Humans who have joined the guild. |
+| `POST` | `/api/worker/join` | Join — provisions a Circle MPC wallet and drips gas. |
+| `GET` | `/api/worker/me?id=` | A worker's wallet, mode and balance. |
+| `GET` | `/api/worker/quests` | Open commissions a worker can apply to. |
+| `POST` | `/api/worker/apply` | `applyToJob`, signed by the worker's wallet. |
+| `POST` | `/api/worker/submit` | `startWork` + `submitMilestone`, signed by the worker. |
+| `POST` | `/api/worker/withdraw` | Move earnings to an address they control. |
+| `GET` | `/events` | SSE stream of every AgentEvent. |
+| `GET` | `/healthz` | Liveness. |
+
+---
+
+## Data model (`node:sqlite`, persistent volume)
+
+| Table | What it holds | Why it's durable |
+|---|---|---|
+| `tasks` | commissions, status, brief JSON | the ledger |
+| `decisions` | every LLM decision, verbatim | the audit trail judges read |
+| `payments` | real money movements only | non-payments were once filed here; now allowlisted |
+| `review_history` | every work review per milestone | the escalation counter — in memory, a restart granted unlimited revision rounds |
+| `poller_state` | scored-applicant counters | in memory, every restart re-scored every open job |
+| `workers` | humans, their wallets, managed vs own | identity survives restarts; conversation state deliberately does not |
+| `applied_repairs` | one-time data repairs already run | so a redeploy cannot replay them |
+
+---
+
+## The Telegram bot
+
+[@PatronGuildbot](https://t.me/PatronGuildbot) — long-poll, so no webhook, no public callback
+URL and no second service. It runs inside the daemon already deployed and is **dormant
+without a token**, so the rest of Patron is unaffected either way.
+
+| Command | Does |
+|---|---|
+| `/start` | Join — provisions a wallet in the background |
+| `/jobs` | Open commissions, with Apply buttons |
+| `/balance` | Earnings (already theirs, in their own wallet) |
+| `/withdraw` | Send earnings to an address they control |
+| `/link 0x…` | Use your own wallet instead — Patron becomes a notifier |
+| `/help` | — |
+
+It also pushes: hires, revision requests with the actual feedback, approvals, payments, and
+new commissions. That is what a web page cannot do — a freelancer waiting to hear about a
+job is not sitting on a dashboard.
+
+**Deploying it:** create a bot with @BotFather, then
+`railway variable set "TELEGRAM_BOT_TOKEN=…"` and redeploy. Only one process may long-poll a
+token at a time — keep it on Railway, not also in a local `.env`, or they will fight over
+`getUpdates`.
+
+---
+
 ## The command center — "The Ledger"
 
 Gold on black, with an editorial serif doing the talking. *Patron* means a wealthy
@@ -197,7 +330,10 @@ Patron/
 │   │   ├── config.ts          ← env, Arc chain def, spend caps
 │   │   ├── store.ts           ← node:sqlite: tasks, decisions, payments
 │   │   ├── agent/             ← BriefGenerator / ApplicationScorer / WorkReviewer
-│   │   ├── workers/           ← the human front door: wallets, service, Telegram bot
+│   │   ├── workers/           ← the human front door
+│   │   │   ├── service.ts     ← join/apply/submit/withdraw — surface-agnostic core
+│   │   │   ├── wallets.ts     ← a Circle MPC wallet per human, gas drip, withdrawal
+│   │   │   └── telegram.ts    ← @PatronGuildbot — long-poll, dormant without a token
 │   │   ├── circle/            ← MPC signer, wallet setup, Gateway client, x402 seller
 │   │   └── web3/              ← SecureFlow ABI + contract writes
 │   └── scripts/                ← seed-freelancers, seed-submission, e2e-loop
@@ -268,6 +404,21 @@ E2E_INSTRUCTION="..." npm run e2e            # override the job entirely
 > correctly score them below the hire threshold and decline — that is the scorer working,
 > not a failure.
 
+## Trying the human side
+
+No setup at all — it is a URL:
+
+1. Open [**/work**](https://web-plum-one-12.vercel.app/work) (or [@PatronGuildbot](https://t.me/PatronGuildbot) and send `/start`)
+2. Type any name
+3. You now have a real Circle MPC wallet on Arc — check it on Arcscan from the page itself
+4. Apply to any open commission. That is a real `applyToJob` transaction signed by *your* wallet
+
+To watch it from Patron's side at the same time, keep
+[The Guild Master's Hand](https://web-plum-one-12.vercel.app/decisions) open — your application
+is scored there against everyone else's.
+
+---
+
 ## Running the buyer-demo agent
 
 The demo's "customer" — a standalone AI agent with its own Circle Agent Wallet that discovers Patron, pays over x402, and receives the opened escrow. No human types anything into a form.
@@ -311,6 +462,15 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 - ✅ **A human can be onboarded and paid without touching crypto** — managed Circle MPC wallet provisioned on signup, gas dripped automatically, and `applyToJob` signed *by the worker's own wallet*. Verified on-chain; the application lands on the public subgraph indistinguishable from a crypto-native one. Two doors: `/work` (no install) and [@PatronGuildbot](https://t.me/PatronGuildbot) (native push).
 - ✅ **On-chain reputation** — `submitRating` written to SecureFlow when a job completes, scored from the reviews that actually happened (5 stars clean, one off per revision round), read back from the contract rather than computed by us.
 - ✅ **Dispute path proven live** — deliberately failed a milestone twice on purpose; the guild master rejected with real actionable feedback both times, then escalated to SecureFlow's dispute system with a real on-chain `disputeMilestone` transaction. Found and fixed a real bug in the process (a resubmission after rejection was silently never getting re-reviewed).
+
+### What a judge can verify without trusting us
+
+- Open any commission on [SecureFlow's own dApp](https://secureflow-arc.vercel.app/jobs) — a
+  third-party interface we do not control — and see the same job.
+- Follow any payment to [Arcscan](https://testnet.arcscan.app) and see the transaction.
+- Read `getAverageRating` off the contract and get the same rating the Register shows.
+- Join at [/work](https://web-plum-one-12.vercel.app/work), apply, and find your own
+  application on the public subgraph next to everyone else's.
 
 ### Known gaps, stated plainly
 
