@@ -21,6 +21,7 @@ import * as secureflow from "./web3/secureflow.js";
 import { graphQuery, isGraphConfigured } from "./graph/client.js";
 import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
 import * as store from "./store.js";
+import * as workers from "./workers/service.js";
 
 const PORT = config.port;
 
@@ -253,6 +254,104 @@ const server = http.createServer(async (req, res) => {
       });
     } catch (err) {
       return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // ── The human front door (managed-worker layer) ──────────────────────────
+  // Same pipeline as everything else: an application submitted here lands on
+  // the SecureFlow subgraph, and the poller picks it up without knowing or
+  // caring that a person on a web page produced it.
+
+  if (req.method === "POST" && url.pathname === "/api/worker/join") {
+    try {
+      const body = JSON.parse(await readBody(req)) as {
+        handle?: string;
+        skills?: string;
+        ownAddress?: string;
+        channelRef?: string;
+      };
+      if (!body.handle) return json(res, 400, { error: "handle is required" });
+      const worker = await workers.join({
+        handle: body.handle,
+        channel: "web",
+        channelRef: body.channelRef,
+        skills: body.skills,
+        ownAddress: body.ownAddress as `0x${string}` | undefined,
+      });
+      // walletId is deliberately not returned — it is Circle's handle on the
+      // wallet, of no use to a browser and not something to put in a response.
+      return json(res, 200, {
+        id: worker.id,
+        handle: worker.handle,
+        address: worker.walletAddress,
+        mode: worker.mode,
+      });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/worker/quests") {
+    return json(res, 200, workers.openQuests());
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/worker/me") {
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    const worker = store.getWorker(id);
+    if (!worker) return json(res, 404, { error: "not found" });
+    try {
+      const { balance } = await workers.balance(id);
+      return json(res, 200, { id: worker.id, handle: worker.handle, address: worker.walletAddress, mode: worker.mode, balance });
+    } catch {
+      return json(res, 200, { id: worker.id, handle: worker.handle, address: worker.walletAddress, mode: worker.mode, balance: null });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/worker/apply") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        workerId?: string;
+        escrowId?: string;
+        coverLetter?: string;
+        proposedTimelineDays?: number;
+      };
+      if (!b.workerId || !b.escrowId || !b.coverLetter) {
+        return json(res, 400, { error: "workerId, escrowId and coverLetter are required" });
+      }
+      const result = await workers.apply(b.workerId, b.escrowId, b.coverLetter, b.proposedTimelineDays ?? 3);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/worker/submit") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        workerId?: string;
+        escrowId?: string;
+        milestoneIndex?: number;
+        description?: string;
+      };
+      if (!b.workerId || !b.escrowId || !b.description) {
+        return json(res, 400, { error: "workerId, escrowId and description are required" });
+      }
+      const result = await workers.submit(b.workerId, b.escrowId, b.milestoneIndex ?? 0, b.description);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/worker/withdraw") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { workerId?: string; destination?: string; amountUsdc?: string };
+      if (!b.workerId || !b.destination) return json(res, 400, { error: "workerId and destination are required" });
+      const result = await workers.withdraw(b.workerId, b.destination as `0x${string}`, b.amountUsdc);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
     }
   }
 

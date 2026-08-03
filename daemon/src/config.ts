@@ -60,6 +60,12 @@ export const config = {
   // quietly locked 100x the requested amount.
   maxJobBudgetUsdc: Number(process.env.MAX_JOB_BUDGET_USDC ?? 100),
 
+  // Managed-worker layer. All worker wallets live in one Circle wallet set,
+  // separate from the treasury's. Set this after the first signup creates it, so
+  // a restart reuses the same set instead of making a new one each boot.
+  workerWalletSetId: process.env.WORKER_WALLET_SET_ID?.trim() || "",
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN?.trim() || "",
+
   port: Number(process.env.PORT ?? 8787),
 };
 

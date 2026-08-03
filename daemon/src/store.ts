@@ -66,6 +66,32 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );
+
+  -- The managed-worker layer. One row per human who has joined the guild.
+  --
+  -- handle:   what they call themselves; the only thing they have to choose.
+  -- channel:  which door they came through ('web' | 'telegram'), so a notifier
+  --           knows how to reach them. Not a separate table — a person is a
+  --           person regardless of surface.
+  -- wallet_*: a real Circle MPC wallet Patron provisioned FOR them. Patron
+  --           signs on their instruction; no key exists anywhere to export.
+  -- mode:     'managed' (Patron signs) | 'own' (they signed up with their own
+  --           address and sign for themselves — Patron only notifies).
+  CREATE TABLE IF NOT EXISTS workers (
+    id TEXT PRIMARY KEY,
+    handle TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    channel_ref TEXT,
+    skills TEXT,
+    wallet_id TEXT,
+    wallet_address TEXT,
+    mode TEXT NOT NULL DEFAULT 'managed',
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS workers_channel_ref
+    ON workers (channel, channel_ref) WHERE channel_ref IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS workers_address ON workers (wallet_address);
 `);
 
 // ── One-time repairs ────────────────────────────────────────────────────────
@@ -299,6 +325,79 @@ export function getPollerInt(key: string): number | null {
   if (!row) return null;
   const n = Number(row.value);
   return Number.isFinite(n) ? n : null;
+}
+
+// ── Workers (the managed-worker layer) ──────────────────────────────────────
+
+export interface WorkerRow {
+  id: string;
+  handle: string;
+  channel: "web" | "telegram";
+  channelRef: string | null;
+  skills: string | null;
+  walletId: string | null;
+  walletAddress: string | null;
+  mode: "managed" | "own";
+  createdAt: number;
+}
+
+function toWorker(r: Record<string, unknown>): WorkerRow {
+  return {
+    id: r.id as string,
+    handle: r.handle as string,
+    channel: r.channel as "web" | "telegram",
+    channelRef: (r.channel_ref as string | null) ?? null,
+    skills: (r.skills as string | null) ?? null,
+    walletId: (r.wallet_id as string | null) ?? null,
+    walletAddress: (r.wallet_address as string | null) ?? null,
+    mode: r.mode as "managed" | "own",
+    createdAt: r.created_at as number,
+  };
+}
+
+export function insertWorker(w: Omit<WorkerRow, "createdAt">): WorkerRow {
+  db.prepare(
+    `INSERT INTO workers (id, handle, channel, channel_ref, skills, wallet_id, wallet_address, mode, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(w.id, w.handle, w.channel, w.channelRef, w.skills, w.walletId, w.walletAddress, w.mode, Date.now());
+  return getWorker(w.id)!;
+}
+
+export function getWorker(id: string): WorkerRow | null {
+  const r = db.prepare(`SELECT * FROM workers WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
+  return r ? toWorker(r) : null;
+}
+
+/** Look a worker up by the door they came through — Telegram user id, or a web session handle. */
+export function getWorkerByChannelRef(channel: string, channelRef: string): WorkerRow | null {
+  const r = db.prepare(`SELECT * FROM workers WHERE channel = ? AND channel_ref = ?`).get(channel, channelRef) as
+    | Record<string, unknown>
+    | undefined;
+  return r ? toWorker(r) : null;
+}
+
+/** Reverse lookup from an on-chain address — this is how an applicant seen on the
+ *  subgraph is matched back to a person we can notify. */
+export function getWorkerByAddress(address: string): WorkerRow | null {
+  const r = db.prepare(`SELECT * FROM workers WHERE LOWER(wallet_address) = LOWER(?)`).get(address) as
+    | Record<string, unknown>
+    | undefined;
+  return r ? toWorker(r) : null;
+}
+
+export function listWorkers(limit = 100): WorkerRow[] {
+  return (db.prepare(`SELECT * FROM workers ORDER BY created_at DESC LIMIT ?`).all(limit) as Record<string, unknown>[]).map(
+    toWorker,
+  );
+}
+
+export function setWorkerWallet(id: string, walletId: string, walletAddress: string): void {
+  db.prepare(`UPDATE workers SET wallet_id = ?, wallet_address = ? WHERE id = ?`).run(walletId, walletAddress, id);
+}
+
+/** Graduation: a managed worker moves to their own wallet. Mode A is a ramp, not a trap. */
+export function setWorkerOwnWallet(id: string, address: string): void {
+  db.prepare(`UPDATE workers SET wallet_address = ?, wallet_id = NULL, mode = 'own' WHERE id = ?`).run(address, id);
 }
 
 export function setPollerInt(key: string, value: number): void {
