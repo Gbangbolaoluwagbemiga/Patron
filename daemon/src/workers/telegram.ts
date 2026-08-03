@@ -91,40 +91,97 @@ const HELP = [
   "<b>Patron</b> — an AI hires you, and pays you.",
   "",
   "/jobs — see work available right now",
+  "/jobs logo — filter by word; /jobs 5 — minimum budget",
+  "/submit &lt;id&gt; — send finished work for a job you were hired for",
   "/balance — what you've earned",
   "/withdraw — move it to your own wallet",
   "/help — this message",
 ].join("\n");
 
-async function showJobs(chatId: number, tgUserId: number) {
-  const quests = workers.openQuests();
-  if (quests.length === 0) {
+const PAGE_SIZE = 5;
+
+/**
+ * One compact message listing the board, not one message per job.
+ *
+ * The original sent a separate message per commission, capped at six. With a
+ * handful of jobs that's noisy; with thirty it's either a flood or it silently
+ * hides most of the work someone could be doing — the exact opposite of what a
+ * job board is for. Now: a single scannable list, a button per job, and paging.
+ */
+function matchesFilter(q: { title: string; criteria: string[]; budget: number }, filter: string): boolean {
+  if (!filter) return true;
+  const f = filter.toLowerCase().trim();
+
+  // "$5" / "5+" — a minimum budget rather than a word to match.
+  const min = f.match(/^\$?(\d+(?:\.\d+)?)\+?$/);
+  if (min?.[1]) return q.budget >= Number(min[1]);
+
+  const haystack = `${q.title} ${q.criteria.join(" ")}`.toLowerCase();
+  // Every word must appear, so "logo png" narrows rather than widens.
+  return f.split(/\s+/).every((word) => haystack.includes(word));
+}
+
+async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0) {
+  const all = workers.openQuests();
+  const quests = all.filter((q) => matchesFilter(q, filter));
+
+  if (all.length === 0) {
     return send(chatId, "No open commissions this minute. I'll message you the moment one is posted.");
   }
+  if (quests.length === 0) {
+    return send(chatId, `Nothing matches “${filter}”. Send /jobs to see all ${all.length}, or try a word like <code>logo</code> or a minimum like <code>5</code>.`);
+  }
+
+  const pages = Math.ceil(quests.length / PAGE_SIZE);
+  const p = Math.max(0, Math.min(page, pages - 1));
+  const slice = quests.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
   const worker = workerFor(tgUserId);
-  for (const q of quests.slice(0, 6)) {
-    const lines = [
-      `<b>${q.title}</b>`,
-      `💰 $${q.budget} USDC · ${q.durationDays} day${q.durationDays !== 1 ? "s" : ""}`,
-      "",
-      "<i>What they need:</i>",
-      ...q.criteria.slice(0, 6).map((c) => `• ${c}`),
-      "",
-      `The $${q.budget} is already locked in escrow — it can't be taken back, not even by the AI.`,
-    ];
-    await send(
-      chatId,
-      lines.join("\n"),
-      worker
-        ? [
-            [
-              { text: "Apply", callback_data: `apply:${q.escrowId}` },
-              { text: "I was hired — send work", callback_data: `submit:${q.escrowId}` },
-            ],
-          ]
-        : [[{ text: "Join first", callback_data: "join" }]],
+
+  const header = filter
+    ? `<b>${quests.length}</b> of ${all.length} commissions match “${filter}”`
+    : `<b>${all.length}</b> open commission${all.length !== 1 ? "s" : ""}, all funded up front`;
+
+  const body = slice.map((q) => {
+    const crit = q.criteria.slice(0, 3).map((c) => `   · ${c}`).join("\n");
+    return [
+      `<b>${q.title}</b> — 💰 $${q.budget} · ${q.durationDays}d`,
+      crit,
+      q.criteria.length > 3 ? `   · …and ${q.criteria.length - 3} more` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+
+  // One button per job, two per row, so the list stays tappable as it grows.
+  const jobButtons: { text: string; callback_data: string }[][] = [];
+  for (let i = 0; i < slice.length; i += 2) {
+    jobButtons.push(
+      slice.slice(i, i + 2).map((q) => ({
+        text: worker ? `Apply · ${q.title.slice(0, 18)}` : `Join to apply`,
+        callback_data: worker ? `apply:${q.escrowId}` : "join",
+      })),
     );
   }
+
+  const nav: { text: string; callback_data: string }[] = [];
+  if (p > 0) nav.push({ text: "‹ Back", callback_data: `page:${p - 1}:${filter}` });
+  if (p < pages - 1) nav.push({ text: `More (${p + 1}/${pages}) ›`, callback_data: `page:${p + 1}:${filter}` });
+  if (nav.length) jobButtons.push(nav);
+
+  await send(
+    chatId,
+    [
+      header,
+      "",
+      body.join("\n\n"),
+      "",
+      pages > 1 ? `<i>Page ${p + 1} of ${pages}</i>` : "",
+      `<i>Filter with</i> <code>/jobs logo</code> <i>or a minimum budget:</i> <code>/jobs 5</code>`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    jobButtons,
+  );
 }
 
 async function handleText(msg: TgMessage) {
@@ -159,7 +216,18 @@ async function handleText(msg: TgMessage) {
     }
 
     if (cmd === "/help") return void (await send(chatId, HELP));
-    if (cmd === "/jobs" || cmd === "/quests") return void (await showJobs(chatId, tgUserId));
+    if (cmd === "/jobs" || cmd === "/quests") return void (await showJobs(chatId, tgUserId, rest));
+
+    if (cmd === "/submit") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
+      const id = rest.trim();
+      if (!id) {
+        return void (await send(chatId, "Which commission? Send <code>/submit 31</code> using the entry number from /jobs."));
+      }
+      pending.set(chatId, { kind: "deliverable", escrowId: id, milestoneIndex: 0 });
+      return void (await send(chatId, "Describe what you're delivering, and paste a link to the file."));
+    }
 
     if (cmd === "/balance") {
       const worker = workerFor(tgUserId);
@@ -314,6 +382,11 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   await call("answerCallbackQuery", { callback_query_id: cq.id });
 
   const [action, arg] = (cq.data ?? "").split(":");
+
+  if (action === "page") {
+    const [, pageStr, ...filterParts] = (cq.data ?? "").split(":");
+    return void (await showJobs(chatId, tgUserId, filterParts.join(":"), Number(pageStr) || 0));
+  }
 
   if (action === "join") {
     pending.set(chatId, { kind: "handle" });

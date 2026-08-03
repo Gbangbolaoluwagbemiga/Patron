@@ -58,8 +58,25 @@ export default function Work() {
   const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [deliverable, setDeliverable] = useState("");
 
+  const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState<"newest" | "budget">("newest");
+
   const balance = me?.balance ? parseFloat(me.balance) : 0;
   const animatedBalance = useCountUp(balance);
+
+  // Same rules as the Telegram bot, so the two doors behave identically: a bare
+  // number is a MINIMUM BUDGET, anything else is words that must all appear.
+  // Someone typing "5" on a job board means "at least $5", not "contains a 5".
+  const visible = quests
+    .filter((q) => {
+      const f = filter.toLowerCase().trim();
+      if (!f) return true;
+      const min = f.match(/^\$?(\d+(?:\.\d+)?)\+?$/);
+      if (min?.[1]) return q.budget >= Number(min[1]);
+      const haystack = `${q.title} ${q.criteria.join(" ")}`.toLowerCase();
+      return f.split(/\s+/).every((w) => haystack.includes(w));
+    })
+    .sort((a, b) => (sort === "budget" ? b.budget - a.budget : Number(b.escrowId) - Number(a.escrowId)));
 
   async function refreshMe(id: string) {
     try {
@@ -234,12 +251,38 @@ export default function Work() {
       <div className="panel">
         <h2>
           <IconSwords size={15} /> Open commissions
+          <span className="panel-header-link" style={{ color: "var(--faint)" }}>
+            {visible.length === quests.length ? `${quests.length} open` : `${visible.length} of ${quests.length}`}
+          </span>
         </h2>
+
+        <div className="filter-row">
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter — a word like “logo”, or a minimum budget like “5”"
+          />
+          <button
+            className="treasury-connect-btn"
+            onClick={() => setSort(sort === "newest" ? "budget" : "newest")}
+            title="Change ordering"
+          >
+            {sort === "newest" ? "Newest first" : "Best paid first"}
+          </button>
+        </div>
+
         <div className="panel-body">
           {quests.length === 0 ? (
             <div className="empty">No open commissions right now — they appear here the moment an agent posts one.</div>
+          ) : visible.length === 0 ? (
+            <div className="empty">
+              Nothing matches “{filter}”.{" "}
+              <a className="tx-link" onClick={() => setFilter("")} style={{ cursor: "pointer" }}>
+                Show all {quests.length}
+              </a>
+            </div>
           ) : (
-            quests.map((q) => (
+            visible.map((q) => (
               <motion.div className="card" key={q.escrowId} {...cardMotion}>
                 <div className="card-row">
                   <span className="entry-no">ENTRY {q.escrowId.padStart(4, "0")}</span>
