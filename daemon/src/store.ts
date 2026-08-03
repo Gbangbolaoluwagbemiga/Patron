@@ -20,7 +20,13 @@ db.exec(`
     client_type TEXT NOT NULL,
     status TEXT NOT NULL,
     brief_json TEXT,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    -- Who commissioned this, when we know. SecureFlow requires Patron to be the
+    -- escrow depositor (only the depositor may approve milestones, and the whole
+    -- product is that a machine approves them), so a refund lands with Patron
+    -- rather than with the client. Recording the payer is what lets Patron pass
+    -- it back — see /api/jobs/refund.
+    client_address TEXT
   );
 
   CREATE TABLE IF NOT EXISTS decisions (
@@ -93,6 +99,18 @@ db.exec(`
     ON workers (channel, channel_ref) WHERE channel_ref IS NOT NULL;
   CREATE INDEX IF NOT EXISTS workers_address ON workers (wallet_address);
 `);
+
+// ── Schema migration ────────────────────────────────────────────────────────
+// Older databases predate client_address. CREATE TABLE IF NOT EXISTS will not add
+// a column to a table that already exists, and the deployed daemon runs on a
+// persistent volume that is never rebuilt — so without this, the first query
+// after deploy throws on a column that only exists on fresh installs.
+try {
+  db.exec(`ALTER TABLE tasks ADD COLUMN client_address TEXT`);
+  console.log("[store] added tasks.client_address");
+} catch {
+  // already present — the normal case on every boot after the first
+}
 
 // ── One-time repairs ────────────────────────────────────────────────────────
 // Guarded by a marker table so each runs exactly once per database, ever. The
@@ -215,13 +233,24 @@ export interface TaskRow {
   status: string;
   briefJson: string | null;
   createdAt: number;
+  /** The address that commissioned this, when known — the refund destination. */
+  clientAddress?: string | null;
 }
 
 export function insertTask(task: Omit<TaskRow, "createdAt">): void {
   db.prepare(
-    `INSERT INTO tasks (id, escrow_id, instruction, client_type, status, brief_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(task.id, task.escrowId, task.instruction, task.clientType, task.status, task.briefJson, Date.now());
+    `INSERT INTO tasks (id, escrow_id, instruction, client_type, status, brief_json, created_at, client_address)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    task.id,
+    task.escrowId,
+    task.instruction,
+    task.clientType,
+    task.status,
+    task.briefJson,
+    Date.now(),
+    task.clientAddress ?? null,
+  );
 }
 
 export function updateTaskStatus(id: string, status: string, escrowId?: string): void {
@@ -246,6 +275,7 @@ export function listTasks(limit = 50): TaskRow[] {
     status: r.status,
     briefJson: r.brief_json,
     createdAt: r.created_at,
+    clientAddress: r.client_address ?? null,
   }));
 }
 

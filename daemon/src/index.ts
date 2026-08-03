@@ -150,9 +150,9 @@ function json(res: http.ServerResponse, status: number, data: unknown) {
 }
 
 /** Shared by both the x402 (agent) and unguarded (human) entrypoints. */
-async function runHireFlow(instruction: string, clientType: "agent" | "human") {
+async function runHireFlow(instruction: string, clientType: "agent" | "human", clientAddress?: string) {
   const taskId = randomUUID();
-  store.insertTask({ id: taskId, escrowId: null, instruction, clientType, status: "briefing", briefJson: null });
+  store.insertTask({ id: taskId, escrowId: null, instruction, clientType, status: "briefing", briefJson: null, clientAddress });
 
   try {
     const { brief, escrowId } = await agent.processInstruction(instruction);
@@ -234,7 +234,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req)) as { instruction?: string };
       if (!body.instruction) return json(res, 400, { error: "instruction is required" });
 
-      const result = await runHireFlow(body.instruction, "agent");
+      const result = await runHireFlow(body.instruction, "agent", payment?.payer);
       json(res, 200, result);
     } catch (err) {
       json(res, 500, { error: clientError(err) });
@@ -378,16 +378,57 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      // Measure rather than assume. SecureFlow deducts a cancellation penalty
+      // that scales with how often you've cancelled and how many people already
+      // applied, so the amount that actually comes back is not the face value of
+      // the budget — and the client must be refunded what was really recovered.
+      const before = await treasuryBalance();
       const txHash = await secureflow.cancelJob(BigInt(b.escrowId));
+      const recovered = Math.max(0, (await treasuryBalance()) - before);
+
       store.updateTaskStatus(task.id, "cancelled", task.escrowId ?? undefined);
+
+      // Pass it back to whoever commissioned the work.
+      //
+      // Patron has to be the escrow depositor — SecureFlow only lets the
+      // depositor approve milestones, and a machine approving them is the entire
+      // product — so the contract refunds Patron, not the client. Forwarding it
+      // is therefore a POLICY Patron keeps, not something the contract enforces,
+      // and it is described that way everywhere rather than implied to be a
+      // guarantee.
+      let refund: { to: string; amountUsdc: string; txHash: string } | null = null;
+      if (task.clientAddress && recovered > 0) {
+        try {
+          const amount = recovered.toFixed(6);
+          const gateway = getGateway();
+          const forward = await gateway.transferUsdc(task.clientAddress as `0x${string}`, amount);
+          refund = { to: task.clientAddress, amountUsdc: amount, txHash: forward.hash };
+          store.recordPayment({
+            id: randomUUID(),
+            direction: "out",
+            escrowId: b.escrowId,
+            amountUsdc: amount,
+            counterparty: task.clientAddress,
+            txHash: forward.hash,
+            reason: "client_refund",
+          });
+        } catch (err) {
+          // The cancellation already succeeded and the money is safe in the
+          // treasury; a failed forward must not read as a failed cancellation.
+          console.error("[refund] cancelled but could not forward to the client:", err instanceof Error ? err.message : err);
+        }
+      }
+
       broadcast({
         type: "task_completed",
-        message: "Commission cancelled — the locked budget has been returned in full.",
+        message: refund
+          ? `Commission cancelled — $${refund.amountUsdc} returned to the client who commissioned it.`
+          : `Commission cancelled — $${recovered.toFixed(4)} recovered to the treasury.`,
         escrowId: b.escrowId,
         txHash,
         timestamp: Date.now(),
       });
-      return json(res, 200, { txHash });
+      return json(res, 200, { txHash, recovered: recovered.toFixed(6), refund });
     } catch (err) {
       return json(res, 500, { error: clientError(err) });
     }
@@ -552,6 +593,13 @@ async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] 
   } catch (err) {
     console.warn(`[rating] could not record rating for escrow ${escrowId} (non-fatal):`, err instanceof Error ? err.message : err);
   }
+}
+
+/** Treasury balance as a number, for measuring what a cancellation actually returned. */
+async function treasuryBalance(): Promise<number> {
+  const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+  const wei = await pub.getBalance({ address: config.circleWalletAddress as `0x${string}` });
+  return Number(formatEther(wei));
 }
 
 /** True while every task in a pass is failing — i.e. the subgraph is unreachable. */
