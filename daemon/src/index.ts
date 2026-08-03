@@ -22,6 +22,7 @@ import { graphQuery, isGraphConfigured } from "./graph/client.js";
 import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
 import * as store from "./store.js";
 import * as workers from "./workers/service.js";
+import * as telegram from "./workers/telegram.js";
 
 const PORT = config.port;
 
@@ -43,6 +44,34 @@ function getGateway() {
 
 const agent = new AgentClient((event) => {
   broadcast(event);
+
+  // Reach the human this actually happened to. The web page can show all of
+  // this, but only if someone is looking at it — a freelancer waiting to hear
+  // whether they got the job is not sitting on a dashboard. Every call is a
+  // no-op when no bot token is configured.
+  if (event.decision?.target) {
+    const who = event.decision.target;
+    if (event.type === "applicant_accepted") {
+      void telegram.notifyWorkerByAddress(who, "🎉 You got the job. The money is already locked in escrow — send your work when it's ready.");
+    }
+  }
+  if (event.type === "work_approved" && event.escrowId) {
+    void telegram.notifyWorkerForEscrow(event.escrowId, "✅ Your work was accepted. Payment is on its way to your wallet.");
+  }
+  if (event.type === "work_rejected" && event.escrowId) {
+    void telegram.notifyWorkerForEscrow(
+      event.escrowId,
+      `📝 Revision requested:\n\n${event.decision?.reasoning ?? "See the ledger for details."}\n\nSend an updated version when you're ready — the money stays locked in escrow either way.`,
+    );
+  }
+  if (event.type === "payment_released" && event.escrowId) {
+    void telegram.notifyWorkerForEscrow(event.escrowId, `💰 Paid${event.amountUsdc ? ` — $${event.amountUsdc} USDC` : ""}. It's in your wallet now. /balance to see it.`);
+  }
+  if (event.type === "job_posted" && event.escrowId && event.amountUsdc) {
+    const task = store.listTasks(5).find((t) => t.escrowId === event.escrowId);
+    const brief = task?.briefJson ? JSON.parse(task.briefJson) : null;
+    if (brief?.title) void telegram.broadcastNewQuest(brief.title, Number(event.amountUsdc), event.escrowId);
+  }
   if (event.decision) {
     store.recordDecision({
       id: event.decision.id,
@@ -561,3 +590,7 @@ async function pollOnce() {
 }
 
 setInterval(() => void pollOnce(), 15_000);
+
+// Second door into the worker layer. Dormant without a bot token; the daemon
+// boots and runs identically either way.
+telegram.startTelegramBot();
