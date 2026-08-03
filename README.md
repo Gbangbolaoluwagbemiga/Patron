@@ -42,12 +42,17 @@ Buyer Agent (any framework, funded Circle Agent Wallet)
 │  Subgraph poller — applications & submissions arrive                        │
 │  SQLite persistence + SSE event stream                                      │
 └────────────────────────────────┬─────────────────────────────────────────────┘
-                                 │ SSE (read-only, no keys in the browser)
-                                 ▼
-              React Command Center — decision log, payment feed,
-              escrow explorer links, reputation stats
-                                 ▲
-Human freelancers ── apply / submit via SecureFlow (existing UI) ── get paid USDC
+│  Worker layer: a Circle MPC wallet per human, signed on their instruction     │
+└──────────┬──────────────────────────────────────┬───────────────────────────┘
+           │ SSE (read-only, no keys in browser)  │ /api/worker/*
+           ▼                                      ▼
+  React Command Center                   THE HUMAN FRONT DOOR
+  decision log · payment feed            ├─ /work        (no install)
+  escrow links · on-chain ratings        ├─ Telegram bot (native push)
+                                         └─ own wallet   (SecureFlow dApp)
+                                                  │
+                              a human applies, delivers, and is paid in USDC
+                              — without ever installing a wallet
 ```
 
 **Why a daemon and not a browser app:** the agent's brain runs server-side, 24/7. Close the laptop — Patron keeps hiring, reviewing, and paying. It also means no private keys ever touch the browser bundle.
@@ -65,27 +70,81 @@ Every mandatory Circle tool is load-bearing here — remove any one row and the 
 | **Nanopayments / x402 (buy)** | Patron pays marketplace APIs mid-job (e.g. verifying an applicant's portfolio) |
 | **Circle Gateway** | Batched settlement for nanopayments; optional cross-chain freelancer payout |
 | **Marketplace** | Patron is marketplace-ready — service #42, the missing human-labor endpoint |
+| **Agent Wallets (per human)** | Every onboarded freelancer gets their own Circle MPC wallet, provisioned on signup — the layer that lets a non-crypto person be paid on-chain |
 | **Circle CLI** | Wallet provisioning, funding, and policy management during setup |
 | **Circle Skills** | `circlefin/skills` installed and used in this build |
 | **Arc** | SecureFlow escrow lives here — every job flows on Arc testnet |
 
 ---
 
+## The human front door — a person can take a paid job without touching crypto
+
+Patron's demand side was always easy: an agent makes one HTTP call and x402 handles
+payment. The supply side was locked behind a wall no real freelancer would climb — install
+MetaMask, add a network by chain ID, source gas, find the escrow, sign twice. Eight steps
+and three foreign concepts before earning a first dollar. That is why a marketplace can
+have a working AI and still contain zero humans.
+
+**The managed-worker layer removes all of it.** A person picks a name; Patron provisions
+them a real Circle MPC wallet, drips enough to sign with, and signs on their instruction.
+They apply, deliver, and get paid without the word "wallet" ever appearing.
+
+| Door | Where | Install required |
+|---|---|---|
+| **Web** | [`/work`](https://web-plum-one-12.vercel.app/work) | none — it's a URL |
+| **Telegram** | [@PatronGuildbot](https://t.me/PatronGuildbot) | Telegram |
+| **Own wallet** | SecureFlow's own dApp, or `/link 0x…` | a wallet, by choice |
+
+Both doors are thin shells over `daemon/src/workers/service.ts`. Neither knows anything the
+other doesn't, which is why the second one cost a day rather than a week.
+
+**Why it's additive rather than a rewrite:** the daemon's poller reads the SecureFlow
+subgraph, not a list of applicants it maintains. It has no idea who produced an
+application — so a human applying through a Telegram button flows into `reviewApplications`
+→ `acceptFreelancer` → `reviewMilestone` → `approveMilestone` with **zero changes** to the
+scorer, reviewer, agent, store, SSE stream, or frontend. Verified live: a managed worker's
+application sits on the public subgraph indistinguishable from the scripted test wallets.
+
+### Custody, stated precisely
+
+A crypto-literate judge will ask, and a fuzzy answer reads as not understanding your own
+model:
+
+- Wallets are **Circle MPC**. The key exists only as split shares and is never assembled —
+  there is no export and no reveal, not for them, not for us.
+- **Patron never holds their money.** On approval the escrow contract pays the worker's
+  wallet directly. Patron signs instructions; it is not a custodian of funds.
+- The exit is a **withdrawal** to an address they control, not a key export.
+
+> Their money is fully theirs and fully extractable. The key is not extractable by anyone.
+
+**Mode B — bring your own wallet** costs almost nothing and is always available: a
+crypto-native freelancer applies through SecureFlow's own dApp and the guild master scores
+them identically. `/withdraw` then `/switch-to-own-wallet` is the graduation path, so
+managed mode is a ramp rather than a trap.
+
+**Said before a judge says it:** this is testnet USDC. Leaving it and moving it work
+identically on mainnet with no code change. Turning it into spendable local cash is an
+off-ramp integration and genuinely out of scope — USDC is simply the easiest asset in the
+world to off-ramp when that day comes.
+
 ## The command center — "The Ledger"
 
-The web app is a guild's commission account book, not a dashboard: cream paper, ink
-hairline rules, tabular monospace figures, one gold accent reserved for money. This is a
-deliberate design position — the great majority of hackathon submissions are dark-mode
-card grids, and a light editorial page is the highest-contrast thing you can put in front
-of a judge who has already seen forty of them.
+Gold on black, with an editorial serif doing the talking. *Patron* means a wealthy
+benefactor and the product is money reaching people, so the surface reads as expensive
+rather than as a tool: deep near-black ground, warm amber light, glass elevation, fine
+grain so large dark fields don't band on a projector. It is a deliberate identity rather
+than a template — most submissions in this space land on the same blue, and nobody else is
+pairing Fraunces with amber on black.
 
 | Page | What it is |
 |---|---|
+| **Get Hired** | `/work` — the human front door (above). The only page where someone *acts* rather than watches. |
 | **The Ledger** | Running totals, treasury, the live pipeline, and the latest entries. One enormous figure — USDC actually paid to humans — and everything else deliberately small. |
 | **Open Commissions** | Every job as a ruled line item with a folio number matching its on-chain escrow id. |
 | **The Guild Master's Hand** | The decision log, set as **marginalia**: metadata in a narrow left column, the LLM's verbatim reasoning in italic serif beside it. Prompt-injection catches render in seal-red down the margin. |
 | **Account of Monies** | Every sum in or out, each linking to the transaction on Arcscan. |
-| **Register of Adventurers** | Per-freelancer reputation, derived live from real hire/completion/payment history — no stored score that can drift from reality. |
+| **Register of Adventurers** | Per-freelancer reputation. The **on-chain rating** is written to SecureFlow's contract on completion and read back from it — verifiable without trusting us. Every other figure is derived live from real hire/completion/payment history. |
 
 Read-only over SSE + REST. The only write path is a "Connect Wallet" button that lets a
 *visitor* fund Patron's treasury from their *own* wallet; it never touches Patron's custody.
@@ -138,6 +197,7 @@ Patron/
 │   │   ├── config.ts          ← env, Arc chain def, spend caps
 │   │   ├── store.ts           ← node:sqlite: tasks, decisions, payments
 │   │   ├── agent/             ← BriefGenerator / ApplicationScorer / WorkReviewer
+│   │   ├── workers/           ← the human front door: wallets, service, Telegram bot
 │   │   ├── circle/            ← MPC signer, wallet setup, Gateway client, x402 seller
 │   │   └── web3/              ← SecureFlow ABI + contract writes
 │   └── scripts/                ← seed-freelancers, seed-submission, e2e-loop
@@ -248,6 +308,8 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 - ✅ **Multi-milestone job driven to full completion** — escrow #29, three milestones reviewed and approved independently ($0.50 / $0.25 / $0.25), **$1.00 of $1.00 released to the human**, job auto-marked complete only once the last milestone landed. Partial-payout states were checked at every step: the job correctly stayed *active* at 1-of-3 and 2-of-3.
 - ✅ Buyer-demo agent — a standalone AI agent with its own Circle Agent Wallet discovers Patron, pays over x402 (Gateway-batched, EIP-3009), and receives the opened escrow, no human involved
 - ✅ **x402 buy side proven** — `services/portfolio-check/` (its own Circle wallet, deployed to Railway) is a real marketplace service Patron pays over x402 to verify an applicant's track record before hiring. Both directions of the x402 story are now live, not just the sell side.
+- ✅ **A human can be onboarded and paid without touching crypto** — managed Circle MPC wallet provisioned on signup, gas dripped automatically, and `applyToJob` signed *by the worker's own wallet*. Verified on-chain; the application lands on the public subgraph indistinguishable from a crypto-native one. Two doors: `/work` (no install) and [@PatronGuildbot](https://t.me/PatronGuildbot) (native push).
+- ✅ **On-chain reputation** — `submitRating` written to SecureFlow when a job completes, scored from the reviews that actually happened (5 stars clean, one off per revision round), read back from the contract rather than computed by us.
 - ✅ **Dispute path proven live** — deliberately failed a milestone twice on purpose; the guild master rejected with real actionable feedback both times, then escalated to SecureFlow's dispute system with a real on-chain `disputeMilestone` transaction. Found and fixed a real bug in the process (a resubmission after rejection was silently never getting re-reviewed).
 
 ### Known gaps, stated plainly

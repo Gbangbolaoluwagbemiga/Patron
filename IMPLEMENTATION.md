@@ -242,6 +242,52 @@ a compressed endgame can never leave us at zero.
 
 ---
 
+### Phase 4c — Aug 3 | The human front door (Patron Inbox)
+**The hole that mattered most: our pitch is the human-labor endpoint, and a human
+structurally could not participate. Closed.**
+
+- [x] **Signer refactor, done first because it touches working code.** `secureflow.ts` had
+      five near-identical writes each opening with `createCircleSigner()`; they now funnel
+      through one `write()` helper taking an optional `as` signer defaulting to the treasury.
+      Necessary rather than tidy: SecureFlow authorises `applyToJob`/`submitMilestone` on
+      `msg.sender`, so Patron cannot apply on someone's behalf from its own wallet — the
+      contract would record Patron as the applicant.
+- [x] **Managed-worker layer** — `workers` table, a Circle MPC wallet provisioned per human
+      on signup, and a gas drip. On Arc that drip is unusually simple: native currency IS
+      USDC, so one transfer covers gas *and* is the asset they get paid in — nobody can hit
+      the beginner trap of holding tokens with no gas to move them.
+- [x] **Surface-agnostic core** (`workers/service.ts`) — join, quests, apply, submit,
+      balance, withdraw, graduate. Both doors are shells over it, which is why the second
+      cost a day.
+- [x] **`/work`** — zero-install web door. A stranger goes from URL to on-chain application
+      in ~20s. Identity is localStorage, deliberately: a password flow is the exact friction
+      this layer exists to delete.
+- [x] **Telegram bot** ([@PatronGuildbot](https://t.me/PatronGuildbot)) — long-poll, so no
+      webhook, no public callback URL, no second service. Dormant without a token; the
+      daemon boots identically either way. Carries what a web page can't: a freelancer
+      waiting to hear about a job isn't sitting on a dashboard, so hires, revisions,
+      approvals and payments DM the specific human they happened to.
+- [x] **On-chain reputation** — `submitRating` written to SecureFlow on completion, scored
+      from the reviews that actually happened (5 stars clean, one off per revision round).
+      Read back from the contract, not computed by us. Fixed a real bug wiring it:
+      `getAverageRating` returns `(averageX100, count)`, so reading it as a scalar would
+      have rendered "470 stars".
+- [x] **Vision reviewer + the honesty fix underneath it.** `WorkReviewer` was grading the
+      freelancer's *description* — handed "SVG at 2400px, CMYK" it asserted those as facts.
+      `VisionReviewer` opens the file when a vision model exists. Neither provider offers one
+      today (this Groq account exposes 15 models, none vision-capable; Anthropic returns a
+      credit error), so the reviewer is now explicitly told it is judging a claim and
+      forbidden from stating a file "is" any format it did not verify.
+- [x] **Verified live on-chain**: wallet provisioned, gas dripped, `applyToJob` signed by
+      the worker's own wallet (tx `0xa183ccfd…`), and the application landing on the public
+      subgraph **indistinguishable from the scripted test wallets** — which is the whole
+      architectural claim, demonstrated rather than argued.
+- [ ] **Last mile, gated on the LLM quota:** hired → submit → approved → paid, and the first
+      on-chain rating. Also the only path (`approveMilestone`) not yet re-run since the
+      signer refactor.
+- [ ] **Onboard ~10 real people** — needs quota + treasury. This is what converts
+      "would a freelancer use this?" from an argument into a number.
+
 ### Phase 5 — Aug 2–3 | Make the Live Link Tell the Story
 **Highest leverage work remaining. Nothing else matters if the link is empty.**
 

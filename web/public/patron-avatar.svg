@@ -1,0 +1,73 @@
+<!--
+  patron-avatar.svg — square avatar for Telegram (and anywhere else Patron needs
+  a profile image).
+
+  Deliberately NOT the full logo. Telegram renders this as a ~40px circle in a
+  chat list; the wordmark and tagline on patron-logo.svg are illegible at that
+  size and just turn into noise. So: the key alone, scaled up to fill the frame,
+  with the palette matched to the current UI (near-black ground, amber aurora).
+
+  The key is the right mark to keep. Patron's whole argument is the one-way key —
+  the agent can pay you and structurally cannot take it back — so the symbol is
+  the product, not decoration.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE9B8"/>
+      <stop offset="45%" stop-color="#F2C15C"/>
+      <stop offset="100%" stop-color="#D99A3A"/>
+    </linearGradient>
+
+    <radialGradient id="aurora" cx="22%" cy="12%" r="85%">
+      <stop offset="0%" stop-color="#F2C15C" stop-opacity="0.30"/>
+      <stop offset="55%" stop-color="#F2C15C" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#F2C15C" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="cool" cx="86%" cy="92%" r="70%">
+      <stop offset="0%" stop-color="#7A5ADC" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#7A5ADC" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Ground + lighting, matching the command center -->
+  <rect width="512" height="512" fill="#08080B"/>
+  <rect width="512" height="512" fill="url(#aurora)"/>
+  <rect width="512" height="512" fill="url(#cool)"/>
+
+  <!-- Seal ring. Sits well inside the frame so Telegram's circular crop
+       never clips it. -->
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#F2C15C" stroke-width="1.5"
+    stroke-dasharray="5 11" opacity="0.28"/>
+  <circle cx="256" cy="256" r="172" fill="none" stroke="url(#gold)" stroke-width="5" opacity="0.9"/>
+
+  <!-- ── The key, enlarged to read at 40px ── -->
+  <g filter="url(#glow)">
+    <!-- bow -->
+    <circle cx="256" cy="205" r="62" fill="none" stroke="url(#gold)" stroke-width="17"/>
+    <!-- shaft -->
+    <rect x="243" y="258" width="26" height="118" rx="6" fill="url(#gold)"/>
+    <!-- teeth -->
+    <rect x="269" y="292" width="40" height="17" rx="5" fill="url(#gold)"/>
+    <rect x="269" y="327" width="28" height="17" rx="5" fill="url(#gold)"/>
+  </g>
+
+  <!-- keyhole, punched back out to the ground colour -->
+  <circle cx="256" cy="203" r="23" fill="#08080B"/>
+  <rect x="245" y="212" width="22" height="30" rx="4" fill="#08080B"/>
+
+  <!-- cardinal accents -->
+  <circle cx="256" cy="84"  r="6" fill="#F2C15C" opacity="0.5"/>
+  <circle cx="84"  cy="256" r="6" fill="#F2C15C" opacity="0.5"/>
+  <circle cx="428" cy="256" r="6" fill="#F2C15C" opacity="0.5"/>
+  <circle cx="256" cy="428" r="6" fill="#F2C15C" opacity="0.5"/>
+</svg>
