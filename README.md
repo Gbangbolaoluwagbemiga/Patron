@@ -472,6 +472,23 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 - Join at [/work](https://web-plum-one-12.vercel.app/work), apply, and find your own
   application on the public subgraph next to everyone else's.
 
+### Two economic questions we can answer
+
+**"What happens to the money if nobody takes the job?"** It comes back.
+`POST /api/jobs/cancel` calls SecureFlow's `cancelJob` and returns the full locked budget.
+Guarded in two places — the contract refuses once a freelancer is hired, and Patron refuses
+earlier with a readable reason, because money stops being reclaimable the moment a human
+has a claim on it. Proven live: cancelling escrow #22 returned exactly $0.50 to the
+treasury and the escrow reads `status: 6` on the subgraph.
+
+**"Patron fronts an $80 budget for a $0.05 fee — how does that scale?"** It doesn't, and we
+should say so rather than be caught by it. Today the x402 commission is flat and Patron
+funds the escrow from its own treasury, which is fine for a demo and wrong for a business.
+The two honest fixes are a commission that scales with budget, or the buying agent funding
+the escrow directly and Patron only orchestrating. The second is more in the spirit of the
+project — Patron should never be the one holding the budget — and is the natural next
+change.
+
 ### Known gaps, stated plainly
 
 - 🔴 **The LLM budget is the real fragility.** Groq's free tier allows 100k tokens/day and
