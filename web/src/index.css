@@ -1,50 +1,63 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   THE LEDGER — Patron's command center.
+   PATRON — command center.
 
-   The concept is a guild's commission account book: cream paper, ink rules,
-   tabular figures, wide margins, one gold accent used sparingly. Every rule
-   below is deliberate, and most of them are subtractions from the previous
-   design, which had drifted into the default generated-dashboard template —
-   radial gradient on near-black, uniform 14px radius cards in an even three
-   column grid, uppercase letterspaced labels on every panel, four equally
-   weighted stat numbers. That look is instantly recognisable, and roughly
-   every other dark submission a judge sees will share it.
+   Identity: gold on black, editorial serif. A patron is a wealthy benefactor,
+   and the product is money moving to people — so the surface should read as
+   expensive rather than as a tool. Deep near-black ground, warm amber light,
+   glass elevation, and a display serif doing the talking.
 
-   So: no gradients, no card boxes, no uniform grid, no uppercase micro-labels,
-   and no theme toggle. Flat paper, hairline rules, extreme scale contrast,
-   one committed look.
+   The previous pass went cream-on-paper to avoid looking like every other dark
+   crypto dashboard. It did avoid that, but it also read as under-designed: a
+   document rather than a product, with air where there should have been depth.
+   Distinctive and premium are not the same thing, and at a glance a judge reads
+   production value as competence. This keeps a defensible identity — nobody
+   else pairs Fraunces with amber on black — while delivering the depth.
+
+   Layering, back to front:
+     1. base near-black
+     2. warm amber aurora, top-left, and a cool counterweight, bottom-right
+     3. fine grain, so large dark fields don't band on a projector
+     4. glass surfaces with hairline borders and inner highlights
+     5. content
    ═══════════════════════════════════════════════════════════════════════════ */
 
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  --paper: #f4f0e6;
-  --paper-deep: #eae4d5; /* ledger row banding */
-  --paper-edge: #ded6c2; /* hairline rules */
+  --bg: #08080b;
+  --bg-deep: #050507;
+  --surface: rgba(255, 255, 255, 0.028);
+  --surface-hi: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hi: rgba(255, 255, 255, 0.14);
 
-  --ink: #16140f;
-  --ink-soft: #55503f; /* secondary text */
-  --ink-faint: #8c8571; /* tertiary — timestamps, hints */
+  /* Amber is the brand. Bright enough to carry a headline on black, warm
+     enough to read as gold rather than as a warning colour. */
+  --gold: #f2c15c;
+  --gold-deep: #d99a3a;
+  --gold-dim: rgba(242, 193, 92, 0.16);
+  --gold-glow: rgba(242, 193, 92, 0.28);
 
-  /* Darkened from the old #d4a94f, which was tuned for a black background and
-     is effectively invisible on cream. Used rarely: money, and nothing else. */
-  --gold: #9a6f1a;
-  --seal-red: #8f2c26; /* rejections, injection flags — a wax seal */
-  --verified: #2f5d3f; /* approvals, releases */
-  --agent: #4a3f7a; /* the AI-agent badge, and ONLY that */
+  --text: #f5f3ef;
+  --muted: #a09daa;
+  --faint: #6b6878;
+
+  --red: #ff6b6b; /* rejections, injection flags */
+  --green: #5fd39a; /* approvals, releases */
+  --agent: #a58bff; /* the AI-agent badge, and only that */
 
   --serif: "Fraunces", Georgia, "Iowan Old Style", serif;
   --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --rule: 1px solid var(--paper-edge);
-  --rule-heavy: 2px solid var(--ink);
+  --radius: 16px;
+  --radius-sm: 10px;
 
   font-family: var(--sans);
   font-size: 15px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 * {
@@ -54,28 +67,52 @@
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  color: var(--ink);
-  background-color: var(--paper);
-  /* Paper grain. Inline SVG so the page stays fully self-contained — no CDN,
-     no external asset, nothing to fail on a judge's connection. */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  color: var(--text);
+  background-color: var(--bg);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* The light in the room. Two large, very soft pools — warm at the top where
+   the headline sits, cool at the bottom so the page doesn't read as one flat
+   sheet. Fixed so they behave like lighting rather than like content. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(900px 620px at 12% -8%, rgba(242, 193, 92, 0.16), transparent 62%),
+    radial-gradient(760px 520px at 88% 8%, rgba(120, 90, 220, 0.1), transparent 58%),
+    radial-gradient(1100px 700px at 50% 108%, rgba(217, 154, 58, 0.08), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+}
+
+/* Grain. Large flat dark areas band badly on projectors and cheap panels, and
+   a demo is watched on exactly those. Inline SVG so the page stays entirely
+   self-contained. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
 }
 
 .app {
-  max-width: 1080px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 0 32px 96px;
+  padding: 0 32px 110px;
+  position: relative;
 }
 
-/* Anything that is money, an address, a hash, or an entry number is set in
-   tabular mono. A ledger's figures line up in a column — that's the whole
-   point of a ledger. */
 .amount,
 .treasury-balance,
 .treasury-address,
@@ -87,18 +124,15 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Masthead ──────────────────────────────────────────────────────────────
-   A printed title block, not an app bar: heavy rule under the name, page
-   links as small-caps serif, status set as a line of running text. */
+/* ── Masthead ─────────────────────────────────────────────────────────────── */
 
 .nav {
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: end;
+  align-items: center;
   gap: 20px;
-  padding: 40px 0 12px;
-  border-bottom: var(--rule-heavy);
-  margin-bottom: 0;
+  padding: 26px 0 20px;
+  margin-bottom: 20px;
 }
 
 .nav-brand {
@@ -108,87 +142,114 @@ code {
 }
 
 .logo {
-  width: 34px;
-  height: 34px;
-  opacity: 0.9;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  box-shadow: 0 0 0 1px var(--border), 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 .nav-title {
   font-family: var(--serif);
-  font-size: 34px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
+  background: linear-gradient(180deg, #fff 0%, #cdc7bb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .nav-subtitle {
   font-family: var(--serif);
   font-style: italic;
-  font-size: 14px;
-  color: var(--ink-soft);
+  font-size: 13px;
+  color: var(--muted);
   margin-top: 3px;
 }
 
-/* Sits in the masthead's top-right corner. Pinned explicitly rather than left
-   to auto-placement — it renders after the links in the DOM, so grid would
-   otherwise drop it onto a third row underneath them. */
+/* Pinned to the masthead's top-right. It renders after the links in the DOM,
+   so without an explicit placement grid drops it onto its own row below them
+   and the pill stretches the full width of the page. */
 .status {
   grid-column: 2;
   grid-row: 1;
   justify-self: end;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--ink-soft);
-  padding-bottom: 4px;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(12px);
 }
 
 .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--seal-red);
+  background: var(--red);
+  box-shadow: 0 0 10px currentColor;
 }
 
 .dot.live {
-  background: var(--verified);
+  background: var(--green);
+  animation: pulse-dot 2.4s ease-in-out infinite;
 }
 
-/* Page links sit below the heavy rule, like a table of contents. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Nav as a floating glass pill — the single most "product" element on screen. */
 .nav-links {
   grid-column: 1 / -1;
   grid-row: 2;
   display: flex;
   flex-wrap: wrap;
-  gap: 26px;
-  padding: 11px 0 0;
-  border-bottom: var(--rule);
-  margin-bottom: 44px;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 56px;
 }
 
 .nav-link {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 16px;
-  letter-spacing: 0.03em;
-  color: var(--ink-soft);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--muted);
   text-decoration: none;
-  padding-bottom: 9px;
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s;
+  padding: 8px 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: color 0.18s, background-color 0.18s;
 }
 
 .nav-link:hover {
-  color: var(--ink);
+  color: var(--text);
+  background: var(--surface-hi);
 }
 
 .nav-link.active {
-  color: var(--ink);
-  border-bottom-color: var(--gold);
+  color: #1a1408;
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%);
+  font-weight: 600;
+  box-shadow: 0 4px 18px var(--gold-glow);
 }
 
 /* ── Page headers ─────────────────────────────────────────────────────────── */
@@ -199,147 +260,167 @@ code {
   justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
 }
 
 .page-header h1 {
   font-family: var(--serif);
-  font-size: clamp(32px, 5vw, 46px);
-  font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.01em;
+  font-size: clamp(34px, 5vw, 50px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   margin: 0;
+  background: linear-gradient(180deg, #fff 0%, #b8b2a6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .page-sub {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 17px;
-  color: var(--ink-soft);
-  max-width: 62ch;
-  margin: 0 0 40px;
+  font-size: 15.5px;
+  color: var(--muted);
+  max-width: 66ch;
+  margin: 0 0 44px;
 }
 
-/* ── Hero ─────────────────────────────────────────────────────────────────
-   The thesis, set like a pull quote. Deliberately the largest type on the
-   site apart from the one enormous figure below it. */
+/* ── Hero ─────────────────────────────────────────────────────────────────── */
 
 .hero {
-  margin-bottom: 52px;
+  margin-bottom: 60px;
+  padding-top: 8px;
 }
 
 .hero h1 {
   font-family: var(--serif);
-  font-size: clamp(38px, 6vw, 66px);
-  font-weight: 600;
-  line-height: 1.02;
-  letter-spacing: -0.015em;
-  margin: 0 0 20px;
-  max-width: 17ch;
+  font-size: clamp(44px, 7.4vw, 92px);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+  margin: 0 0 26px;
+  max-width: 15ch;
+  background: linear-gradient(168deg, #fff 0%, #efe7d8 42%, var(--gold) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .hero p {
-  font-size: 16.5px;
-  color: var(--ink-soft);
-  max-width: 60ch;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--muted);
+  max-width: 62ch;
   margin: 0;
-  padding-left: 18px;
-  border-left: 2px solid var(--gold);
+  padding-left: 20px;
+  border-left: 2px solid transparent;
+  border-image: linear-gradient(180deg, var(--gold), transparent) 1;
 }
 
-/* ── Running totals ───────────────────────────────────────────────────────
-   Extreme scale contrast: the money released to humans is the whole point of
-   the project, so it is enormous, and everything else is small and quiet.
-   Uniform mid-sized stat cards are the single clearest tell of a generated
-   layout — this is the deliberate opposite. */
+/* ── Running totals ───────────────────────────────────────────────────────── */
 
 .stats {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 26px 60px;
-  align-items: end;
-  padding-bottom: 28px;
-  border-bottom: var(--rule);
-  margin-bottom: 44px;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 28px 56px;
+  align-items: center;
+  padding: 34px 36px;
+  margin-bottom: 30px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(700px 240px at 0% 0%, rgba(242, 193, 92, 0.09), transparent 70%),
+    var(--surface);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .stat-hero .stat-value {
   font-family: var(--serif);
-  font-size: clamp(58px, 11vw, 118px);
-  font-weight: 600;
-  line-height: 0.88;
-  letter-spacing: -0.03em;
-  color: var(--gold);
+  font-size: clamp(56px, 10vw, 104px);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.035em;
+  background: linear-gradient(150deg, #ffe9b8 0%, var(--gold) 48%, var(--gold-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 6px 26px var(--gold-glow));
 }
 
 .stat-hero .stat-label {
-  font-size: 14px;
-  margin-top: 10px;
+  font-size: 13px;
+  margin-top: 12px;
 }
 
-/* The remaining figures share one quiet row, deliberately dwarfed. */
 .stat-rest {
   display: flex;
   flex-wrap: wrap;
-  gap: 18px 46px;
-  padding-bottom: 9px;
+  gap: 14px;
+}
+
+.stat-rest .stat {
+  flex: 1 1 96px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.022);
 }
 
 .stat-value {
   font-size: 25px;
-  font-weight: 500;
-  line-height: 1.1;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text);
 }
 
 .stat-label {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  color: var(--ink-faint);
-  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-top: 5px;
 }
 
-/* ── Sections ─────────────────────────────────────────────────────────────
-   No panel boxes. A section is a small-caps serif heading with a rule under
-   it — the way a printed page separates content, using space and rules
-   rather than nested rounded containers. */
+/* ── Panels ───────────────────────────────────────────────────────────────── */
 
 .panel {
-  margin-bottom: 52px;
+  margin-bottom: 34px;
+  padding: 26px 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .panel h2 {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 19px;
+  gap: 10px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  color: var(--ink);
-  margin: 0 0 2px;
-  padding-bottom: 9px;
-  border-bottom: var(--rule-heavy);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 20px;
 }
 
 .panel h2 svg {
-  opacity: 0.65;
+  color: var(--gold);
 }
 
 .panel-header-link {
   margin-left: auto;
-  font-family: var(--serif);
-  font-variant: normal;
-  font-style: italic;
-  font-size: 14px;
-  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--gold);
   text-decoration: none;
 }
 
 .panel-header-link:hover {
-  color: var(--gold);
+  text-decoration: underline;
 }
 
 .panel-body {
@@ -348,113 +429,110 @@ code {
 }
 
 .empty {
-  font-family: var(--serif);
-  font-style: italic;
-  color: var(--ink-faint);
-  padding: 34px 0;
+  font-size: 14.5px;
+  color: var(--faint);
+  padding: 40px 0;
+  text-align: center;
 }
 
-/* ── Ledger entries ───────────────────────────────────────────────────────
-   A job is a line item in an account book, not a floating card. Hairline
-   rule between rows, banding on hover, square corners, no shadow. */
+/* ── Entry rows ───────────────────────────────────────────────────────────── */
 
 .card {
   display: block;
   position: relative;
-  padding: 17px 12px 17px 0;
-  border-bottom: var(--rule);
+  padding: 18px 20px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.022);
   text-decoration: none;
   color: inherit;
-  background: transparent;
+  overflow: hidden;
 }
 
+/* Amber edge-light on hover — the row lifts toward the light source. */
 .card-link {
   cursor: pointer;
-  transition: background-color 0.12s;
+  transition: border-color 0.2s, background-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .card-link:hover {
-  background-color: var(--paper-deep);
+  border-color: rgba(242, 193, 92, 0.34);
+  background: rgba(242, 193, 92, 0.045);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(242, 193, 92, 0.08);
 }
 
 .card-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin-bottom: 5px;
-  font-size: 13px;
-  color: var(--ink-faint);
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--faint);
 }
 
 .card-title {
   font-family: var(--serif);
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 21px;
+  font-weight: 600;
   line-height: 1.28;
-  color: var(--ink);
-  margin: 2px 0;
+  color: var(--text);
+  margin: 4px 0 6px;
+  letter-spacing: -0.01em;
 }
 
 .card-milestones-preview {
   font-size: 13.5px;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 .card-alert {
-  padding-left: 15px;
-  border-left: 3px solid var(--seal-red);
+  border-color: rgba(255, 107, 107, 0.34);
+  background: rgba(255, 107, 107, 0.05);
 }
 
-/* Entry number — every commission gets one, like a ledger folio. */
 .entry-no {
-  font-size: 12px;
-  color: var(--ink-faint);
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
 }
 
-/* ── The Guild Master's Hand (marginalia) ─────────────────────────────────
-   The decision log is our best content — verbatim AI reasoning is the thing
-   judges actually remember — so it gets the most distinctive treatment on
-   the site: metadata in a narrow left margin, the reasoning set in italic
-   serif in the main column, like annotations written in the margin of a
-   real book. No template ships this. */
+/* ── The Guild Master's Hand ──────────────────────────────────────────────── */
 
 .card-reasoning {
   font-family: var(--serif);
-  font-style: italic;
-  font-size: 16.5px;
-  line-height: 1.6;
-  color: var(--ink);
-  max-width: 68ch;
+  font-size: 16px;
+  line-height: 1.62;
+  color: #e6e2da;
+  max-width: 72ch;
 }
 
 .card-reasoning.injection {
-  color: var(--seal-red);
+  color: var(--red);
 }
 
 @media (min-width: 900px) {
   .marginalia .card {
     display: grid;
-    grid-template-columns: 176px 1fr;
-    gap: 30px;
+    grid-template-columns: 190px 1fr;
+    gap: 28px;
     align-items: start;
-    padding: 22px 12px 22px 0;
+    padding: 22px 24px;
   }
 
   .marginalia .card-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 5px;
+    gap: 7px;
     margin: 0;
-    text-align: left;
   }
 
-  /* The trailing address row folds up into the same left margin column. */
   .marginalia .card-row:last-child {
     grid-column: 1;
     grid-row: 2;
-    margin-top: 8px !important;
+    margin-top: 10px !important;
   }
 
   .marginalia .card-reasoning {
@@ -463,66 +541,68 @@ code {
   }
 }
 
-/* ── Badges ───────────────────────────────────────────────────────────────
-   Set as small-caps serif text with a hairline rule, not filled pills. */
+/* ── Badges ───────────────────────────────────────────────────────────────── */
 
 .badge {
-  display: inline-block;
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 12.5px;
-  letter-spacing: 0.05em;
-  color: var(--ink-soft);
-  border: var(--rule);
-  border-radius: 0;
-  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border-hi);
+  border-radius: 999px;
+  padding: 3px 11px;
   white-space: nowrap;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .badge.agent {
   color: var(--agent);
-  border-color: var(--agent);
+  border-color: rgba(165, 139, 255, 0.4);
+  background: rgba(165, 139, 255, 0.1);
 }
 
 .badge.status-completed,
 .badge.direction-escrow_release {
-  color: var(--verified);
-  border-color: var(--verified);
+  color: var(--green);
+  border-color: rgba(95, 211, 154, 0.4);
+  background: rgba(95, 211, 154, 0.1);
 }
 
 .badge.status-active,
 .badge.direction-escrow_lock {
   color: var(--gold);
-  border-color: var(--gold);
+  border-color: rgba(242, 193, 92, 0.42);
+  background: rgba(242, 193, 92, 0.1);
 }
 
-/* A disputed job is with a human arbiter — the one status that should stop a
-   reader, so it gets the seal. */
 .badge.status-disputed {
-  color: var(--seal-red);
-  border-color: var(--seal-red);
+  color: var(--red);
+  border-color: rgba(255, 107, 107, 0.42);
+  background: rgba(255, 107, 107, 0.1);
 }
 
 .badge.status-failed {
-  color: var(--ink-faint);
-  border-color: var(--paper-edge);
+  color: var(--faint);
 }
 
 .badge.direction-in {
   color: var(--agent);
-  border-color: var(--agent);
+  border-color: rgba(165, 139, 255, 0.4);
+  background: rgba(165, 139, 255, 0.1);
 }
 
 .amount {
   font-size: 15px;
-  font-weight: 500;
-  color: var(--ink);
+  font-weight: 600;
+  color: var(--text);
 }
 
 .tx-link {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13.5px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--gold);
   text-decoration: none;
 }
@@ -531,18 +611,12 @@ code {
   text-decoration: underline;
 }
 
-/* ── The pipeline ─────────────────────────────────────────────────────────
-   A single ruled line with stations along it, like a printed process
-   diagram. Unreached stations are hollow; reached ones fill with ink. */
-
-.flow-panel .panel-body {
-  padding-top: 8px;
-}
+/* ── Pipeline ─────────────────────────────────────────────────────────────── */
 
 .flow {
   display: flex;
   align-items: flex-start;
-  padding: 26px 0 10px;
+  padding: 18px 0 6px;
   overflow-x: auto;
 }
 
@@ -552,86 +626,98 @@ code {
   align-items: center;
   position: relative;
   flex: 1;
-  min-width: 96px;
+  min-width: 104px;
 }
 
 .flow-node {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  border: 1.5px solid var(--paper-edge);
-  background: var(--paper);
-  color: var(--ink-faint);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--faint);
   position: relative;
   z-index: 1;
+  transition: color 0.3s, border-color 0.3s, box-shadow 0.3s, background-color 0.3s;
 }
 
 .flow-node.lit {
-  border-color: var(--ink);
-  color: var(--ink);
+  color: #1a1408;
+  border-color: transparent;
+  background: linear-gradient(160deg, #ffe0a3 0%, var(--gold) 55%, var(--gold-deep) 100%);
+  box-shadow: 0 0 26px var(--gold-glow), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .flow-node.pulsing {
-  border-color: var(--gold);
-  color: var(--gold);
+  box-shadow: 0 0 44px rgba(242, 193, 92, 0.6), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .flow-line {
   position: absolute;
-  top: 21px;
+  top: 24px;
   left: 50%;
   width: 100%;
-  height: 1.5px;
-  background: var(--paper-edge);
+  height: 2px;
+  background: var(--border);
   z-index: 0;
   overflow: hidden;
 }
 
-/* Drawn left-to-right as the stage completes, rather than switching colour —
-   progress should read as travel along the line, not a state flag. */
 .flow-line-fill {
   width: 100%;
   height: 100%;
-  background: var(--ink);
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold));
   transform-origin: left center;
+  box-shadow: 0 0 12px var(--gold-glow);
 }
 
 .flow-label {
-  font-family: var(--serif);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
   text-align: center;
-  color: var(--ink-faint);
-  margin-top: 10px;
-  max-width: 92px;
-  line-height: 1.3;
+  color: var(--faint);
+  margin-top: 12px;
+  max-width: 100px;
+  line-height: 1.35;
+  transition: color 0.3s;
 }
 
 .flow-label.lit {
-  color: var(--ink);
+  color: var(--text);
 }
 
-/* ── The one-way key ──────────────────────────────────────────────────────
-   The single most important argument on the site. Set as a printed note in
-   the margin of the page — indented, italic, with a gold rule. */
+/* ── The one-way key ──────────────────────────────────────────────────────── */
 
 .keycard {
-  font-family: var(--serif);
-  font-size: 17px;
-  font-style: italic;
-  line-height: 1.6;
-  color: var(--ink-soft);
-  max-width: 66ch;
-  padding: 4px 0 4px 22px;
-  border-left: 3px solid var(--gold);
-  margin: 0 0 52px;
+  position: relative;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--muted);
+  padding: 24px 28px 24px 30px;
+  margin: 0 0 34px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(242, 193, 92, 0.2);
+  background:
+    radial-gradient(600px 200px at 0% 0%, rgba(242, 193, 92, 0.1), transparent 70%),
+    var(--surface);
+  overflow: hidden;
+}
+
+.keycard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--gold), transparent);
 }
 
 .keycard b {
-  color: var(--ink);
+  color: var(--text);
   font-weight: 600;
-  font-style: normal;
 }
 
 /* ── Treasury ─────────────────────────────────────────────────────────────── */
@@ -641,37 +727,40 @@ code {
   grid-template-columns: auto 1fr auto;
   gap: 34px;
   align-items: start;
-  /* No border-top: the stats block above already closes with a rule, and two
-     hairlines a few pixels apart read as a mistake rather than a division. */
-  padding: 4px 0 26px;
-  border-bottom: var(--rule);
-  margin-bottom: 52px;
+  padding: 26px 28px;
+  margin-bottom: 34px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(18px);
 }
 
 .treasury-label,
 .treasury-fund-label {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  color: var(--ink-faint);
-  margin-bottom: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 8px;
 }
 
 .treasury-balance {
   font-family: var(--serif);
-  font-size: 46px;
-  font-weight: 600;
+  font-size: 42px;
+  font-weight: 700;
   line-height: 1;
-  color: var(--gold);
+  letter-spacing: -0.02em;
+  background: linear-gradient(150deg, #ffe9b8, var(--gold-deep));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .treasury-sub {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13.5px;
-  color: var(--ink-faint);
-  margin-top: 5px;
+  font-size: 13px;
+  color: var(--faint);
+  margin-top: 7px;
 }
 
 .treasury-address-row {
@@ -682,36 +771,40 @@ code {
 }
 
 .treasury-address {
-  font-size: 12.5px;
-  color: var(--ink-soft);
+  font-size: 12px;
+  color: var(--muted);
   word-break: break-all;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .treasury-fund-row {
   display: flex;
   gap: 8px;
-  margin-top: 7px;
+  margin-top: 9px;
 }
 
 .treasury-copy,
 .treasury-connect-btn {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 14px;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-  background: transparent;
-  border: 1px solid var(--ink);
-  border-radius: 0;
-  padding: 4px 13px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-hi);
+  border: 1px solid var(--border-hi);
+  border-radius: 999px;
+  padding: 7px 16px;
   cursor: pointer;
-  transition: background-color 0.12s, color 0.12s;
+  transition: background-color 0.16s, border-color 0.16s, transform 0.16s;
 }
 
 .treasury-copy:hover:not(:disabled),
 .treasury-connect-btn:hover:not(:disabled) {
-  background: var(--ink);
-  color: var(--paper);
+  background: rgba(242, 193, 92, 0.14);
+  border-color: rgba(242, 193, 92, 0.4);
+  transform: translateY(-1px);
 }
 
 .treasury-copy:disabled,
@@ -720,64 +813,70 @@ code {
   cursor: not-allowed;
 }
 
-/* ── Forms ───────────────────────────────────────────────────────────────
-   Underlines, not boxes — a form on paper is a ruled line you write on. */
+/* ── Forms ────────────────────────────────────────────────────────────────── */
 
 .post-quest {
-  padding: 30px 0 34px;
-  border-top: var(--rule-heavy);
-  margin-bottom: 52px;
+  padding: 30px 32px 34px;
+  margin-bottom: 34px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(700px 260px at 100% 0%, rgba(120, 90, 220, 0.08), transparent 70%),
+    var(--surface);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .post-quest-label {
   font-family: var(--serif);
-  font-size: 21px;
+  font-size: 24px;
   font-weight: 600;
-  color: var(--ink);
-  margin-bottom: 18px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-bottom: 20px;
 }
 
 input,
 textarea {
   font-family: var(--sans);
   font-size: 15px;
-  color: var(--ink);
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--ink-faint);
-  border-radius: 0;
-  padding: 7px 2px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
   width: 100%;
-  transition: border-color 0.15s;
+  transition: border-color 0.16s, box-shadow 0.16s, background-color 0.16s;
 }
 
 input:focus,
 textarea:focus {
   outline: none;
-  border-bottom-color: var(--gold);
-  border-bottom-width: 2px;
+  border-color: rgba(242, 193, 92, 0.5);
+  box-shadow: 0 0 0 3px rgba(242, 193, 92, 0.12);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--ink-faint);
+  color: var(--faint);
 }
 
 textarea {
   resize: vertical;
-  line-height: 1.5;
-  margin-bottom: 18px;
+  line-height: 1.55;
+  margin-bottom: 16px;
 }
 
 .post-quest-title {
   font-family: var(--serif);
-  font-size: 19px;
-  margin-bottom: 16px;
+  font-size: 18px;
+  margin-bottom: 14px;
 }
 
 .post-quest-fields {
   display: flex;
-  gap: 26px;
+  gap: 18px;
   align-items: flex-end;
   flex-wrap: wrap;
 }
@@ -785,59 +884,69 @@ textarea {
 .post-quest-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-width: 150px;
+  gap: 6px;
+  max-width: 160px;
 }
 
 .post-quest-field span {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  color: var(--ink-faint);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 .post-quest-fields button {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 16px;
-  letter-spacing: 0.04em;
-  color: var(--paper);
-  background: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: 0;
-  padding: 7px 22px;
+  font-family: var(--sans);
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #1a1408;
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%);
+  border: none;
+  border-radius: 999px;
+  padding: 12px 28px;
   cursor: pointer;
-  transition: background-color 0.12s;
+  box-shadow: 0 8px 26px var(--gold-glow);
+  transition: transform 0.16s, box-shadow 0.16s, filter 0.16s;
 }
 
 .post-quest-fields button:hover:not(:disabled) {
-  background: var(--gold);
-  border-color: var(--gold);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 34px rgba(242, 193, 92, 0.42);
+  filter: brightness(1.06);
 }
 
 .post-quest-fields button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .post-quest-msg {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 14.5px;
+  font-size: 14px;
   margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
 }
 
 .post-quest-msg.ok {
-  color: var(--verified);
+  color: var(--green);
+  border-color: rgba(95, 211, 154, 0.3);
+  background: rgba(95, 211, 154, 0.08);
 }
 
 .post-quest-msg.warn {
   color: var(--gold);
+  border-color: rgba(242, 193, 92, 0.3);
+  background: rgba(242, 193, 92, 0.08);
 }
 
 .post-quest-msg.error {
-  color: var(--seal-red);
+  color: var(--red);
+  border-color: rgba(255, 107, 107, 0.3);
+  background: rgba(255, 107, 107, 0.08);
 }
 
 /* ── Milestones ───────────────────────────────────────────────────────────── */
@@ -845,27 +954,40 @@ textarea {
 .milestones {
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .milestone {
   display: grid;
   grid-template-columns: 34px 1fr;
   gap: 16px;
-  padding: 15px 0;
-  border-bottom: var(--rule);
+  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.022);
 }
 
 .milestone-index {
-  font-size: 14px;
-  color: var(--ink-faint);
-  padding-top: 2px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--border-hi);
+}
+
+.milestone-paid .milestone-index {
+  color: #1a1408;
+  border-color: transparent;
+  background: linear-gradient(160deg, var(--green), #3fa878);
 }
 
 .milestone-desc {
-  font-family: var(--serif);
-  font-size: 16.5px;
-  line-height: 1.45;
-  margin-bottom: 6px;
+  font-size: 15.5px;
+  line-height: 1.5;
+  margin-bottom: 8px;
 }
 
 .milestone-meta {
@@ -877,30 +999,30 @@ textarea {
 .milestone-state {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 13.5px;
-  letter-spacing: 0.04em;
-  color: var(--ink-faint);
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 .milestone-state-paid {
-  color: var(--verified);
+  color: var(--green);
 }
 
 .milestone-state-in_review {
   color: var(--gold);
 }
 
-.milestone-paid .milestone-desc {
-  color: var(--ink-soft);
-}
-
-/* ── Register of adventurers (table) ─────────────────────────────────────── */
+/* ── Register table ───────────────────────────────────────────────────────── */
 
 .rep-table-wrap {
   overflow-x: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(18px);
 }
 
 .rep-table {
@@ -910,70 +1032,80 @@ textarea {
 }
 
 .rep-table th {
-  font-family: var(--serif);
-  font-variant: small-caps;
+  font-size: 11.5px;
   font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   text-align: left;
-  color: var(--ink-soft);
-  padding: 0 16px 9px 0;
-  border-bottom: var(--rule-heavy);
+  color: var(--faint);
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .rep-table td {
-  padding: 13px 16px 13px 0;
-  border-bottom: var(--rule);
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   font-variant-numeric: tabular-nums;
 }
 
+.rep-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rep-table tbody tr {
+  transition: background-color 0.16s;
+}
+
 .rep-table tbody tr:hover {
-  background: var(--paper-deep);
+  background: rgba(242, 193, 92, 0.05);
 }
 
 .rep-table a {
   font-family: var(--mono);
   font-size: 13px;
-  color: var(--ink);
+  color: var(--gold);
   text-decoration: none;
-  border-bottom: 1px solid var(--paper-edge);
 }
 
 .rep-table a:hover {
-  border-bottom-color: var(--gold);
-  color: var(--gold);
+  text-decoration: underline;
 }
 
 .rep-rate-perfect {
-  color: var(--verified);
-  font-weight: 600;
+  color: var(--green);
+  font-weight: 700;
 }
 
 /* ── Brief fields ─────────────────────────────────────────────────────────── */
 
 .brief-field {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .brief-label {
-  font-family: var(--serif);
-  font-variant: small-caps;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  color: var(--ink-faint);
-  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 7px;
 }
 
 .criteria-list {
   margin: 0;
   padding-left: 20px;
-  font-size: 15.5px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
 }
 
 .criteria-list li {
-  margin-bottom: 5px;
+  margin-bottom: 6px;
+}
+
+.criteria-list li::marker {
+  color: var(--gold);
 }
 
 /* ── Layout helpers ───────────────────────────────────────────────────────── */
@@ -981,7 +1113,7 @@ textarea {
 .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 44px;
+  gap: 24px;
 }
 
 .job-grid,
@@ -991,20 +1123,18 @@ textarea {
 }
 
 .footer {
+  margin-top: 40px;
   padding-top: 26px;
-  border-top: var(--rule);
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13.5px;
-  color: var(--ink-faint);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--faint);
 }
 
 .footer a {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
-/* ── Toasts ───────────────────────────────────────────────────────────────
-   Slips of paper, squared off, stacked bottom-right. */
+/* ── Toasts ───────────────────────────────────────────────────────────────── */
 
 .toast-stack {
   position: fixed;
@@ -1012,32 +1142,33 @@ textarea {
   bottom: 24px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  max-width: 370px;
+  gap: 10px;
+  max-width: 380px;
   z-index: 50;
 }
 
 .toast {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 15px;
+  gap: 12px;
+  padding: 14px 17px;
   font-size: 14px;
   line-height: 1.45;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--ink);
-  border-left-width: 3px;
-  box-shadow: 3px 3px 0 rgba(22, 20, 15, 0.11);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-hi);
+  background: rgba(18, 18, 24, 0.92);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.6);
 }
 
 .toast-info {
-  border-left-color: var(--gold);
+  border-left: 3px solid var(--gold);
 }
 
 .toast-alert {
-  border-left-color: var(--seal-red);
-  color: var(--seal-red);
+  border-left: 3px solid var(--red);
+  color: var(--red);
 }
 
 .toast-icon {
@@ -1045,50 +1176,43 @@ textarea {
   padding-top: 1px;
 }
 
-/* ── Live-change emphasis ─────────────────────────────────────────────────
-   A one-shot warm-up on a figure that just changed. Colour only — moving a
-   large number while it is also counting makes it harder to read, not easier. */
+/* ── Live-change emphasis ─────────────────────────────────────────────────── */
 
 .stat-value-flash {
-  animation: figure-settle 1.4s ease-out;
+  animation: figure-settle 1.5s ease-out;
 }
 
 @keyframes figure-settle {
   0% {
-    color: var(--verified);
+    filter: drop-shadow(0 6px 40px rgba(95, 211, 154, 0.85)) brightness(1.25);
   }
   100% {
-    color: inherit;
+    filter: drop-shadow(0 6px 26px var(--gold-glow)) brightness(1);
   }
 }
 
-.stat-hero .stat-value,
-.treasury-balance {
-  transition: color 0.4s ease-out;
-}
-
-/* ── Loading skeletons ────────────────────────────────────────────────────
-   Ruled placeholder lines matching the ledger-row rhythm, so the page holds
-   its shape while the first fetch lands. Before this, a slow connection showed
-   the empty-state copy first — an empty product rather than a loading one. */
+/* ── Loading skeletons ────────────────────────────────────────────────────── */
 
 .skeleton-rows {
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .skeleton-row {
-  padding: 17px 12px 17px 0;
-  border-bottom: var(--rule);
+  padding: 18px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.022);
 }
 
 .skeleton-line {
   height: 11px;
-  margin-bottom: 9px;
-  border-radius: 0;
-  background: linear-gradient(90deg, var(--paper-deep) 0%, #e2dbc9 50%, var(--paper-deep) 100%);
+  margin-bottom: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.04) 100%);
   background-size: 200% 100%;
-  animation: skeleton-sweep 1.5s ease-in-out infinite;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
 }
 
 .skeleton-line:last-child {
@@ -1096,17 +1220,17 @@ textarea {
 }
 
 .skeleton-line-sm {
-  width: 128px;
+  width: 120px;
   height: 9px;
 }
 
 .skeleton-line-lg {
-  width: 62%;
+  width: 58%;
   height: 17px;
 }
 
 .skeleton-line-md {
-  width: 38%;
+  width: 36%;
 }
 
 @keyframes skeleton-sweep {
@@ -1120,50 +1244,42 @@ textarea {
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .app {
-    padding: 0 20px 64px;
+    padding: 0 18px 72px;
   }
 
   .stats {
     grid-template-columns: 1fr;
-    gap: 22px;
-  }
-
-  .stat:first-child,
-  .stats > .stat:nth-child(2) {
-    grid-row: auto;
-    grid-column: auto;
+    gap: 24px;
+    padding: 26px 22px;
   }
 
   .treasury,
   .grid-2 {
     grid-template-columns: 1fr;
-    gap: 26px;
+    gap: 24px;
   }
 
-  .nav {
-    grid-template-columns: 1fr auto;
-    align-items: start;
-    padding-top: 28px;
+  .panel,
+  .post-quest,
+  .keycard {
+    padding: 22px 20px;
   }
 
-  .nav-title {
-    font-size: 27px;
+  .marginalia .card {
+    padding: 18px 20px;
   }
 
   .nav-links {
-    gap: 6px 16px;
-    margin-bottom: 34px;
+    gap: 2px;
+    padding: 5px;
+    margin-bottom: 36px;
   }
 
   .nav-link {
-    font-size: 14px;
-    padding-bottom: 6px;
-  }
-
-  .hero {
-    margin-bottom: 40px;
+    font-size: 12.5px;
+    padding: 7px 12px;
   }
 
   .toast-stack {
@@ -1174,7 +1290,6 @@ textarea {
   }
 }
 
-/* Respect users who ask for less motion — framer-motion entrances included. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

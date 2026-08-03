@@ -5,7 +5,9 @@ import { IconBolt, IconMap } from "../Icon";
 
 export default function Dashboard() {
   const { tasks, decisions, payments, lastEvent, refresh, wallet, refreshWallet } = useDaemon();
-  const recent = tasks.slice(0, 3);
+  // Same rule as the commissions board: a "failed" row never opened an escrow,
+  // so it isn't a commission and shouldn't be the first thing on the dashboard.
+  const recent = tasks.filter((t) => t.status !== "failed").slice(0, 3);
 
   return (
     <div className="page">
