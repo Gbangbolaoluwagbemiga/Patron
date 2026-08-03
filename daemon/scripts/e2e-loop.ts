@@ -115,7 +115,19 @@ async function main() {
     address: config.secureflowAddress,
     abi,
     functionName: "submitMilestone",
-    args: [BigInt(escrowId), 0n, "Delivered: SVG + PNG logo, 1200x1200px, sign and cup mockups included."],
+    // Includes a link that actually resolves. The reviewer now fetches the
+    // delivered file, so a submission with no link — or a made-up one — is
+    // correctly rejected for being unverifiable, and this loop would fail on its
+    // own placeholder rather than on anything real. Overridable so a run can
+    // deliberately submit bad work to exercise the rejection path.
+    args: [
+      BigInt(escrowId),
+      0n,
+      process.env.E2E_SUBMISSION?.trim() ||
+        "Delivered: logo as a single file, 2400x2400px master artboard, vector source so it scales " +
+          "from a cup stamp to a shopfront sign. Original artwork, cleared against existing marks. " +
+          "File: https://placehold.co/2400x2400.png",
+    ],
   });
   await publicClient.waitForTransactionReceipt({ hash: submitHash });
   console.log("   ✓ Submitted\n");

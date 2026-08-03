@@ -18,9 +18,16 @@ const description =
   "Delivered: primary logo mark in SVG and PNG (1200x1200px), plus 2 color variants (light/dark). Link: https://example.com/patron-logo-draft";
 
 async function main() {
-  const key = process.env.FREELANCER_1_KEY?.trim() as `0x${string}` | undefined;
+  // Which seeded freelancer signs. SecureFlow authorises submitMilestone on the
+  // hired beneficiary, so submitting as the wrong one reverts with a bare
+  // "execution reverted" — which looks like a broken script rather than the
+  // wrong signer. FREELANCER=3 picks the third seeded wallet.
+  const which = process.env.FREELANCER?.trim() || "1";
+  const key = process.env[`FREELANCER_${which}_KEY`]?.trim() as `0x${string}` | undefined;
   if (!key) {
-    console.error("FREELANCER_1_KEY not set in daemon/.env — run seed:freelancers first and save the printed key.");
+    console.error(
+      `FREELANCER_${which}_KEY not set in daemon/.env — run seed:freelancers first and save the printed keys.`,
+    );
     process.exit(1);
   }
 

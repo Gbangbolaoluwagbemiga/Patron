@@ -21,6 +21,7 @@ import { z } from "zod";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 15_000;
 
+/** Types a vision model can actually look at. */
 const SUPPORTED = {
   "image/png": true,
   "image/jpeg": true,
@@ -28,6 +29,18 @@ const SUPPORTED = {
   "image/webp": true,
 } as const;
 type SupportedMedia = keyof typeof SUPPORTED;
+
+/**
+ * Real image types that simply cannot be rasterised here.
+ *
+ * SVG is the single most likely deliverable for a logo brief, and treating it as
+ * an error was actively harmful: the reviewer was told "the link is
+ * image/svg+xml, which cannot be inspected", read that as a broken link, and
+ * rejected correct work asking for "a working link". Fetching one is positive
+ * evidence — the file exists, resolves, and IS the format the brief asked for.
+ * We just can't see inside it.
+ */
+const UNRASTERISABLE_IMAGE = new Set(["image/svg+xml", "application/pdf", "image/tiff", "image/avif", "image/heic"]);
 
 export const VisionFindingSchema = z.object({
   criterion: z.string(),
@@ -50,7 +63,9 @@ export interface VisionReview {
  */
 export function extractImageUrl(text: string): string | null {
   const urls = text.match(/https?:\/\/[^\s<>"')]+/gi) ?? [];
-  const imageLike = urls.find((u) => /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u));
+  // svg/pdf included: they are the most likely design deliverables, and leaving
+  // them out meant a submission linking one fell through to "first URL found".
+  const imageLike = urls.find((u) => /\.(png|jpe?g|gif|webp|svg|pdf)(\?|#|$)/i.test(u));
   return imageLike ?? urls[0] ?? null;
 }
 
@@ -59,20 +74,29 @@ export function visionAvailable(): boolean {
   return !!process.env.ANTHROPIC_API_KEY?.trim();
 }
 
-async function fetchImage(url: string): Promise<{ base64: string; mediaType: SupportedMedia } | { error: string }> {
+type FetchResult =
+  | { base64: string; mediaType: SupportedMedia; bytes: number }
+  /** Fetched fine and is a genuine file of a known type — just not one we can rasterise. */
+  | { confirmedType: string; bytes: number }
+  | { error: string };
+
+async function fetchImage(url: string): Promise<FetchResult> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: "follow" });
     if (!res.ok) return { error: `the link returned ${res.status}` };
 
     const mediaType = (res.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
+    if (mediaType && UNRASTERISABLE_IMAGE.has(mediaType)) {
+      return { confirmedType: mediaType, bytes: Number(res.headers.get("content-length") ?? 0) };
+    }
     if (!mediaType || !(mediaType in SUPPORTED)) {
-      return { error: `the link is ${mediaType || "an unknown type"}, which cannot be inspected as an image` };
+      return { error: `the link returned ${mediaType || "an unknown type"} rather than a file` };
     }
 
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength > MAX_IMAGE_BYTES) return { error: `the file is ${(buf.byteLength / 1e6).toFixed(1)}MB, too large to inspect` };
 
-    return { base64: buf.toString("base64"), mediaType: mediaType as SupportedMedia };
+    return { base64: buf.toString("base64"), mediaType: mediaType as SupportedMedia, bytes: buf.byteLength };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { error: /timeout|abort/i.test(msg) ? "the link timed out" : `the link could not be fetched (${msg})` };
@@ -102,6 +126,21 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
   const image = await fetchImage(url);
   if ("error" in image) {
     return { available: false, note: `The delivered file could not be inspected: ${image.error}. Only the written description was assessed.`, findings: [] };
+  }
+
+  // The file is real and its type is confirmed, even though we can't look inside
+  // it. Say exactly that — it settles any format criterion on its own, and the
+  // reviewer must not mistake it for a broken link.
+  if ("confirmedType" in image) {
+    return {
+      available: false,
+      note:
+        `The delivered link resolves and the file is genuinely ${image.confirmedType}` +
+        (image.bytes ? ` (${(image.bytes / 1024).toFixed(0)}KB)` : "") +
+        `, so the file exists and its FORMAT is confirmed. Its visual contents could not be rasterised for inspection, ` +
+        `so judge appearance on the freelancer's description — but treat the format and the link as verified.`,
+      findings: [],
+    };
   }
 
   try {
