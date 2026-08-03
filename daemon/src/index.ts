@@ -295,8 +295,37 @@ let pollerDegraded = false;
 /** True once the LLM has reported a rate limit, so the warning is sent once, not every 15s. */
 let llmExhausted = false;
 
+/**
+ * Wall-clock time until which LLM-backed poller work is skipped.
+ *
+ * Without this, a rate limit turns into a self-inflicted denial of service: the
+ * poller wakes every 15s, fires another ~5k-token scoring request at an API
+ * that just said no, and burns through the per-minute allowance as well as the
+ * daily one — so the budget never gets a chance to recover and the logs fill
+ * with the same 429. Observed live on production.
+ *
+ * Groq tells us exactly how long to wait ("Please try again in 29.34s"), so we
+ * honour that when present and fall back to a conservative default when not.
+ */
+let llmCooldownUntil = 0;
+
+function noteLlmRateLimit(message: string): void {
+  const retryIn = message.match(/try again in ([\d.]+)s/i);
+  const seconds = retryIn?.[1] ? Number(retryIn[1]) : NaN;
+  // A per-minute limit clears in seconds; an exhausted DAILY budget does not,
+  // and retrying it every minute all day is pointless noise.
+  const isDaily = /per day|TPD|daily/i.test(message);
+  const waitMs = Number.isFinite(seconds) && !isDaily ? Math.max(seconds * 1000, 5_000) : isDaily ? 15 * 60_000 : 60_000;
+  llmCooldownUntil = Date.now() + waitMs;
+  console.warn(`[poller] LLM rate-limited — pausing LLM work for ${Math.round(waitMs / 1000)}s`);
+}
+
 async function pollOnce() {
   if (!isGraphConfigured()) return;
+  // Everything the poller does downstream costs an LLM call. While the model is
+  // rate-limited there is nothing useful to do, and trying anyway is what kept
+  // the budget pinned at zero.
+  if (Date.now() < llmCooldownUntil) return;
   const tasks = store.listTasks(50).filter((t) => t.escrowId && (t.status === "posted" || t.status === "active"));
   let pollFailures = 0;
 
@@ -396,14 +425,18 @@ async function pollOnce() {
       // perfectly healthy — the API answers, the chain is fine, jobs just never
       // move. Announce it once. Discovered the hard way: the daily token budget
       // ran out and the only visible symptom was a schema-validation error.
-      if (/rate limit|rate_limit|429/i.test(msg) && !llmExhausted) {
-        llmExhausted = true;
-        broadcast({
-          type: "error",
-          message: "The guild master's language model has hit its rate limit — hiring and reviews are paused until it resets. Escrowed funds are unaffected.",
-          timestamp: Date.now(),
-        });
-      } else if (!/rate limit|rate_limit|429/i.test(msg) && llmExhausted) {
+      if (/rate limit|rate_limit|429/i.test(msg)) {
+        noteLlmRateLimit(msg);
+        if (!llmExhausted) {
+          llmExhausted = true;
+          broadcast({
+            type: "error",
+            message: "The guild master's language model has hit its rate limit — hiring and reviews are paused until it resets. Escrowed funds are unaffected.",
+            timestamp: Date.now(),
+          });
+        }
+        break; // no point walking the remaining tasks this pass
+      } else if (llmExhausted) {
         llmExhausted = false;
       }
     }
