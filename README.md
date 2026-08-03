@@ -475,11 +475,28 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 ### Two economic questions we can answer
 
 **"What happens to the money if nobody takes the job?"** It comes back.
-`POST /api/jobs/cancel` calls SecureFlow's `cancelJob` and returns the full locked budget.
-Guarded in two places — the contract refuses once a freelancer is hired, and Patron refuses
-earlier with a readable reason, because money stops being reclaimable the moment a human
-has a claim on it. Proven live: cancelling escrow #22 returned exactly $0.50 to the
-treasury and the escrow reads `status: 6` on the subgraph.
+`POST /api/jobs/cancel` calls SecureFlow's `cancelJob`. Guarded in two places — the contract
+refuses once a freelancer is hired, and Patron refuses earlier with a readable reason,
+because money stops being reclaimable the moment a human has a claim on it. Proven live:
+cancelling escrow #22 returned $0.50 and the escrow reads `status: 6` on the subgraph.
+
+Not always the *full* budget, and the contract is right to do that. SecureFlow charges a
+cancellation penalty that rises with how often you cancel (free for the first two, then
+5/10/15%) and with how many people already applied (5–15%), capped at 30%. Cancelling a job
+that people have already written applications for wastes their time, and it should cost
+something. Recovering five of ours returned $17.31 of a $17.50 face value — the difference
+is exactly that penalty.
+
+**"Can the client withdraw their own funds before anyone is hired?"** Not from the escrow,
+and the reason is structural rather than an omission. `approveMilestone` requires
+`msg.sender == escrow.depositor`, so **only the depositor can release payment** — which means
+Patron has to be the depositor, or the AI cannot be the thing that decides. If the client
+funded the escrow directly they would have to approve every milestone by hand, which is
+precisely the human approval step this project exists to remove. So a client cannot withdraw
+from an escrow because a client cannot fund one; today they pay a commission and Patron puts
+up the budget. Patron can of course refund a client from its own treasury, but that is a
+policy we keep rather than something the contract enforces, and it should be described that
+way.
 
 **"Patron fronts an $80 budget for a $0.05 fee — how does that scale?"** It doesn't, and we
 should say so rather than be caught by it. Today the x402 commission is flat and Patron
