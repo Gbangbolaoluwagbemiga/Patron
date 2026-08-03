@@ -207,20 +207,29 @@ export async function submitMilestone(
  */
 export async function submitRating(
   escrowId: bigint,
-  rating: bigint,
-  comment: string,
+  /** uint8, 1–5. Clamped here rather than trusted — the contract would revert, and a
+   *  revert on the rating would look like the payment itself failed. */
+  score: number,
+  review: string,
   as: CircleSigner = createCircleSigner(),
 ): Promise<`0x${string}`> {
-  return write("submitRating", [escrowId, rating, comment], as);
+  const clamped = Math.max(1, Math.min(5, Math.round(score)));
+  return write("submitRating", [escrowId, clamped, review], as);
 }
 
-export async function getAverageRating(who: `0x${string}`): Promise<bigint> {
-  return getPublicClient().readContract({
+/**
+ * Returns (averageX100, count) — the contract stores the average multiplied by
+ * 100 to keep a fraction in an integer, so 470 means 4.70 stars over `count`
+ * ratings. Reading it wrong by a factor of 100 would put "470 stars" on screen.
+ */
+export async function getAverageRating(who: `0x${string}`): Promise<{ average: number; count: number }> {
+  const [averageX100, count] = (await getPublicClient().readContract({
     address: config.secureflowAddress,
     abi,
     functionName: "getAverageRating",
     args: [who],
-  }) as Promise<bigint>;
+  })) as [bigint, bigint];
+  return { average: Number(averageX100) / 100, count: Number(count) };
 }
 
 export async function getEscrow(escrowId: bigint) {

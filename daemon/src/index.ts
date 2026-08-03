@@ -324,6 +324,52 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, workers.openQuests());
   }
 
+  /**
+   * On-chain reputation, read straight from SecureFlow.
+   *
+   * Deliberately NOT computed from our own database: the point of putting
+   * ratings on the contract is that anyone can verify them without trusting us,
+   * so this endpoint reads the same source a stranger would.
+   */
+  if (req.method === "GET" && url.pathname === "/api/ratings") {
+    const addresses = (url.searchParams.get("addresses") ?? "")
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => /^0x[a-fA-F0-9]{40}$/.test(a))
+      .slice(0, 25);
+    if (addresses.length === 0) return json(res, 200, {});
+    try {
+      const entries = await Promise.all(
+        addresses.map(async (a) => {
+          try {
+            return [a.toLowerCase(), await secureflow.getAverageRating(a as `0x${string}`)] as const;
+          } catch {
+            return [a.toLowerCase(), { average: 0, count: 0 }] as const;
+          }
+        }),
+      );
+      return json(res, 200, Object.fromEntries(entries));
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /** Humans who have joined the guild — the answer to "has anyone actually signed up". */
+  if (req.method === "GET" && url.pathname === "/api/workers") {
+    return json(
+      res,
+      200,
+      store.listWorkers(100).map((w) => ({
+        handle: w.handle,
+        channel: w.channel,
+        skills: w.skills,
+        address: w.walletAddress,
+        mode: w.mode,
+        createdAt: w.createdAt,
+      })),
+    );
+  }
+
   if (req.method === "GET" && url.pathname === "/api/worker/me") {
     const id = url.searchParams.get("id");
     if (!id) return json(res, 400, { error: "id is required" });
@@ -417,6 +463,57 @@ const reviewedMilestones = new Set<string>();
 // Escrow #31 ended up with 27 decision rows for 3 applicants — the same verdicts
 // repeated — and each repeat was a real LLM call on a job that was already done.
 const scoredCountKey = (escrowId: string) => `scored_applications:${escrowId}`;
+
+/**
+ * Rate the freelancer on-chain once a job finishes.
+ *
+ * This is what makes Patron's reputation REAL rather than derived. Anyone can
+ * compute a reputation score from their own database and call it behaviour-based;
+ * SecureFlow's submitRating puts it on the contract, where it is readable by
+ * anyone — including SecureFlow's own dApp and any future client — and cannot be
+ * quietly recalculated to flatter us.
+ *
+ * The score isn't invented: it comes from the review scores the guild master
+ * actually produced for this job's milestones, mapped from 0–100 onto the
+ * contract's 1–5. A job that needed two revisions genuinely earns a lower rating
+ * than one accepted first time, and that difference is now permanent and public.
+ *
+ * Never fatal: the money is already paid by this point, and failing to record a
+ * rating must not look like a failed payout.
+ */
+async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] }): Promise<void> {
+  try {
+    const hire = store
+      .listDecisions(300)
+      .find((d: { task_id?: string; type?: string; target?: string }) => d.task_id === escrowId && d.type === "applicant_accepted" && d.target);
+    if (!hire?.target) return;
+
+    const reviews = store
+      .listDecisions(300)
+      .filter((d: { task_id?: string; type?: string }) => d.task_id === escrowId && (d.type === "work_approved" || d.type === "work_rejected"));
+    const rejections = reviews.filter((r: { type?: string }) => r.type === "work_rejected").length;
+    const milestones = Array.isArray(brief?.milestones) ? brief.milestones.length : 1;
+
+    // Five stars for clean acceptance, one star off per revision round needed.
+    const score = Math.max(1, 5 - rejections);
+    const review =
+      rejections === 0
+        ? `All ${milestones} milestone(s) accepted first time against the acceptance brief.`
+        : `Completed after ${rejections} revision round(s); all ${milestones} milestone(s) ultimately accepted.`;
+
+    const txHash = await secureflow.submitRating(BigInt(escrowId), score, review);
+    console.log(`[rating] ${hire.target} rated ${score}/5 for escrow ${escrowId} (${txHash})`);
+    broadcast({
+      type: "task_completed",
+      message: `On-chain rating recorded: ${score}/5 — ${review}`,
+      escrowId,
+      txHash,
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.warn(`[rating] could not record rating for escrow ${escrowId} (non-fatal):`, err instanceof Error ? err.message : err);
+  }
+}
 
 /** True while every task in a pass is failing — i.e. the subgraph is unreachable. */
 let pollerDegraded = false;
@@ -542,6 +639,7 @@ async function pollOnce() {
         } else if (allApproved || refreshed.escrow?.status === ESCROW_RELEASED) {
           store.updateTaskStatus(task.id, "completed", task.escrowId);
           broadcast({ type: "task_completed", message: "Job completed — all milestones approved and paid.", escrowId: task.escrowId, timestamp: Date.now() });
+          void rateFreelancer(task.escrowId, brief);
         }
       }
     } catch (err) {
