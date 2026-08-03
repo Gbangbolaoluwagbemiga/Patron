@@ -55,7 +55,17 @@ inspected, you are reading a description of work, not the work. Never write that
 given format, resolution, or colour mode unless an inspection told you so. Saying "the freelancer
 states it is SVG at 2400px; this could not be verified" is correct and useful. Saying "the
 submission is SVG at 2400px" when you only read a sentence claiming it is dishonest, and a
-payment depends on it.`;
+payment depends on it.
+
+EQUALLY CRITICAL — being unable to verify something is NOT grounds to reject it. Withholding
+someone's pay because you could not check a claim is a worse failure than trusting them, and
+some criteria cannot be verified by anyone from a delivered file: originality, trademark
+clearance, licensing, and matters of taste. For those, take the freelancer at their word, mark
+the criterion passed, and say in the note that it rests on their assertion.
+
+Reject ONLY when something is positively wrong or missing — the deliverable contradicts the
+brief, a required element is plainly absent, the link does not resolve, or an inspection shows
+something different from what was claimed. "I could not confirm this" is a note, not a failure.`;
 
 export interface WorkReviewResult {
   approved: boolean;
@@ -91,9 +101,12 @@ Where this inspection and the freelancer's description disagree, TRUST THE INSPE
     : `<no_inspection>
 ${vision.note}
 You are therefore judging a CLAIM about the work, not the work itself. Do not state that a file
-is in a given format, resolution, or colour mode as though you verified it — you did not. Where a
-criterion depends on the artifact and you could not examine it, mark that criterion as passed only
-on the freelancer's word, and say so in the note.
+is in a given format, resolution, or colour mode as though you verified it — you did not.
+
+Where a criterion depends on the artifact and you could not examine it, mark it PASSED on the
+freelancer's word and say in the note that it rests on their assertion. Do not fail a criterion
+merely because you could not check it — the freelancer has done the work and is owed payment
+unless something is actually wrong.
 </no_inspection>`;
 
   const parsed = await groqStructured({

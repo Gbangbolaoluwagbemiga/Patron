@@ -30,6 +30,28 @@ async function main() {
 
   console.log(`Submitting milestone ${milestoneIndex} for escrow #${escrowId} as ${account.address}...`);
 
+  // SecureFlow requires the lifecycle step before a submission is accepted, and
+  // submitMilestone reverts without it. This script didn't call it — so
+  // submitting to a freshly hired escrow failed with a bare "execution
+  // reverted", which reads like a broken submission rather than a missing
+  // transition. The e2e loop always called it; this path never did.
+  // Swallowed on failure because it reverts once work has already started,
+  // which is the normal case for every milestone after the first.
+  try {
+    const startHash = await walletClient.writeContract({
+      chain: arcTestnet,
+      account,
+      address: config.secureflowAddress,
+      abi,
+      functionName: "startWork",
+      args: [escrowId],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: startHash });
+    console.log(`  startWork ok — ${startHash}`);
+  } catch {
+    console.log("  (work already started)");
+  }
+
   const hash = await walletClient.writeContract({
     chain: arcTestnet,
     account,
