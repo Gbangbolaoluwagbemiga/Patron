@@ -59,6 +59,7 @@ export function Nav({ connected }: { connected: boolean }) {
     { to: "/decisions", label: "The Guild Master's Hand" },
     { to: "/payments", label: "Account of Monies" },
     { to: "/freelancers", label: "Register of Adventurers" },
+    { to: "/work", label: "Get Hired" },
   ];
   return (
     <div className="nav">

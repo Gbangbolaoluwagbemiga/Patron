@@ -23,9 +23,22 @@ function App() {
         </motion.div>
       </AnimatePresence>
 
+      {/* /work is the one page where a person acts rather than watches, so the
+          read-only note would be plainly false there. */}
       <div className="footer">
-        Read-only viewer — no wallet connect needed for Patron's own keys, no auth. Everything above is served live by
-        the Patron daemon over SSE. Connecting your own wallet only ever funds the treasury from your own signature.
+        {location.pathname === "/work" ? (
+          <>
+            Your wallet is a Circle MPC wallet held in split shares — no private key exists to be exported, by you or by
+            anyone else. Patron signs on your instruction and never holds your money: approved work is paid to you
+            directly by the escrow contract, and you can move your balance to any address you control at any time.
+          </>
+        ) : (
+          <>
+            Read-only viewer — no wallet connect needed for Patron's own keys, no auth. Everything above is served live
+            by the Patron daemon over SSE. Connecting your own wallet only ever funds the treasury from your own
+            signature.
+          </>
+        )}
       </div>
     </div>
   );
