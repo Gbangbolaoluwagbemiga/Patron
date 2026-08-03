@@ -48,13 +48,21 @@ export function circleCustodyReady(): boolean {
   return !!(config.circleApiKey && config.circleEntitySecret && config.circleWalletAddress);
 }
 
-/** Build an MPC-backed signer for the Patron Agent Wallet. Throws if Circle isn't configured. */
-export function createCircleSigner(): CircleSigner {
+/**
+ * Build an MPC-backed signer for ANY wallet under this Circle developer account.
+ *
+ * Patron's treasury is one such wallet; a freelancer onboarded through the worker
+ * layer is another. Circle's EIP-1193 provider is scoped to the developer account
+ * and selects the wallet by address, so signing "as" a worker is the same call
+ * path as signing as the treasury — no second SDK, no raw key on either side.
+ *
+ * This is what makes the managed-worker layer possible: a human can own a real
+ * wallet, and have real transactions signed on their instruction, without ever
+ * holding a key. See PATRON_INBOX.md.
+ */
+export function createSignerFor(address: `0x${string}`): CircleSigner {
   if (!config.circleApiKey || !config.circleEntitySecret) {
     throw new Error("Circle custody needs CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET in daemon/.env");
-  }
-  if (!config.circleWalletAddress) {
-    throw new Error("Circle custody needs CIRCLE_WALLET_ADDRESS — run `npm run circle:setup` first");
   }
 
   const provider = createEIP1193Provider({
@@ -62,7 +70,6 @@ export function createCircleSigner(): CircleSigner {
     entitySecret: config.circleEntitySecret,
     chain: config.circleBlockchain as Parameters<typeof createEIP1193Provider>[0]["chain"],
   });
-  const address = config.circleWalletAddress as `0x${string}`;
   const walletClient = createWalletClient({
     account: address,
     chain: arcTestnet,
@@ -81,4 +88,12 @@ export function createCircleSigner(): CircleSigner {
         message: params.message,
       }),
   };
+}
+
+/** The Patron Agent Wallet — the treasury. Default signer for everything Patron does as itself. */
+export function createCircleSigner(): CircleSigner {
+  if (!config.circleWalletAddress) {
+    throw new Error("Circle custody needs CIRCLE_WALLET_ADDRESS — run `npm run circle:setup` first");
+  }
+  return createSignerFor(config.circleWalletAddress as `0x${string}`);
 }

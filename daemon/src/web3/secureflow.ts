@@ -12,7 +12,7 @@
 import { createPublicClient, http, zeroAddress, type Abi, type PublicClient } from "viem";
 import secureFlowAbi from "./SecureFlowABI.json" with { type: "json" };
 import { arcTestnet, config, rpcUrl } from "../config.js";
-import { createCircleSigner } from "../circle/circleSigner.js";
+import { createCircleSigner, type CircleSigner } from "../circle/circleSigner.js";
 
 // Cast to viem's `Abi` type (not a tighter `as const` literal, since this is loaded
 // from JSON) so `writeContract` can still resolve stateMutability (payable vs not)
@@ -122,61 +122,105 @@ export async function createEscrow(params: CreateEscrowParams): Promise<{ escrow
   return { escrowId: nextId - 1n, txHash: hash };
 }
 
-export async function acceptFreelancer(escrowId: bigint, freelancer: `0x${string}`): Promise<`0x${string}`> {
-  const signer = createCircleSigner();
-  const hash = await signer.walletClient.writeContract({
+/**
+ * Every SecureFlow write, funnelled through one place.
+ *
+ * `as` is who signs. It defaults to the Patron treasury, which is what every
+ * call site did implicitly before — Patron's own actions (hiring, approving,
+ * rejecting, escalating) are unchanged and still go out as Patron.
+ *
+ * Passing a different signer is what the managed-worker layer needs: applying
+ * to a job and submitting work must be signed BY THE FREELANCER, because
+ * SecureFlow authorises those on `msg.sender`. Patron cannot apply on someone's
+ * behalf from its own wallet — the contract would record Patron as the
+ * applicant. So the worker's own Circle wallet signs, on their instruction.
+ */
+async function write(
+  functionName: string,
+  args: readonly unknown[],
+  as: CircleSigner = createCircleSigner(),
+): Promise<`0x${string}`> {
+  const hash = await as.walletClient.writeContract({
     chain: arcTestnet,
-    account: signer.address,
+    account: as.address,
     address: config.secureflowAddress,
     abi,
-    functionName: "acceptFreelancer",
-    args: [escrowId, freelancer],
+    functionName,
+    args: args as unknown[],
   });
   await getPublicClient().waitForTransactionReceipt({ hash });
   return hash;
+}
+
+// ── Patron's own actions (signed by the treasury) ───────────────────────────
+
+export async function acceptFreelancer(escrowId: bigint, freelancer: `0x${string}`): Promise<`0x${string}`> {
+  return write("acceptFreelancer", [escrowId, freelancer]);
 }
 
 export async function approveMilestone(escrowId: bigint, milestoneIndex: bigint): Promise<`0x${string}`> {
-  const signer = createCircleSigner();
-  const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
-    account: signer.address,
-    address: config.secureflowAddress,
-    abi,
-    functionName: "approveMilestone",
-    args: [escrowId, milestoneIndex],
-  });
-  await getPublicClient().waitForTransactionReceipt({ hash });
-  return hash;
+  return write("approveMilestone", [escrowId, milestoneIndex]);
 }
 
 export async function rejectMilestone(escrowId: bigint, milestoneIndex: bigint, reason: string): Promise<`0x${string}`> {
-  const signer = createCircleSigner();
-  const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
-    account: signer.address,
-    address: config.secureflowAddress,
-    abi,
-    functionName: "rejectMilestone",
-    args: [escrowId, milestoneIndex, reason],
-  });
-  await getPublicClient().waitForTransactionReceipt({ hash });
-  return hash;
+  return write("rejectMilestone", [escrowId, milestoneIndex, reason]);
 }
 
 /** Human-arbiter escalation path — Patron's one-way key can never do this itself; it only calls it after max revisions. */
 export async function disputeMilestone(escrowId: bigint, milestoneIndex: bigint, reason: string): Promise<`0x${string}`> {
-  const signer = createCircleSigner();
-  const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
-    account: signer.address,
+  return write("disputeMilestone", [escrowId, milestoneIndex, reason]);
+}
+
+// ── A freelancer's own actions (signed by THEIR wallet) ─────────────────────
+// SecureFlow authorises each of these on msg.sender, so the signer here is the
+// freelancer, never Patron. In managed mode that wallet is a Circle MPC wallet
+// Patron provisioned for them; in bring-your-own mode these never run at all
+// because the freelancer signs from their own wallet via SecureFlow's dApp.
+
+export async function applyToJob(
+  escrowId: bigint,
+  coverLetter: string,
+  proposedTimelineDays: bigint,
+  as: CircleSigner,
+): Promise<`0x${string}`> {
+  return write("applyToJob", [escrowId, coverLetter, proposedTimelineDays], as);
+}
+
+export async function startWork(escrowId: bigint, as: CircleSigner): Promise<`0x${string}`> {
+  return write("startWork", [escrowId], as);
+}
+
+export async function submitMilestone(
+  escrowId: bigint,
+  milestoneIndex: bigint,
+  description: string,
+  as: CircleSigner,
+): Promise<`0x${string}`> {
+  return write("submitMilestone", [escrowId, milestoneIndex, description], as);
+}
+
+/**
+ * On-chain reputation. Present in the ABI and previously unused — this is what
+ * makes Patron's reputation real rather than derived: humans and clients rating
+ * each other on the contract, readable by anyone, not computed from our own
+ * database.
+ */
+export async function submitRating(
+  escrowId: bigint,
+  rating: bigint,
+  comment: string,
+  as: CircleSigner = createCircleSigner(),
+): Promise<`0x${string}`> {
+  return write("submitRating", [escrowId, rating, comment], as);
+}
+
+export async function getAverageRating(who: `0x${string}`): Promise<bigint> {
+  return getPublicClient().readContract({
     address: config.secureflowAddress,
     abi,
-    functionName: "disputeMilestone",
-    args: [escrowId, milestoneIndex, reason],
-  });
-  await getPublicClient().waitForTransactionReceipt({ hash });
-  return hash;
+    functionName: "getAverageRating",
+    args: [who],
+  }) as Promise<bigint>;
 }
 
 export async function getEscrow(escrowId: bigint) {
