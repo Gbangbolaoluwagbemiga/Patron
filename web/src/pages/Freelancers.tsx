@@ -2,9 +2,10 @@ import { ARC_EXPLORER } from "../api";
 import { useDaemon } from "../daemon-context";
 import { computeFreelancerStats } from "../types";
 import { shorten } from "../components";
+import { LedgerSkeleton } from "../motion";
 
 export default function Freelancers() {
-  const { tasks, decisions, payments } = useDaemon();
+  const { tasks, decisions, payments, loaded } = useDaemon();
   const stats = computeFreelancerStats(tasks, decisions, payments);
 
   return (
@@ -18,7 +19,9 @@ export default function Freelancers() {
         that can drift out of step with what actually happened.
       </p>
 
-      {stats.length === 0 ? (
+      {!loaded ? (
+        <LedgerSkeleton rows={3} />
+      ) : stats.length === 0 ? (
         <div className="empty">No adventurer has taken a commission yet.</div>
       ) : (
         <div className="rep-table-wrap">

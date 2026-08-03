@@ -6,6 +6,7 @@ const MotionLink = motion(Link);
 import { ARC_EXPLORER, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
 import { hasInjectedWallet, useWalletConnect } from "./wallet-connect";
 import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
+import { inkTransition, useCountUp, useFlashOnChange } from "./motion";
 import {
   IconAlert,
   IconBrain,
@@ -43,9 +44,9 @@ export function shorten(addr: string | null | undefined): string {
 // with a few pixels of lift is enough to show that a row is new.
 export const cardMotion = {
   layout: true,
-  initial: { opacity: 0, y: -5 },
+  initial: { opacity: 0, y: -6 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.28, ease: "easeOut" as const },
+  transition: inkTransition,
 };
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
@@ -134,13 +135,27 @@ export function PipelineFlow({
         <div className="flow-stage" key={s.key}>
           <motion.div
             className={`flow-node ${i <= reached ? "lit" : ""} ${pulseKey === s.key ? "pulsing" : ""}`}
-            animate={pulseKey === s.key ? { scale: [1, 1.12, 1] } : {}}
-            transition={{ duration: 0.6 }}
+            // A completed stage swells once and settles. Deliberately understated:
+            // the old 1.12 pop on a 42px circle read as a UI toy, and this diagram
+            // is the spine of the demo — it should feel like a stamp landing.
+            animate={pulseKey === s.key ? { scale: [1, 1.07, 1] } : { scale: 1 }}
+            transition={{ duration: 0.55, ease: [0.22, 0.61, 0.36, 1] }}
           >
             <s.icon size={19} />
           </motion.div>
           <div className={`flow-label ${i <= reached ? "lit" : ""}`}>{s.label}</div>
-          {i < STAGES.length - 1 && <div className={`flow-line ${i < reached ? "lit" : ""}`} />}
+          {i < STAGES.length - 1 && (
+            // The connector DRAWS toward the next stage rather than switching
+            // colour, so progress reads as travel along the line.
+            <div className="flow-line">
+              <motion.div
+                className="flow-line-fill"
+                initial={false}
+                animate={{ scaleX: i < reached ? 1 : 0 }}
+                transition={{ duration: 0.5, ease: [0.22, 0.61, 0.36, 1] }}
+              />
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -167,6 +182,9 @@ export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: Paym
   const concluded = completed + disputed;
   const completionRate = concluded > 0 ? Math.round((completed / concluded) * 100) : 0;
 
+  const animatedReleased = useCountUp(released);
+  const releasedFlash = useFlashOnChange(released);
+
   // Deliberate hierarchy, not four equal boxes: money actually paid to humans
   // is the entire point of the project, so it is set enormous and everything
   // else is small. Uniform mid-sized stat cards are the clearest tell of a
@@ -182,7 +200,10 @@ export function StatsBar({ tasks, payments }: { tasks: TaskRow[]; payments: Paym
   return (
     <div className="stats">
       <div className="stat stat-hero">
-        <div className="stat-value">${released.toFixed(2)}</div>
+        {/* Counts toward its new value when an escrow releases. This is the one
+            number the whole project is about — a judge who misses it climbing
+            has missed the payment happening. */}
+        <div className={`stat-value ${releasedFlash ? "stat-value-flash" : ""}`}>${animatedReleased.toFixed(2)}</div>
         <div className="stat-label">paid to humans, on-chain</div>
       </div>
       <div className="stat-rest">
@@ -203,6 +224,11 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   const [amount, setAmount] = useState("5");
   const [fundedTx, setFundedTx] = useState<string | null>(null);
   const { address, connecting, funding, error, connect, fund } = useWalletConnect();
+  // Polled every 15s, so it moves on its own when a job is posted or paid —
+  // ticking rather than snapping makes that visible instead of easy to miss.
+  const balance = wallet ? parseFloat(wallet.balance) : 0;
+  const animatedBalance = useCountUp(balance);
+  const balanceFlash = useFlashOnChange(wallet ? wallet.balance : null);
 
   function copy() {
     if (!wallet) return;
@@ -225,7 +251,9 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     <div className="treasury">
       <div className="treasury-main">
         <div className="treasury-label">Patron's Treasury</div>
-        <div className="treasury-balance">{wallet ? `$${parseFloat(wallet.balance).toFixed(2)}` : "…"}</div>
+        <div className={`treasury-balance ${balanceFlash ? "stat-value-flash" : ""}`}>
+          {wallet ? `$${animatedBalance.toFixed(2)}` : "—"}
+        </div>
         <div className="treasury-sub">available to fund new jobs</div>
       </div>
 

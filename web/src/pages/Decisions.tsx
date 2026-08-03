@@ -1,9 +1,10 @@
 import { AnimatePresence } from "framer-motion";
 import { useDaemon } from "../daemon-context";
 import { DecisionCard } from "../components";
+import { LedgerSkeleton } from "../motion";
 
 export default function Decisions() {
-  const { decisions } = useDaemon();
+  const { decisions, loaded } = useDaemon();
 
   return (
     <div className="page">
@@ -17,8 +18,10 @@ export default function Decisions() {
 
       <div className="job-grid marginalia">
         <AnimatePresence initial={false}>
-          {decisions.length === 0 ? (
-            <div className="empty">No decisions yet.</div>
+          {!loaded ? (
+            <LedgerSkeleton rows={5} />
+          ) : decisions.length === 0 ? (
+            <div className="empty">The guild master has not written anything yet.</div>
           ) : (
             decisions.map((d) => <DecisionCard key={d.id} decision={d} />)
           )}

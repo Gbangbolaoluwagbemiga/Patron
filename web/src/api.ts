@@ -86,6 +86,10 @@ export function useDaemonFeed() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [liveEvents, setLiveEvents] = useState<AgentEvent[]>([]);
   const [lastEvent, setLastEvent] = useState<AgentEvent | null>(null);
+  // Distinguishes "no data yet" from "genuinely nothing here". Without it the
+  // first paint shows the empty-state copy for a beat before real rows arrive,
+  // which reads as a broken page — and on a slow connection, as an empty product.
+  const [loaded, setLoaded] = useState(false);
   const refreshTimer = useRef<number | null>(null);
 
   async function refresh() {
@@ -100,6 +104,8 @@ export function useDaemonFeed() {
       setPayments(p);
     } catch {
       // daemon unreachable — the connection banner already reflects this via SSE state
+    } finally {
+      setLoaded(true);
     }
   }
 
@@ -139,5 +145,5 @@ export function useDaemonFeed() {
     };
   }, []);
 
-  return { connected, tasks, decisions, payments, liveEvents, lastEvent, refresh };
+  return { connected, tasks, decisions, payments, liveEvents, lastEvent, loaded, refresh };
 }

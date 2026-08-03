@@ -586,10 +586,16 @@ code {
   height: 1.5px;
   background: var(--paper-edge);
   z-index: 0;
+  overflow: hidden;
 }
 
-.flow-line.lit {
+/* Drawn left-to-right as the stage completes, rather than switching colour —
+   progress should read as travel along the line, not a state flag. */
+.flow-line-fill {
+  width: 100%;
+  height: 100%;
   background: var(--ink);
+  transform-origin: left center;
 }
 
 .flow-label {
@@ -1037,6 +1043,79 @@ textarea {
 .toast-icon {
   flex-shrink: 0;
   padding-top: 1px;
+}
+
+/* ── Live-change emphasis ─────────────────────────────────────────────────
+   A one-shot warm-up on a figure that just changed. Colour only — moving a
+   large number while it is also counting makes it harder to read, not easier. */
+
+.stat-value-flash {
+  animation: figure-settle 1.4s ease-out;
+}
+
+@keyframes figure-settle {
+  0% {
+    color: var(--verified);
+  }
+  100% {
+    color: inherit;
+  }
+}
+
+.stat-hero .stat-value,
+.treasury-balance {
+  transition: color 0.4s ease-out;
+}
+
+/* ── Loading skeletons ────────────────────────────────────────────────────
+   Ruled placeholder lines matching the ledger-row rhythm, so the page holds
+   its shape while the first fetch lands. Before this, a slow connection showed
+   the empty-state copy first — an empty product rather than a loading one. */
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-row {
+  padding: 17px 12px 17px 0;
+  border-bottom: var(--rule);
+}
+
+.skeleton-line {
+  height: 11px;
+  margin-bottom: 9px;
+  border-radius: 0;
+  background: linear-gradient(90deg, var(--paper-deep) 0%, #e2dbc9 50%, var(--paper-deep) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.5s ease-in-out infinite;
+}
+
+.skeleton-line:last-child {
+  margin-bottom: 0;
+}
+
+.skeleton-line-sm {
+  width: 128px;
+  height: 9px;
+}
+
+.skeleton-line-lg {
+  width: 62%;
+  height: 17px;
+}
+
+.skeleton-line-md {
+  width: 38%;
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
