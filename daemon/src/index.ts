@@ -354,6 +354,45 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  /**
+   * Cancel an unfilled commission and return its budget to the treasury.
+   *
+   * Guarded here as well as on-chain: the contract refuses once a freelancer is
+   * hired, but refusing earlier gives a readable reason instead of a revert, and
+   * makes the rule explicit to anyone reading this file — money stops being
+   * reclaimable the moment a human has a claim on it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/jobs/cancel") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { escrowId?: string };
+      if (!b.escrowId) return json(res, 400, { error: "escrowId is required" });
+
+      const task = store.listTasks(100).find((t) => t.escrowId === b.escrowId);
+      if (!task) return json(res, 404, { error: "No such commission." });
+      if (task.status !== "posted") {
+        return json(res, 400, {
+          error:
+            task.status === "active"
+              ? "Someone is already working on this — their claim on the escrow is exactly what makes Patron trustworthy, so it can't be cancelled now."
+              : `This commission is ${task.status}; only an unfilled one can be cancelled.`,
+        });
+      }
+
+      const txHash = await secureflow.cancelJob(BigInt(b.escrowId));
+      store.updateTaskStatus(task.id, "cancelled", task.escrowId ?? undefined);
+      broadcast({
+        type: "task_completed",
+        message: "Commission cancelled — the locked budget has been returned in full.",
+        escrowId: b.escrowId,
+        txHash,
+        timestamp: Date.now(),
+      });
+      return json(res, 200, { txHash });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
   /** Humans who have joined the guild — the answer to "has anyone actually signed up". */
   if (req.method === "GET" && url.pathname === "/api/workers") {
     return json(

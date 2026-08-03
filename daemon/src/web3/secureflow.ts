@@ -232,6 +232,35 @@ export async function getAverageRating(who: `0x${string}`): Promise<{ average: n
   return { average: Number(averageX100) / 100, count: Number(count) };
 }
 
+// ── Getting the money back out ──────────────────────────────────────────────
+// These exist on the contract and were never wired, which left real funds
+// stranded: a job that attracts no suitable applicant keeps its budget locked
+// in escrow with no recovery path. Several of ours are sitting like that now.
+//
+// This matters beyond bookkeeping. Patron's central claim is that no machine in
+// the chain can take your money — and the honest completion of that claim is
+// that money nobody earned comes back, rather than staying locked forever
+// because we never implemented the return path.
+
+/**
+ * Cancel an unfilled job and return its budget to whoever funded it.
+ *
+ * Only valid before a freelancer is hired — once someone is working, their
+ * claim on the escrow is exactly what makes Patron trustworthy, and the
+ * contract enforces that.
+ */
+export async function cancelJob(escrowId: bigint, as: CircleSigner = createCircleSigner()): Promise<`0x${string}`> {
+  return write("cancelJob", [escrowId], as);
+}
+
+/** Last resort: reclaim after the deadline has passed, when a job stalled with work in progress. */
+export async function emergencyRefundAfterDeadline(
+  escrowId: bigint,
+  as: CircleSigner = createCircleSigner(),
+): Promise<`0x${string}`> {
+  return write("emergencyRefundAfterDeadline", [escrowId], as);
+}
+
 export async function getEscrow(escrowId: bigint) {
   return getPublicClient().readContract({
     address: config.secureflowAddress,
