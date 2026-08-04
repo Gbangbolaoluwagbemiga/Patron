@@ -53,7 +53,21 @@ const agent = new AgentClient((event) => {
   if (event.decision?.target) {
     const who = event.decision.target;
     if (event.type === "applicant_accepted") {
-      void telegram.notifyWorkerByAddress(who, "🎉 You got the job. The money is already locked in escrow — send your work when it's ready.");
+      void telegram.notifyWorkerByAddress(
+        who,
+        [
+          "🎉 <b>You got the job.</b>",
+          "",
+          "The money is already locked in escrow and can't be taken back — not even by the AI that hired you.",
+          "",
+          `Send your work with <code>/submit ${event.escrowId}</code> when it's ready. Include a link to the file.`,
+        ].join("\n"),
+      );
+      // And tell everyone else. They applied, waited, and were never told
+      // anything — the job simply went quiet on them forever. An answer you
+      // don't want is still better than silence, and someone who knows they
+      // weren't picked can go and apply for the next one.
+      if (event.escrowId) void notifyUnsuccessfulApplicants(event.escrowId, who);
     }
   }
   if (event.type === "work_approved" && event.escrowId) {
@@ -109,6 +123,54 @@ const agent = new AgentClient((event) => {
     });
   }
 }, getGateway);
+
+
+/**
+ * Tell the applicants who weren't chosen.
+ *
+ * Only the winner was ever notified, so everyone else was left waiting on a
+ * decision that had already been made. Their scores and the reasoning were
+ * public on the ledger the whole time; nobody thought to point them at it.
+ *
+ * Deliberately includes WHY and where to read it. A rejection that explains
+ * itself and links to the actual reasoning is a reason to apply again; a silent
+ * one is a reason to leave.
+ */
+async function notifyUnsuccessfulApplicants(escrowId: string, winner: string): Promise<void> {
+  try {
+    const result = await graphQuery<{ escrow: { applications: { freelancer: string }[] } | null }>(GET_JOB_APPLICATIONS, {
+      escrowId,
+    });
+    const applicants = result.escrow?.applications ?? [];
+    const scores = store
+      .listDecisions(300)
+      .filter((d: { task_id?: string; type?: string }) => d.task_id === escrowId && d.type === "application_scored");
+
+    for (const a of applicants) {
+      if (a.freelancer.toLowerCase() === winner.toLowerCase()) continue;
+      const mine = scores.find((s: { target?: string }) => s.target?.toLowerCase() === a.freelancer.toLowerCase()) as
+        | { score?: number; reasoning?: string }
+        | undefined;
+      await telegram.notifyWorkerByAddress(
+        a.freelancer,
+        [
+          "This one went to someone else.",
+          "",
+          mine?.score != null ? `You scored <b>${mine.score}/100</b> — the bar to be hired is 70.` : "",
+          mine?.reasoning ? `\n<i>${mine.reasoning}</i>\n` : "",
+          "Every score and the reasoning behind it is public, so you can see exactly how the decision was made:",
+          `https://web-plum-one-12.vercel.app/jobs/${escrowId}`,
+          "",
+          "/jobs to see what else is open — being turned down here counts against nothing.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+  } catch (err) {
+    console.warn("[notify] could not reach unsuccessful applicants:", err instanceof Error ? err.message : err);
+  }
+}
 
 /**
  * What a caller is allowed to see when something upstream breaks. The full

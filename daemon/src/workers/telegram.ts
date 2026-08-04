@@ -110,6 +110,7 @@ const HELP = [
   "<b>Doing the work</b>",
   "/submit &lt;id&gt; — send in finished work (the id is on the job)",
   "/mine — jobs you've applied to or been hired for",
+  "/job &lt;id&gt; — who applied to a job and how each was graded",
   "",
   "<b>Your money</b>",
   "/balance — what you've earned",
@@ -183,11 +184,21 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
     : `<b>${all.length}</b> open commission${all.length !== 1 ? "s" : ""}, all funded up front`;
 
   const body = slice.map((q) => {
-    const crit = q.criteria.slice(0, 3).map((c) => `   · ${c}`).join("\n");
+    const crit = q.criteria.slice(0, 4).map((c) => `      ✓ ${c}`).join("\n");
+    const milestones =
+      q.milestones && q.milestones.length > 1
+        ? "\n   <b>Paid in stages:</b>\n" + q.milestones.map((m, i) => `      ${i + 1}. $${m.amount} — ${m.description}`).join("\n")
+        : "";
     return [
-      `<b>${q.title}</b> — 💰 $${q.budget} · ${q.durationDays}d · ${closesIn(q.closesAt)}`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `<b>${q.title}</b>   <code>#${q.escrowId}</code>`,
+      `💰 <b>$${q.budget} USDC</b>  ·  ⏱ ${q.durationDays} day${q.durationDays !== 1 ? "s" : ""} to deliver`,
+      `🔒 already locked in escrow  ·  📥 ${closesIn(q.closesAt)}`,
+      "",
+      "   <b>What they need:</b>",
       crit,
-      q.criteria.length > 3 ? `   · …and ${q.criteria.length - 3} more` : "",
+      q.criteria.length > 4 ? `      … and ${q.criteria.length - 4} more` : "",
+      milestones,
     ]
       .filter(Boolean)
       .join("\n");
@@ -331,6 +342,42 @@ async function handleText(msg: TgMessage) {
       ));
     }
 
+    // Asked for by a tester wearing the client hat: "is there anywhere I can see
+    // how many applied and how they were graded?" There was — the public ledger —
+    // but nothing in the bot pointed at it, so effectively there wasn't.
+    if (cmd === "/job") {
+      const id = rest.trim();
+      if (!id) return void (await send(chatId, "Which one? <code>/job 38</code> — the number is on every job."));
+      const detail = workers.jobDetail(id);
+      if (!detail) return void (await send(chatId, `No commission with id ${id}. /jobs to see what's open.`));
+
+      const graded = detail.scores.length
+        ? detail.scores
+            .sort((a, b) => b.score - a.score)
+            .map((sc) => {
+              const flag = sc.injection ? " 🚫 injection attempt" : sc.hired ? " ← hired" : "";
+              return `   <b>${sc.score}/100</b> ${sc.address.slice(0, 8)}…${flag}\n      <i>${sc.reasoning.slice(0, 150)}</i>`;
+            })
+            .join("\n\n")
+        : "   Nobody has applied yet.";
+
+      return void (await send(
+        chatId,
+        [
+          `<b>${detail.title}</b>  <code>#${id}</code>`,
+          `💰 $${detail.budget} · ${detail.status}`,
+          "",
+          `<b>${detail.scores.length} applicant${detail.scores.length !== 1 ? "s" : ""}, graded:</b>`,
+          graded,
+          "",
+          detail.outcome ? `<b>Outcome:</b> ${detail.outcome}` : "",
+          `Full reasoning, verbatim: ${WEB}/jobs/${id}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ));
+    }
+
     if (cmd === "/profile") {
       const worker = workerFor(tgUserId);
       if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
@@ -441,15 +488,25 @@ async function handleText(msg: TgMessage) {
         channel: "telegram",
         channelRef: String(tgUserId),
       });
+      // Testers joined and then didn't know what to do — it wasn't obvious that
+      // /jobs was the next step, or that it meant "see paid work". A command
+      // name is not an instruction. Say the thing, then give the button.
       await send(
         chatId,
         [
-          `You're in the guild, <b>${worker.handle}</b>.`,
+          `You're in, <b>${worker.handle}</b>. 🏰`,
           "",
-          "I've set up a wallet for you in the background — you don't have to do anything with it, and nobody can take what's in it.",
+          "I set up a wallet for you in the background. You don't have to do anything with it, nobody can take what's in it, and anything you earn lands there directly.",
           "",
-          "/jobs to see what's open right now.",
+          "<b>Here's how this works:</b>",
+          "1. An AI posts a job and locks the money up front",
+          "2. You apply and say why you're right for it",
+          "3. It reads every applicant together and picks one",
+          "4. You do the work, it checks it, you get paid in USDC",
+          "",
+          "👉 <b>Tap the button below to see what's paying right now.</b>",
         ].join("\n"),
+        [[{ text: "💼 See available jobs", callback_data: "page:0:" }]],
       );
     } catch (err) {
       await send(chatId, `Couldn't set you up: ${err instanceof Error ? err.message : err}`);

@@ -100,6 +100,8 @@ export interface Quest {
   budget: number;
   durationDays: number;
   criteria: string[];
+  /** How the budget is split, so a worker can see they're paid in stages. */
+  milestones: { description: string; amount: number }[];
   /** When applications close and the guild master judges them together. */
   closesAt: number;
   /** Only set when a worker was supplied — lets a surface hide "Apply" on ones they've taken. */
@@ -120,6 +122,7 @@ export function openQuests(): Quest[] {
         budget: brief.budget as number,
         durationDays: brief.durationDays as number,
         criteria: (brief.criteria ?? []) as string[],
+        milestones: (brief.milestones ?? []) as { description: string; amount: number }[],
         closesAt: t.createdAt + windowMinutes * 60_000,
       };
     });
@@ -327,6 +330,48 @@ export async function myWork(
     out.push({ escrowId: t.escrowId, title: brief.title, budget: brief.budget, status, icon });
   }
   return out;
+}
+
+/**
+ * Everything decided about one commission — who applied, what each scored, why.
+ *
+ * A tester wearing the client hat asked where they could see this. The answer
+ * was "the public ledger", which was true and useless: nothing pointed them at
+ * it. Transparency nobody can find isn't transparency.
+ */
+export function jobDetail(escrowId: string): {
+  title: string;
+  budget: number;
+  status: string;
+  scores: { address: string; score: number; reasoning: string; hired: boolean; injection: boolean }[];
+  outcome: string | null;
+} | null {
+  const task = store.listTasks(100).find((t) => t.escrowId === escrowId);
+  if (!task?.briefJson) return null;
+  const brief = JSON.parse(task.briefJson);
+  const decisions = store.listDecisions(300).filter((d: { task_id?: string }) => d.task_id === escrowId);
+
+  const hired = decisions.find((d: { type?: string }) => d.type === "applicant_accepted") as { target?: string } | undefined;
+  const scores = decisions
+    .filter((d: { type?: string }) => d.type === "application_scored")
+    .map((d: { target?: string; score?: number; reasoning?: string }) => ({
+      address: d.target ?? "",
+      score: d.score ?? 0,
+      reasoning: d.reasoning ?? "",
+      hired: !!hired?.target && d.target?.toLowerCase() === hired.target.toLowerCase(),
+      injection: (d.reasoning ?? "").includes("INJECTION"),
+    }));
+
+  const none = decisions.find((d: { type?: string }) => d.type === "no_suitable_applicant") as { reasoning?: string } | undefined;
+  const outcome = hired?.target
+    ? `Hired ${hired.target.slice(0, 10)}…`
+    : none?.reasoning
+      ? none.reasoning
+      : task.status === "cancelled"
+        ? "Deadline passed with no suitable applicant — the budget was returned in full."
+        : null;
+
+  return { title: brief.title, budget: brief.budget, status: task.status, scores, outcome };
 }
 
 /** What they've earned. On Arc this is both their spendable balance and their gas. */
