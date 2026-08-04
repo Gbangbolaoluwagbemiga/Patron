@@ -93,8 +93,18 @@ export async function join(params: JoinParams): Promise<store.WorkerRow> {
   return worker;
 }
 
-/** Open commissions a worker can actually apply to, with the ones they've already applied to marked. */
-export function openQuests(): { escrowId: string; title: string; budget: number; durationDays: number; criteria: string[] }[] {
+export interface Quest {
+  escrowId: string;
+  title: string;
+  budget: number;
+  durationDays: number;
+  criteria: string[];
+  /** Only set when a worker was supplied — lets a surface hide "Apply" on ones they've taken. */
+  alreadyApplied?: boolean;
+}
+
+/** Open commissions, optionally marked up for one worker. */
+export function openQuests(): Quest[] {
   return store
     .listTasks(50)
     .filter((t) => t.status === "posted" && t.escrowId && t.briefJson)
@@ -108,6 +118,29 @@ export function openQuests(): { escrowId: string; title: string; budget: number;
         criteria: (brief.criteria ?? []) as string[],
       };
     });
+}
+
+/**
+ * The same board, marked with what this person has already applied to.
+ *
+ * Separate from openQuests() because it costs one chain read per job: the plain
+ * list is used on every poll and by anonymous visitors, and making that pay for
+ * a personalisation nobody asked for would be the wrong default.
+ */
+export async function openQuestsFor(workerId: string): Promise<Quest[]> {
+  const worker = store.getWorker(workerId);
+  const quests = openQuests();
+  if (!worker?.walletAddress) return quests;
+  const address = worker.walletAddress as `0x${string}`;
+  return Promise.all(
+    quests.map(async (q) => {
+      try {
+        return { ...q, alreadyApplied: await secureflow.hasApplied(BigInt(q.escrowId), address) };
+      } catch {
+        return q; // a chain hiccup must not empty someone's job board
+      }
+    }),
+  );
 }
 
 function signerFor(worker: store.WorkerRow) {
@@ -158,12 +191,22 @@ export async function apply(
     throw new UserFacingError("That portfolio link doesn't look like a URL — it should start with http:// or https://");
   }
 
+  // Check BEFORE spending their gas. The contract tracks this and would happily
+  // record a second application: two rows on-chain for one person, gas paid
+  // twice, and the scorer ranking someone against themselves.
+  const signer = signerFor(worker);
+  if (await secureflow.hasApplied(BigInt(escrowId), signer.address)) {
+    throw new UserFacingError(
+      "You've already applied to this one — the guild master has your application and will come back to you either way.",
+    );
+  }
+
   // Labelled rather than concatenated, so the scorer can tell the applicant's
   // own words from a link they provided, and so the link survives as something
   // readable on-chain and on SecureFlow's own interface.
   const full = portfolio ? `${letter}\n\nPast work: ${portfolio}` : letter;
 
-  const txHash = await secureflow.applyToJob(BigInt(escrowId), full, BigInt(proposedTimelineDays), signerFor(worker));
+  const txHash = await secureflow.applyToJob(BigInt(escrowId), full, BigInt(proposedTimelineDays), signer);
   return { txHash };
 }
 
@@ -194,6 +237,58 @@ export async function submit(
   }
   const txHash = await secureflow.submitMilestone(BigInt(escrowId), BigInt(milestoneIndex), text, signer);
   return { txHash };
+}
+
+/**
+ * Everything this person is involved in, and where it stands.
+ *
+ * Built from the decision log and task list rather than new bookkeeping — the
+ * hire is already recorded there for the command center, so a worker's view of
+ * their own jobs is a different reading of the same facts, not a second copy of
+ * them that could drift.
+ */
+export async function myWork(
+  workerId: string,
+): Promise<{ escrowId: string; title: string; budget: number; status: string; icon: string }[]> {
+  const worker = store.getWorker(workerId);
+  if (!worker?.walletAddress) return [];
+  const me = worker.walletAddress.toLowerCase();
+
+  const hiredFor = new Set(
+    store
+      .listDecisions(300)
+      .filter((d: { type?: string; target?: string }) => d.type === "applicant_accepted" && d.target?.toLowerCase() === me)
+      .map((d: { task_id?: string }) => d.task_id),
+  );
+
+  const out: { escrowId: string; title: string; budget: number; status: string; icon: string }[] = [];
+  for (const t of store.listTasks(100)) {
+    if (!t.escrowId || !t.briefJson) continue;
+    const hired = hiredFor.has(t.escrowId);
+    let applied = false;
+    if (!hired) {
+      try {
+        applied = await secureflow.hasApplied(BigInt(t.escrowId), worker.walletAddress as `0x${string}`);
+      } catch {
+        continue;
+      }
+    }
+    if (!hired && !applied) continue;
+
+    const brief = JSON.parse(t.briefJson);
+    const [icon, status] = hired
+      ? t.status === "completed"
+        ? ["✅", "Finished and paid"]
+        : t.status === "disputed"
+          ? ["⚖️", "With a human arbiter"]
+          : ["🔨", "You were hired — send your work with /submit " + t.escrowId]
+      : t.status === "posted"
+        ? ["⏳", "Applied, waiting on the guild master"]
+        : ["—", "Applied, but someone else was hired"];
+
+    out.push({ escrowId: t.escrowId, title: brief.title, budget: brief.budget, status, icon });
+  }
+  return out;
 }
 
 /** What they've earned. On Arc this is both their spendable balance and their gas. */

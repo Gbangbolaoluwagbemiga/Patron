@@ -270,6 +270,23 @@ export async function getEscrow(escrowId: bigint) {
   });
 }
 
+/**
+ * Has this address already applied to this job?
+ *
+ * Asked for by testers after they hit it: applying twice puts two applications
+ * on-chain for one person, costs them gas twice, and gives the scorer the same
+ * applicant to rank against themselves. The contract has always tracked this —
+ * we simply never asked before letting someone spend a transaction.
+ */
+export async function hasApplied(escrowId: bigint, who: `0x${string}`): Promise<boolean> {
+  return getPublicClient().readContract({
+    address: config.secureflowAddress,
+    abi,
+    functionName: "hasApplied",
+    args: [escrowId, who],
+  }) as Promise<boolean>;
+}
+
 export async function getEscrowApplications(escrowId: bigint) {
   return getPublicClient().readContract({
     address: config.secureflowAddress,

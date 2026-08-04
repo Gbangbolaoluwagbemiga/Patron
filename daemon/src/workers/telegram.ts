@@ -12,6 +12,7 @@
 
 import * as store from "../store.js";
 import * as workers from "./service.js";
+import * as secureflow from "../web3/secureflow.js";
 import { config } from "../config.js";
 import { llmPaused, llmPauseRemaining } from "../llm-status.js";
 
@@ -89,15 +90,43 @@ function workerFor(tgUserId: number) {
   return store.getWorkerByChannelRef("telegram", String(tgUserId));
 }
 
+const WEB = "https://web-plum-one-12.vercel.app";
+
+/**
+ * Testers said the bot felt like "one linear thing" with no sense of what else
+ * it could do. That was fair — the old help was five lines and mentioned nothing
+ * about who you are, what you hold, or where to see the AI's actual reasoning.
+ * Discoverability is a feature; a capable tool that hides its capabilities is
+ * just a confusing one.
+ */
 const HELP = [
-  "<b>Patron</b> — an AI hires you, and pays you.",
+  "🏰 <b>Patron</b> — an AI posts a job, locks the money before anyone applies, and pays you when your work is accepted.",
   "",
-  "/jobs — see work available right now",
-  "/jobs logo — filter by word; /jobs 5 — minimum budget",
-  "/submit &lt;id&gt; — send finished work for a job you were hired for",
+  "<b>Finding work</b>",
+  "/jobs — everything open right now",
+  "/jobs logo — filter by word",
+  "/jobs 5 — only jobs paying $5 or more",
+  "",
+  "<b>Doing the work</b>",
+  "/submit &lt;id&gt; — send in finished work (the id is on the job)",
+  "/mine — jobs you've applied to or been hired for",
+  "",
+  "<b>Your money</b>",
   "/balance — what you've earned",
-  "/withdraw — move it to your own wallet",
-  "/help — this message",
+  "/wallet — your address, and how custody actually works",
+  "/withdraw — send earnings to any address you control",
+  "",
+  "<b>You</b>",
+  "/profile — your handle, skills and rating",
+  "/skills &lt;text&gt; — tell the guild what you do",
+  "/link 0x… — use your own wallet instead of the one we made you",
+  "",
+  "<b>Seeing everything</b>",
+  `The full ledger — every job, every payment, and the AI's actual reasoning for`,
+  `every decision it has ever made — is public at ${WEB}`,
+  `Your own page: ${WEB}/work`,
+  "",
+  "You keep 100% of what a job pays. The 1% network fee is paid by the client, not taken from you.",
 ].join("\n");
 
 const PAGE_SIZE = 5;
@@ -232,6 +261,93 @@ async function handleText(msg: TgMessage) {
       }
       pending.set(chatId, { kind: "deliverable", escrowId: id, milestoneIndex: 0 });
       return void (await send(chatId, "Describe what you're delivering, and paste a link to the file."));
+    }
+
+    // ── /wallet — the question testers actually asked: where is my wallet,
+    //    and can I have the seed phrase? Answered precisely, because a vague
+    //    answer here reads as evasive about someone's money.
+    if (cmd === "/wallet") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
+      if (worker.mode === "own") {
+        return void (await send(
+          chatId,
+          [`You're using your own wallet:`, `<code>${worker.walletAddress}</code>`, "", "You hold the keys. Patron only tells you when work appears."].join("\n"),
+        ));
+      }
+      return void (await send(
+        chatId,
+        [
+          "<b>Your wallet</b>",
+          `<code>${worker.walletAddress}</code>`,
+          `<a href="https://testnet.arcscan.app/address/${worker.walletAddress}">See it on the block explorer</a> — it's a real address on a public chain, and anything in it is yours.`,
+          "",
+          "<b>Is there a seed phrase?</b>",
+          "No — and that's the honest answer rather than a refusal.",
+          "",
+          "It's an MPC wallet (Circle). The key was never created as one piece: it exists as separate",
+          "shares held apart, and it is never assembled anywhere. So there is no seed phrase or private",
+          "key in existence to give you — not to you, not to us, not to Circle.",
+          "",
+          "<b>Then how do I get my money out?</b>",
+          "/withdraw — send it to any address you control, any time, no permission needed.",
+          "",
+          "The precise version: <i>your money is fully yours and fully extractable. The key is not",
+          "extractable by anyone.</i> Same model as Coinbase or Venmo — you've never seen their keys",
+          "either; you withdraw to an address you own.",
+          "",
+          "Want real self-custody instead? /link 0xYourAddress switches you over and sweeps what",
+          "you've earned across. Nobody is locked in.",
+        ].join("\n"),
+      ));
+    }
+
+    if (cmd === "/profile") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
+      let rating = "no ratings yet";
+      try {
+        if (worker.walletAddress) {
+          const r = await secureflow.getAverageRating(worker.walletAddress as `0x${string}`);
+          if (r.count > 0) rating = `${"★".repeat(Math.round(r.average))} ${r.average.toFixed(1)}/5 from ${r.count} job(s)`;
+        }
+      } catch {
+        /* chain hiccup — the rest of the profile is still worth showing */
+      }
+      const joined = new Date(worker.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+      return void (await send(
+        chatId,
+        [
+          `<b>${worker.handle}</b>`,
+          `Joined ${joined} · ${worker.mode === "managed" ? "wallet managed for you" : "your own wallet"}`,
+          "",
+          `<b>What you do:</b> ${worker.skills || "not set — /skills to tell the guild"}`,
+          `<b>On-chain rating:</b> ${rating}`,
+          "",
+          "Your rating is written to the contract when a job completes, so it's verifiable by anyone and not something we can quietly change.",
+        ].join("\n"),
+      ));
+    }
+
+    if (cmd === "/skills") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
+      if (!rest) return void (await send(chatId, "Tell me what you do, like: <code>/skills logo design, brand identity</code>"));
+      store.setWorkerSkills(worker.id, rest.slice(0, 200));
+      return void (await send(chatId, `Noted — <b>${rest.slice(0, 200)}</b>. /profile to see it.`));
+    }
+
+    if (cmd === "/mine") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
+      const mine = await workers.myWork(worker.id);
+      if (mine.length === 0) {
+        return void (await send(chatId, "You haven't applied to anything yet. /jobs to see what's open."));
+      }
+      return void (await send(
+        chatId,
+        ["<b>Your jobs</b>", "", ...mine.map((m) => `${m.icon} <b>${m.title}</b> — $${m.budget}\n   ${m.status}`)].join("\n"),
+      ));
     }
 
     if (cmd === "/balance") {

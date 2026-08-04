@@ -425,6 +425,10 @@ export function setWorkerWallet(id: string, walletId: string, walletAddress: str
   db.prepare(`UPDATE workers SET wallet_id = ?, wallet_address = ? WHERE id = ?`).run(walletId, walletAddress, id);
 }
 
+export function setWorkerSkills(id: string, skills: string): void {
+  db.prepare(`UPDATE workers SET skills = ? WHERE id = ?`).run(skills, id);
+}
+
 /** Graduation: a managed worker moves to their own wallet. Mode A is a ramp, not a trap. */
 export function setWorkerOwnWallet(id: string, address: string): void {
   db.prepare(`UPDATE workers SET wallet_address = ?, wallet_id = NULL, mode = 'own' WHERE id = ?`).run(address, id);
