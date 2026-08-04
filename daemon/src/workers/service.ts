@@ -148,6 +148,37 @@ export async function openQuestsFor(workerId: string): Promise<Quest[]> {
   );
 }
 
+/**
+ * Make sure a worker can actually pay for the transaction they're about to sign.
+ *
+ * The gas drip on signup is deliberately non-blocking, which means someone who
+ * joins and immediately applies can get there before their own funding has
+ * confirmed. Found by doing exactly that: the first apply failed and the second,
+ * four seconds later, worked.
+ *
+ * Worse than the failure was the message. The raw error says "insufficient
+ * funds", which the API's sanitiser matched to its treasury rule and rendered as
+ * "Patron's treasury doesn't hold enough USDC" — telling a freelancer that OUR
+ * wallet was empty when the issue was a drip in flight to theirs.
+ */
+async function ensureGas(worker: store.WorkerRow): Promise<void> {
+  if (worker.mode === "own" || !worker.walletAddress) return;
+  const address = worker.walletAddress as `0x${string}`;
+  try {
+    if (Number(await workerBalance(address)) >= MIN_GAS_USDC) return;
+    await dripGas(address); // awaited here, unlike signup — they are mid-action
+    if (Number(await workerBalance(address)) >= MIN_GAS_USDC) return;
+  } catch {
+    // fall through to the message below rather than surfacing a chain error
+  }
+  throw new UserFacingError(
+    "Your wallet is still being funded for network fees — give it about ten seconds and try again. Nothing was lost.",
+  );
+}
+
+/** Enough to sign with. Arc fees are tiny; this is a floor, not a target. */
+const MIN_GAS_USDC = Number(process.env.WORKER_MIN_GAS_USDC ?? 0.01);
+
 function signerFor(worker: store.WorkerRow) {
   if (worker.mode === "own") {
     throw new UserFacingError(
@@ -200,6 +231,7 @@ export async function apply(
   // record a second application: two rows on-chain for one person, gas paid
   // twice, and the scorer ranking someone against themselves.
   const signer = signerFor(worker);
+  await ensureGas(worker);
   if (await secureflow.hasApplied(BigInt(escrowId), signer.address)) {
     throw new UserFacingError(
       "You've already applied to this one — the guild master has your application and will come back to you either way.",
@@ -235,6 +267,7 @@ export async function submit(
   if (!text) throw new UserFacingError("Describe what you're delivering, and include a link to the file.");
 
   const signer = signerFor(worker);
+  await ensureGas(worker);
   try {
     await secureflow.startWork(BigInt(escrowId), signer);
   } catch {

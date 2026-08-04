@@ -85,9 +85,16 @@ async function main() {
   }
   console.log(`   ✓ 3 applications submitted (strong applicant: ${freelancerAccount.address.slice(0, 8)}...)\n`);
 
-  // 3. Wait for Patron's poller to score + hire (poller runs every 15s)
-  console.log("3. Waiting for Patron to review applications and hire...");
-  await waitFor("hire decision", 90_000, 5_000, async () => {
+  // 3. Wait for the application window to close, then for the poller to score + hire.
+  //
+  // The 90s here used to be plenty, and then the review window landed and broke
+  // this loop: a job is deliberately held open (3 minutes by default) so
+  // applicants are ranked against each other instead of the fastest one winning.
+  // The harness has to allow for the very behaviour the product now has, or our
+  // own test reports a feature working correctly as a failure.
+  const windowMs = Number(process.env.E2E_WINDOW_WAIT_MS ?? 6 * 60_000);
+  console.log(`3. Waiting for the application window to close, then for scoring (up to ${Math.round(windowMs / 60_000)} min)...`);
+  await waitFor("hire decision", windowMs, 5_000, async () => {
     const decisions = (await (await fetch(`${BASE}/api/decisions`)).json()) as any[];
     const hire = decisions.find((d) => d.task_id === escrowId && d.type === "applicant_accepted");
     return hire ?? null;
