@@ -13,6 +13,7 @@
 import * as store from "../store.js";
 import * as workers from "./service.js";
 import { config } from "../config.js";
+import { llmPaused, llmPauseRemaining } from "../llm-status.js";
 
 const API = (method: string) => `https://api.telegram.org/bot${config.telegramBotToken}/${method}`;
 
@@ -176,6 +177,9 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
       body.join("\n\n"),
       "",
       pages > 1 ? `<i>Page ${p + 1} of ${pages}</i>` : "",
+      llmPaused()
+        ? `⏳ <i>The guild master is rate-limited and resumes in ${llmPauseRemaining()}. You can still apply now — applications are on-chain and queue up.</i>`
+        : "",
       `<i>Filter with</i> <code>/jobs logo</code> <i>or a minimum budget:</i> <code>/jobs 5</code>`,
     ]
       .filter(Boolean)
@@ -323,7 +327,12 @@ async function handleText(msg: TgMessage) {
         [
           "✅ Applied.",
           "",
-          "The guild master scores every applicant against the brief and hires one. I'll message you either way.",
+          // Never promise a reply we currently cannot produce. Applying is
+          // entirely on-chain and works regardless; it is the SCORING that needs
+          // the model, so when it's paused say so rather than going quiet.
+          llmPaused()
+            ? `Your application is on-chain and safe. The guild master is rate-limited right now and resumes in ${llmPauseRemaining()} — I'll message you as soon as it has scored everyone.`
+            : "The guild master scores every applicant against the brief and hires one. I'll message you either way.",
           `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
         ].join("\n"),
       );

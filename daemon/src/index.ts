@@ -23,6 +23,7 @@ import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/que
 import * as store from "./store.js";
 import * as workers from "./workers/service.js";
 import * as telegram from "./workers/telegram.js";
+import { setLlmPausedUntil } from "./llm-status.js";
 
 const PORT = config.port;
 
@@ -629,6 +630,9 @@ function noteLlmRateLimit(message: string): void {
   const isDaily = /per day|TPD|daily/i.test(message);
   const waitMs = Number.isFinite(seconds) && !isDaily ? Math.max(seconds * 1000, 5_000) : isDaily ? 15 * 60_000 : 60_000;
   llmCooldownUntil = Date.now() + waitMs;
+  // Share it, so the people waiting on a decision can be told rather than left
+  // watching silence.
+  setLlmPausedUntil(llmCooldownUntil);
   console.warn(`[poller] LLM rate-limited — pausing LLM work for ${Math.round(waitMs / 1000)}s`);
 }
 
