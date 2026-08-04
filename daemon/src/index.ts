@@ -636,7 +636,31 @@ function noteLlmRateLimit(message: string): void {
   console.warn(`[poller] LLM rate-limited — pausing LLM work for ${Math.round(waitMs / 1000)}s`);
 }
 
+/**
+ * Sweep jobs stranded mid-brief.
+ *
+ * runHireFlow marks its own failures, but only when it catches one — a daemon
+ * killed or redeployed between "insert the row" and "open the escrow" leaves a
+ * row in `briefing` that nothing will ever move on. It then counts as in-progress
+ * forever and quietly overstates how much live work there is.
+ *
+ * This was originally a one-time repair, which was the wrong shape: it fixed the
+ * rows that existed that day and did nothing about the next one, and production
+ * grew a fresh stranded row within hours. A recurring condition needs a recurring
+ * sweep.
+ */
+function sweepStrandedBriefs(): void {
+  const cutoff = Date.now() - 10 * 60_000;
+  for (const t of store.listTasks(100)) {
+    if (t.status === "briefing" && !t.escrowId && t.createdAt < cutoff) {
+      store.updateTaskStatus(t.id, "failed");
+      console.log(`[poller] marked stranded brief ${t.id} as failed (no escrow after 10 minutes)`);
+    }
+  }
+}
+
 async function pollOnce() {
+  sweepStrandedBriefs();
   if (!isGraphConfigured()) return;
   // Everything the poller does downstream costs an LLM call. While the model is
   // rate-limited there is nothing useful to do, and trying anyway is what kept
