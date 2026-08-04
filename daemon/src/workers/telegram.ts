@@ -48,6 +48,7 @@ interface TgUpdate {
 type Pending =
   | { kind: "handle" }
   | { kind: "cover"; escrowId: string }
+  | { kind: "portfolio"; escrowId: string; coverLetter: string }
   | { kind: "deliverable"; escrowId: string; milestoneIndex: number }
   | { kind: "withdraw" };
 
@@ -317,11 +318,30 @@ async function handleText(msg: TgMessage) {
     return void (await send(chatId, "You're not in the guild yet — send /start."));
   }
 
+  // Ask for evidence before applying. Testers pointed out that with only a text
+  // box every applicant sounds equally confident, and someone with real work to
+  // show had no way to show it.
   if (state.kind === "cover") {
+    pending.set(chatId, { kind: "portfolio", escrowId: state.escrowId, coverLetter: text });
+    await send(
+      chatId,
+      [
+        "Got it. Now — got a link to past work? A portfolio, CV, GitHub, Behance, Drive folder, anything.",
+        "",
+        "It counts: applicants who show work they've actually shipped score higher than the same claim without one.",
+        "",
+        "Send the link, or /skip if you'd rather not.",
+      ].join("\n"),
+    );
+    return;
+  }
+
+  if (state.kind === "portfolio") {
+    const skipped = /^\/skip$/i.test(text);
     pending.delete(chatId);
     await send(chatId, "Applying…");
     try {
-      const { txHash } = await workers.apply(worker.id, state.escrowId, text, 3);
+      const { txHash } = await workers.apply(worker.id, state.escrowId, state.coverLetter, 3, skipped ? undefined : text);
       await send(
         chatId,
         [

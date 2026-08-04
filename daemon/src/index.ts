@@ -121,6 +121,10 @@ function clientError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   console.error("[api]", raw);
 
+  // Already written for the person who caused it — sanitising it would replace
+  // the most useful sentence we have with a generic one.
+  if (err instanceof workers.UserFacingError) return raw;
+
   if (/insufficient|exceeds balance/i.test(raw)) {
     return "Patron's treasury doesn't hold enough USDC to fund this commission. Fund the treasury or lower the budget.";
   }
@@ -471,11 +475,12 @@ const server = http.createServer(async (req, res) => {
         escrowId?: string;
         coverLetter?: string;
         proposedTimelineDays?: number;
+        portfolioUrl?: string;
       };
       if (!b.workerId || !b.escrowId || !b.coverLetter) {
         return json(res, 400, { error: "workerId, escrowId and coverLetter are required" });
       }
-      const result = await workers.apply(b.workerId, b.escrowId, b.coverLetter, b.proposedTimelineDays ?? 3);
+      const result = await workers.apply(b.workerId, b.escrowId, b.coverLetter, b.proposedTimelineDays ?? 3, b.portfolioUrl);
       return json(res, 200, result);
     } catch (err) {
       return json(res, 500, { error: clientError(err) });

@@ -19,6 +19,18 @@ import * as secureflow from "../web3/secureflow.js";
 import { createSignerFor } from "../circle/circleSigner.js";
 import { dripGas, provisionWorkerWallet, workerBalance, withdrawTo } from "./wallets.js";
 
+/**
+ * An error whose message was written to be read by the person who caused it.
+ *
+ * The API sanitises errors before returning them, which is right for raw upstream
+ * failures (a provider 401 has no business in an HTTP response) and wrong for
+ * these: "that portfolio link doesn't look like a URL" is already the most useful
+ * thing we could say, and it was being replaced with "Could not open this
+ * commission. The failure has been logged." — unhelpful, and about a commission
+ * on an endpoint that has nothing to do with commissions.
+ */
+export class UserFacingError extends Error {}
+
 export interface JoinParams {
   handle: string;
   channel: "web" | "telegram";
@@ -38,8 +50,8 @@ export interface JoinParams {
  */
 export async function join(params: JoinParams): Promise<store.WorkerRow> {
   const handle = params.handle.trim();
-  if (!handle) throw new Error("A handle is required — it's the only thing you have to choose.");
-  if (handle.length > 40) throw new Error("That handle is too long (40 characters max).");
+  if (!handle) throw new UserFacingError("A handle is required — it's the only thing you have to choose.");
+  if (handle.length > 40) throw new UserFacingError("That handle is too long (40 characters max).");
 
   if (params.channelRef) {
     const existing = store.getWorkerByChannelRef(params.channel, params.channelRef);
@@ -100,11 +112,11 @@ export function openQuests(): { escrowId: string; title: string; budget: number;
 
 function signerFor(worker: store.WorkerRow) {
   if (worker.mode === "own") {
-    throw new Error(
+    throw new UserFacingError(
       "You signed up with your own wallet, so Patron can't sign for you — apply from SecureFlow with your wallet and Patron will still see it.",
     );
   }
-  if (!worker.walletAddress) throw new Error("No wallet on this account yet.");
+  if (!worker.walletAddress) throw new UserFacingError("No wallet on this account yet.");
   return createSignerFor(worker.walletAddress as `0x${string}`);
 }
 
@@ -121,13 +133,37 @@ export async function apply(
   escrowId: string,
   coverLetter: string,
   proposedTimelineDays: number,
+  /**
+   * A link to past work — portfolio, CV, Behance, a repo, anything.
+   *
+   * Testers asked for this: with only a text box, everyone sounds equally
+   * confident and the only thing separating applicants is how well they write.
+   * Someone with ten years of logos had no way to show it.
+   *
+   * A LINK rather than an upload, deliberately. Patron has no file storage, and
+   * the obvious shortcut — accepting a Telegram upload and putting its URL
+   * on-chain — would be a security hole: Telegram's file URLs embed the bot
+   * token, so that would publish our credentials permanently on a public chain.
+   * A link the applicant already controls is both safer and more durable.
+   */
+  portfolioUrl?: string,
 ): Promise<{ txHash: string }> {
   const worker = store.getWorker(workerId);
-  if (!worker) throw new Error("Unknown worker.");
+  if (!worker) throw new UserFacingError("Unknown worker.");
   const letter = coverLetter.trim();
-  if (!letter) throw new Error("Write a short note about why you're right for this one.");
+  if (!letter) throw new UserFacingError("Write a short note about why you're right for this one.");
 
-  const txHash = await secureflow.applyToJob(BigInt(escrowId), letter, BigInt(proposedTimelineDays), signerFor(worker));
+  const portfolio = portfolioUrl?.trim();
+  if (portfolio && !/^https?:\/\/\S+$/i.test(portfolio)) {
+    throw new UserFacingError("That portfolio link doesn't look like a URL — it should start with http:// or https://");
+  }
+
+  // Labelled rather than concatenated, so the scorer can tell the applicant's
+  // own words from a link they provided, and so the link survives as something
+  // readable on-chain and on SecureFlow's own interface.
+  const full = portfolio ? `${letter}\n\nPast work: ${portfolio}` : letter;
+
+  const txHash = await secureflow.applyToJob(BigInt(escrowId), full, BigInt(proposedTimelineDays), signerFor(worker));
   return { txHash };
 }
 
@@ -146,9 +182,9 @@ export async function submit(
   description: string,
 ): Promise<{ txHash: string }> {
   const worker = store.getWorker(workerId);
-  if (!worker) throw new Error("Unknown worker.");
+  if (!worker) throw new UserFacingError("Unknown worker.");
   const text = description.trim();
-  if (!text) throw new Error("Describe what you're delivering, and include a link to the file.");
+  if (!text) throw new UserFacingError("Describe what you're delivering, and include a link to the file.");
 
   const signer = signerFor(worker);
   try {
@@ -163,23 +199,23 @@ export async function submit(
 /** What they've earned. On Arc this is both their spendable balance and their gas. */
 export async function balance(workerId: string): Promise<{ balance: string; address: string }> {
   const worker = store.getWorker(workerId);
-  if (!worker?.walletAddress) throw new Error("Unknown worker.");
+  if (!worker?.walletAddress) throw new UserFacingError("Unknown worker.");
   return { balance: await workerBalance(worker.walletAddress as `0x${string}`), address: worker.walletAddress };
 }
 
 /** The escape hatch. A withdrawal, not a key export — see workers/wallets.ts. */
 export async function withdraw(workerId: string, destination: `0x${string}`, amountUsdc?: string) {
   const worker = store.getWorker(workerId);
-  if (!worker) throw new Error("Unknown worker.");
-  if (worker.mode === "own") throw new Error("You're already using your own wallet — the money is in it.");
-  if (!worker.walletAddress) throw new Error("No wallet on this account yet.");
+  if (!worker) throw new UserFacingError("Unknown worker.");
+  if (worker.mode === "own") throw new UserFacingError("You're already using your own wallet — the money is in it.");
+  if (!worker.walletAddress) throw new UserFacingError("No wallet on this account yet.");
   return withdrawTo({ walletAddress: worker.walletAddress }, destination, amountUsdc);
 }
 
 /** Graduation: keep the account, move to self-custody. Mode A is a ramp, not a trap. */
 export async function switchToOwnWallet(workerId: string, address: `0x${string}`) {
   const worker = store.getWorker(workerId);
-  if (!worker) throw new Error("Unknown worker.");
+  if (!worker) throw new UserFacingError("Unknown worker.");
   if (worker.mode === "managed" && worker.walletAddress) {
     // Sweep what they've earned before switching, or it's stranded in a wallet
     // they've just stopped using.

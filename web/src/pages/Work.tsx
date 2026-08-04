@@ -55,6 +55,7 @@ export default function Work() {
   const [notice, setNotice] = useState<{ text: string; tx?: string } | null>(null);
   const [openQuest, setOpenQuest] = useState<string | null>(null);
   const [coverLetter, setCoverLetter] = useState("");
+  const [portfolio, setPortfolio] = useState("");
   const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [deliverable, setDeliverable] = useState("");
 
@@ -125,11 +126,12 @@ export default function Work() {
     try {
       const r = await api<{ txHash: string }>("/api/worker/apply", {
         method: "POST",
-        body: JSON.stringify({ workerId: me.id, escrowId, coverLetter, proposedTimelineDays: 3 }),
+        body: JSON.stringify({ workerId: me.id, escrowId, coverLetter, proposedTimelineDays: 3, portfolioUrl: portfolio || undefined }),
       });
       setNotice({ text: "Applied. The guild master reviews every applicant — you'll see it on the ledger.", tx: r.txHash });
       setOpenQuest(null);
       setCoverLetter("");
+      setPortfolio("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -190,6 +192,11 @@ export default function Work() {
           <b>Why you can trust this:</b> the money for every job is locked in an escrow contract before you apply. The
           AI can release it to you — it structurally <b>cannot</b> take it back. If it rejects your work it has to give
           you written feedback and a revision round, and after that a human arbiter steps in.
+          <br />
+          <br />
+          <b>You keep 100%.</b> The figure on a job is what lands in your wallet — Patron takes nothing from it, and the
+          1% network fee is paid by the client on top, not deducted from you. Compare that to the 10% a traditional
+          freelance platform takes out of your side.
         </div>
 
         <QuestList quests={quests} />
@@ -306,6 +313,14 @@ export default function Work() {
                       value={coverLetter}
                       onChange={(e) => setCoverLetter(e.target.value)}
                       placeholder="Why are you right for this one? Be specific — the guild master reads this and scores it."
+                    />
+                    {/* Evidence beats assertion, and testers were right that a
+                        text box alone gives everyone the same voice. */}
+                    <input
+                      value={portfolio}
+                      onChange={(e) => setPortfolio(e.target.value)}
+                      placeholder="Link to past work — portfolio, CV, GitHub, Behance (optional, but it counts)"
+                      style={{ marginBottom: 12 }}
                     />
                     <div className="post-quest-fields">
                       <button onClick={() => void applyTo(q.escrowId)} disabled={busy || !coverLetter.trim()}>
