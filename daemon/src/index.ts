@@ -664,8 +664,55 @@ function sweepStrandedBriefs(): void {
   }
 }
 
+/**
+ * Return the budget on commissions nobody ever qualified for.
+ *
+ * Without this a job that attracts only weak applicants stays open forever with
+ * the money locked: production had one sitting at 66 hours, scored fifteen times
+ * as new applicants trickled in, none reaching the bar. Nothing was wrong, and
+ * nothing would ever happen.
+ *
+ * Tied to the client's own deadline rather than an arbitrary timer — once the
+ * duration they asked for has passed, the work cannot be delivered on time
+ * anyway, so holding their money serves nobody. Same principle as the refund
+ * path: money nobody earned goes back.
+ *
+ * Deliberately only touches jobs still at "posted". The moment a freelancer is
+ * hired their claim on the escrow is exactly what makes Patron worth trusting.
+ */
+async function sweepExpiredCommissions(): Promise<void> {
+  for (const task of store.listTasks(100)) {
+    if (task.status !== "posted" || !task.escrowId || !task.briefJson) continue;
+    let brief: { durationDays?: number; title?: string };
+    try {
+      brief = JSON.parse(task.briefJson);
+    } catch {
+      continue;
+    }
+    const days = Number(brief.durationDays ?? 0);
+    if (!days) continue;
+    if (Date.now() < task.createdAt + days * 86_400_000) continue;
+
+    try {
+      const txHash = await secureflow.cancelJob(BigInt(task.escrowId));
+      store.updateTaskStatus(task.id, "cancelled", task.escrowId);
+      console.log(`[poller] expired unfilled commission ${task.escrowId} cancelled, budget returned (${txHash})`);
+      broadcast({
+        type: "task_completed",
+        message: `"${brief.title ?? "Commission"}" reached its deadline without a suitable applicant — the budget has been returned in full.`,
+        escrowId: task.escrowId,
+        txHash,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.warn(`[poller] could not cancel expired ${task.escrowId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
 async function pollOnce() {
   sweepStrandedBriefs();
+  await sweepExpiredCommissions();
   if (!isGraphConfigured()) return;
   // Everything the poller does downstream costs an LLM call. While the model is
   // rate-limited there is nothing useful to do, and trying anyway is what kept

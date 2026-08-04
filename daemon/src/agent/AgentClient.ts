@@ -123,7 +123,7 @@ export class AgentClient {
 
     this.emit("applications_fetched", `${applications.length} application(s) received. Scoring comparatively...`);
 
-    const { winner } = await pickBestApplicant(applications, brief, (decision) => {
+    const { winner, scores: scored } = await pickBestApplicant(applications, brief, (decision) => {
       this.decisions.push({ ...decision, taskId: escrowId.toString() });
       this.emit("application_scored", `Scored ${decision.target?.slice(0, 8)}... — ${decision.score}/100`, {
         decision: { ...decision, taskId: escrowId.toString() },
@@ -132,7 +132,26 @@ export class AgentClient {
     });
 
     if (!winner) {
-      this.emit("no_suitable_applicant", "No suitable applicant found (min score 70). Job remains open.", {
+      // Recorded as a DECISION, not just an event. It was emitted without one,
+      // so nothing reached the decision log — the ledger showed a row of low
+      // scores and then silence, with no statement of what the guild master
+      // concluded or why the job had stalled. Deciding that nobody is good
+      // enough is a decision, and the whole promise of this project is that
+      // every decision is written down and readable.
+      const best = Math.max(0, ...scored.map((sc) => sc.score));
+      const decision: AgentDecision = {
+        id: crypto.randomUUID(),
+        taskId: escrowId.toString(),
+        type: "no_suitable_applicant",
+        reasoning:
+          `Reviewed ${applications.length} applicant(s); the strongest scored ${best}/100, below the 70 required to hire. ` +
+          `The commission stays open and the budget stays locked — nobody is paid for work that wasn't done well enough, ` +
+          `and nobody loses their claim on it. New applicants are scored as they arrive.`,
+        timestamp: Date.now(),
+      };
+      this.decisions.push(decision);
+      this.emit("no_suitable_applicant", `No applicant reached 70/100 (best was ${best}). The commission stays open.`, {
+        decision,
         escrowId: escrowId.toString(),
       });
       return null;

@@ -76,6 +76,7 @@ export interface AgentDecision {
     | "brief_generated"
     | "application_scored"
     | "applicant_accepted"
+    | "no_suitable_applicant"
     | "portfolio_verified"
     | "work_approved"
     | "work_rejected"
