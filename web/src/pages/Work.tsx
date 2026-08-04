@@ -33,6 +33,16 @@ interface Quest {
   budget: number;
   durationDays: number;
   criteria: string[];
+  closesAt: number;
+}
+
+/** When the guild master will judge — applicants shouldn't have to guess. */
+function closesIn(ts: number): string {
+  const ms = ts - Date.now();
+  if (ms <= 0) return "judging now";
+  const mins = Math.ceil(ms / 60_000);
+  if (mins < 60) return `judged in ~${mins} min`;
+  return `judged in ~${Math.round(mins / 60)}h`;
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -297,7 +307,8 @@ export default function Work() {
                 </div>
                 <div className="card-title">{q.title}</div>
                 <div className="card-milestones-preview">
-                  {q.durationDays} day{q.durationDays !== 1 ? "s" : ""} · {q.criteria.length} acceptance criteria
+                  {q.durationDays} day{q.durationDays !== 1 ? "s" : ""} · {q.criteria.length} acceptance criteria ·{" "}
+                  <span style={{ color: "var(--gold)" }}>{closesIn(q.closesAt)}</span>
                 </div>
 
                 {openQuest === q.escrowId ? (
@@ -362,6 +373,13 @@ export default function Work() {
             ))
           )}
         </div>
+      </div>
+
+      <div className="keycard">
+        <b>How you get picked:</b> a job stays open for a while after it's posted so several people can apply. Then the
+        guild master reads every application <b>together</b> and ranks them against each other — not first-come,
+        first-served. It writes down exactly why it chose who it chose, and you can read that reasoning yourself on the
+        ledger. Showing past work counts.
       </div>
 
       <div className="keycard">

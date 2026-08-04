@@ -60,6 +60,8 @@ export interface AcceptanceBrief {
   criteria: string[]; // explicit acceptance checklist (5-8 items)
   deliverableFormat: string; // e.g. "SVG + PNG, min 1000x1000px"
   revisionRounds: number; // max revisions before human escalation
+  /** Minutes the job stays open for applications before they are judged together. */
+  applicationWindowMinutes?: number;
   milestones: BriefMilestone[]; // splits the budget into independently-reviewed chunks
   briefHash?: `0x${string}`; // keccak256 of criteria JSON, posted on-chain in projectDescription
 }

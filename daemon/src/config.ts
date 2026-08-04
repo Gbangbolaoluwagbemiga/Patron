@@ -60,6 +60,19 @@ export const config = {
   // quietly locked 100x the requested amount.
   maxJobBudgetUsdc: Number(process.env.MAX_JOB_BUDGET_USDC ?? 100),
 
+  // How long a job stays open for applications before the guild master judges.
+  //
+  // Without a window, scoring fired the moment the FIRST application landed and
+  // hired anyone clearing the bar — so the job went to whoever was fastest, not
+  // whoever was best, and the "one comparative call ranking applicants against
+  // each other" only ever compared a pool of one. A marketplace that rewards
+  // refresh speed over skill is not the marketplace we claim to be building.
+  //
+  // Short by default because a hackathon demo cannot wait an hour; a real
+  // deployment would set this far higher, and a client can already ask for
+  // longer in their instruction.
+  applicationWindowMinutes: Number(process.env.APPLICATION_WINDOW_MINUTES ?? 3),
+
   // Managed-worker layer. All worker wallets live in one Circle wallet set,
   // separate from the treasury's. Set this after the first signup creates it, so
   // a restart reuses the same set instead of making a new one each boot.

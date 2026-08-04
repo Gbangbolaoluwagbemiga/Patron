@@ -31,6 +31,13 @@ const BriefSchema = z.object({
     .describe("5-8 specific, measurable acceptance criteria — not vague quality statements"),
   deliverableFormat: z.string().describe("Exact format description, e.g. 'SVG + PNG, min 1000x1000px'"),
   revisionRounds: z.number().describe("Max revision rounds before human escalation — default 2"),
+  applicationWindowMinutes: z
+    .number()
+    .optional()
+    .describe(
+      "How many minutes to keep the job open for applications before judging them together. " +
+        "Only set this if the client asked for it (e.g. 'give people a day to apply' = 1440). Otherwise omit it.",
+    ),
   milestones: z
     .array(BriefMilestoneSchema)
     .min(1)

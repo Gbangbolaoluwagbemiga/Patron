@@ -139,6 +139,16 @@ const PAGE_SIZE = 5;
  * hides most of the work someone could be doing — the exact opposite of what a
  * job board is for. Now: a single scannable list, a button per job, and paging.
  */
+/** "in 4 minutes" / "now" — so an applicant knows when a decision is coming. */
+function closesIn(ts: number): string {
+  const ms = ts - Date.now();
+  if (ms <= 0) return "judging now";
+  const mins = Math.ceil(ms / 60_000);
+  if (mins < 60) return `judged in ~${mins} min`;
+  const hrs = Math.round(mins / 60);
+  return `judged in ~${hrs}h`;
+}
+
 function matchesFilter(q: { title: string; criteria: string[]; budget: number }, filter: string): boolean {
   if (!filter) return true;
   const f = filter.toLowerCase().trim();
@@ -175,7 +185,7 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
   const body = slice.map((q) => {
     const crit = q.criteria.slice(0, 3).map((c) => `   · ${c}`).join("\n");
     return [
-      `<b>${q.title}</b> — 💰 $${q.budget} · ${q.durationDays}d`,
+      `<b>${q.title}</b> — 💰 $${q.budget} · ${q.durationDays}d · ${closesIn(q.closesAt)}`,
       crit,
       q.criteria.length > 3 ? `   · …and ${q.criteria.length - 3} more` : "",
     ]
@@ -224,8 +234,27 @@ async function handleText(msg: TgMessage) {
   if (!tgUserId) return;
   const text = (msg.text ?? "").trim();
 
+  // ── Replies to a question we asked, even when they look like commands ──
+  //
+  // /skip is offered by the portfolio prompt, so it MUST be handled before
+  // command dispatch. It wasn't: anything starting with "/" fell into the
+  // command block, matched nothing, and got answered with the help text — which
+  // silently threw away the cover letter the person had just written and never
+  // applied them to the job. They were told to type /skip and then punished for it.
+  const waiting = pending.get(chatId);
+  if (waiting && /^\/(skip|cancel|stop)$/i.test(text)) {
+    if (/^\/(cancel|stop)$/i.test(text)) {
+      pending.delete(chatId);
+      return void (await send(chatId, "No problem — nothing sent. /jobs whenever you're ready."));
+    }
+    // /skip only means "no link"; anywhere else it has nothing to skip.
+    if (waiting.kind !== "portfolio") {
+      return void (await send(chatId, "Nothing to skip here — /cancel if you'd rather stop."));
+    }
+  }
+
   // ── Commands ──
-  if (text.startsWith("/")) {
+  if (text.startsWith("/") && !(waiting?.kind === "portfolio" && /^\/skip$/i.test(text))) {
     const cmd = text.split(/\s+/)[0]?.toLowerCase();
     const rest = text.slice(cmd?.length ?? 0).trim();
 
@@ -468,7 +497,7 @@ async function handleText(msg: TgMessage) {
           // the model, so when it's paused say so rather than going quiet.
           llmPaused()
             ? `Your application is on-chain and safe. The guild master is rate-limited right now and resumes in ${llmPauseRemaining()} — I'll message you as soon as it has scored everyone.`
-            : "The guild master scores every applicant against the brief and hires one. I'll message you either way.",
+            : "The job stays open for a while so others can apply, then the guild master scores everyone together and hires the best fit. I'll message you either way — you don't have to keep checking.",
           `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
         ].join("\n"),
       );

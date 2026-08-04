@@ -688,6 +688,24 @@ async function pollOnce() {
         const lastScored = store.getPollerInt(scoredCountKey(task.escrowId)) ?? -1;
         if (currentCount === 0 || currentCount <= lastScored) continue; // nothing new to score
 
+        // Give people a chance to apply before judging.
+        //
+        // This used to score the instant the first application arrived, and hire
+        // anyone clearing the bar — so the job went to whoever refreshed fastest,
+        // and the "one comparative call ranking applicants against each other"
+        // was ranking a pool of one. That is not a marketplace, it is a race.
+        //
+        // The window is per-job so a client can ask for longer ("give people a
+        // day"), and it only gates the FIRST judgement: once a job has been
+        // scored, a later applicant is still picked up on the next pass, because
+        // the alternative is telling someone who applied in good time that they
+        // arrived too late to be read at all.
+        const windowMinutes = brief?.applicationWindowMinutes ?? config.applicationWindowMinutes;
+        const opensAt = task.createdAt + windowMinutes * 60_000;
+        if (lastScored < 0 && Date.now() < opensAt) {
+          continue; // still open for applications
+        }
+
         // Mark AFTER the pass succeeds, never before. Recording the count first
         // meant a single transient LLM failure — a rate limit, a timeout — burned
         // the marker anyway and the job was skipped forever: escrow #32 took a

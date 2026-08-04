@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import * as store from "../store.js";
 import * as secureflow from "../web3/secureflow.js";
 import { createSignerFor } from "../circle/circleSigner.js";
+import { config } from "../config.js";
 import { dripGas, provisionWorkerWallet, workerBalance, withdrawTo } from "./wallets.js";
 
 /**
@@ -99,6 +100,8 @@ export interface Quest {
   budget: number;
   durationDays: number;
   criteria: string[];
+  /** When applications close and the guild master judges them together. */
+  closesAt: number;
   /** Only set when a worker was supplied — lets a surface hide "Apply" on ones they've taken. */
   alreadyApplied?: boolean;
 }
@@ -110,12 +113,14 @@ export function openQuests(): Quest[] {
     .filter((t) => t.status === "posted" && t.escrowId && t.briefJson)
     .map((t) => {
       const brief = JSON.parse(t.briefJson as string);
+      const windowMinutes = (brief.applicationWindowMinutes as number | undefined) ?? config.applicationWindowMinutes;
       return {
         escrowId: t.escrowId as string,
         title: brief.title as string,
         budget: brief.budget as number,
         durationDays: brief.durationDays as number,
         criteria: (brief.criteria ?? []) as string[],
+        closesAt: t.createdAt + windowMinutes * 60_000,
       };
     });
 }
