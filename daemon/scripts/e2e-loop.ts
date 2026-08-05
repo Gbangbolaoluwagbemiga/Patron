@@ -62,7 +62,18 @@ async function main() {
   const freelancerKey = (process.env.FREELANCER_1_KEY?.trim() || generatePrivateKey()) as `0x${string}`;
   const freelancerAccount = privateKeyToAccount(freelancerKey);
   const applicants = [
-    { key: freelancerKey, coverLetter: "Experienced brand designer, 40+ logo projects delivered, SVG/PNG always included.", timeline: 3 },
+    {
+      key: freelancerKey,
+      // Carries a real, fetchable link so the loop exercises the evidence path.
+      // It has to MATCH the brief, which the first attempt did not: pointing a
+      // logo job at github.com/torvalds got a well-earned 40/100 — "a strong
+      // portfolio, but none of it demonstrates logo design or SVG" — which is
+      // the scorer working correctly and the test being wrong. simple-icons is
+      // an SVG icon library, so the evidence genuinely supports the claim.
+      coverLetter:
+        "Experienced brand designer, 40+ logo projects delivered, SVG/PNG always included.\n\nPast work: https://github.com/simple-icons/simple-icons",
+      timeline: 3,
+    },
     { key: (process.env.FREELANCER_2_KEY?.trim() || generatePrivateKey()) as `0x${string}`, coverLetter: "I can do logos.", timeline: 5 },
     {
       key: (process.env.FREELANCER_3_KEY?.trim() || generatePrivateKey()) as `0x${string}`,
