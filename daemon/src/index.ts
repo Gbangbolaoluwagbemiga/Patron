@@ -898,7 +898,13 @@ async function pollOnce() {
       // perfectly healthy — the API answers, the chain is fine, jobs just never
       // move. Announce it once. Discovered the hard way: the daily token budget
       // ran out and the only visible symptom was a schema-validation error.
-      if (/rate limit|rate_limit|429/i.test(msg)) {
+      // 413 means the request was too big, not that we asked too often — the
+      // message still says "rate_limit_exceeded", but pausing and retrying an
+      // oversized prompt fails identically forever. It is a bug to fix, not a
+      // wait to serve.
+      if (/413|too large/i.test(msg)) {
+        console.error("[poller] prompt too large for the model — this will not resolve by waiting");
+      } else if (/rate limit|rate_limit|429/i.test(msg)) {
         noteLlmRateLimit(msg);
         if (!llmExhausted) {
           llmExhausted = true;

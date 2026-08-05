@@ -31,6 +31,9 @@ import { gatherEvidence, renderEvidence } from "./ApplicantEvidence.js";
  * so the score is arithmetic rather than an impression that happens to be
  * accompanied by numbers.
  */
+/** Total characters of fetched portfolio text allowed across ALL applicants in one pass. */
+const TOTAL_PORTFOLIO_BUDGET = 4500;
+
 const ScoreBreakdownSchema = z.object({
   capability: z.number().describe("0-50: can they do this work? From their fetched portfolio/CV, or the letter's concrete specifics if no readable link."),
   briefFit: z.number().describe("0-30: does the cover letter engage with THIS brief's acceptance criteria, rather than being generic?"),
@@ -184,6 +187,19 @@ export async function scoreApplications(
   // parallel: a scoring pass shouldn't take N times longer because N people
   // applied.
   const evidence = await Promise.all(applications.map((a) => gatherEvidence(a.freelancerAddress, a.coverLetter)));
+
+  // Share ONE portfolio budget across everyone rather than giving each applicant
+  // a fixed slice. Reading 4k characters per person was fine for one applicant
+  // and produced a 6806-token request for three — over the fallback model's
+  // 6000-token ceiling, which fails with 413 and, unlike a rate limit, never
+  // succeeds by waiting. A busy job would have silently stopped being scorable
+  // precisely because it was popular.
+  const perApplicant = Math.max(600, Math.floor(TOTAL_PORTFOLIO_BUDGET / Math.max(1, applications.length)));
+  for (const e of evidence) {
+    if (e.portfolio?.content && e.portfolio.content.length > perApplicant) {
+      e.portfolio.content = e.portfolio.content.slice(0, perApplicant) + " …[truncated]";
+    }
+  }
 
   const parsed = await groqStructured({
     system: SYSTEM_PROMPT,
