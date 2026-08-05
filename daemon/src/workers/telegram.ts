@@ -171,7 +171,16 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
     return send(chatId, "No open commissions this minute. I'll message you the moment one is posted.");
   }
   if (quests.length === 0) {
-    return send(chatId, `Nothing matches “${filter}”. Send /jobs to see all ${all.length}, or try a word like <code>logo</code> or a minimum like <code>5</code>.`);
+    return send(
+      chatId,
+      [
+        `Nothing matches “${filter}”.`,
+        "",
+        `Looking for one job in particular? Use its number: <code>/job ${all[0]?.escrowId ?? 38}</code>`,
+        `Filtering by word: <code>/jobs logo</code> · by budget: <code>/jobs 5</code>`,
+        `Or /jobs on its own to see all ${all.length}.`,
+      ].join("\n"),
+    );
   }
 
   const pages = Math.ceil(quests.length / PAGE_SIZE);
@@ -239,6 +248,53 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
   );
 }
 
+/**
+ * One commission in full: the whole brief, the milestone split, every applicant
+ * ranked with the reasoning, and the outcome.
+ *
+ * Shared by /job <id> and /jobs <id>, because people reach for both and being
+ * pedantic about which is "correct" helps nobody.
+ */
+async function showJobDetail(chatId: number, id: string): Promise<void> {
+  const detail = workers.jobDetail(id);
+  if (!detail) {
+    await send(chatId, `No commission with id ${id}. /jobs to see what's open.`);
+    return;
+  }
+
+  const graded = detail.scores.length
+    ? detail.scores
+        .sort((a, b) => b.score - a.score)
+        .map((sc) => {
+          const flag = sc.injection ? " 🚫 injection attempt" : sc.hired ? " ← hired" : "";
+          return `   <b>${sc.score}/100</b> ${sc.address.slice(0, 8)}…${flag}\n      <i>${sc.reasoning.slice(0, 150)}</i>`;
+        })
+        .join("\n\n")
+    : "   Nobody has applied yet.";
+
+  await send(
+    chatId,
+    [
+      `<b>${detail.title}</b>  <code>#${id}</code>`,
+      `💰 $${detail.budget} USDC · ${detail.status}`,
+      "",
+      "<b>Everything they need:</b>",
+      ...detail.criteria.map((c, i) => `   ${i + 1}. ${c}`),
+      detail.milestones.length > 1
+        ? "\n<b>Paid in stages:</b>\n" + detail.milestones.map((m, i) => `   ${i + 1}. $${m.amount} — ${m.description}`).join("\n")
+        : "",
+      "",
+      `<b>${detail.scores.length} applicant${detail.scores.length !== 1 ? "s" : ""}, graded:</b>`,
+      graded,
+      "",
+      detail.outcome ? `<b>Outcome:</b> ${detail.outcome}` : "",
+      `Full reasoning, verbatim: ${WEB}/jobs/${id}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
 async function handleText(msg: TgMessage) {
   const chatId = msg.chat.id;
   const tgUserId = msg.from?.id;
@@ -290,7 +346,20 @@ async function handleText(msg: TgMessage) {
     }
 
     if (cmd === "/help") return void (await send(chatId, HELP));
-    if (cmd === "/jobs" || cmd === "/quests") return void (await showJobs(chatId, tgUserId, rest));
+    if (cmd === "/jobs" || cmd === "/quests") {
+      // "/jobs 37" almost always means "show me job 37" — the listing prints the
+      // id as #37, so that is the number in front of someone. But /jobs <n> was
+      // defined as a MINIMUM BUDGET, so it searched for jobs paying $37+, found
+      // none, and told them nothing matched. Two commands one letter apart
+      // meaning entirely different things, with the more discoverable one doing
+      // the wrong thing.
+      //
+      // If the number IS an open job, show that job. Otherwise fall through to
+      // the budget filter, which is what someone typing "/jobs 5" wants.
+      const bare = rest.trim();
+      if (/^\d+$/.test(bare) && workers.jobDetail(bare)) return void (await showJobDetail(chatId, bare));
+      return void (await showJobs(chatId, tgUserId, rest));
+    }
 
     if (cmd === "/submit") {
       const worker = workerFor(tgUserId);
@@ -348,43 +417,7 @@ async function handleText(msg: TgMessage) {
     if (cmd === "/job") {
       const id = rest.trim();
       if (!id) return void (await send(chatId, "Which one? <code>/job 38</code> — the number is on every job."));
-      const detail = workers.jobDetail(id);
-      if (!detail) return void (await send(chatId, `No commission with id ${id}. /jobs to see what's open.`));
-
-      const graded = detail.scores.length
-        ? detail.scores
-            .sort((a, b) => b.score - a.score)
-            .map((sc) => {
-              const flag = sc.injection ? " 🚫 injection attempt" : sc.hired ? " ← hired" : "";
-              return `   <b>${sc.score}/100</b> ${sc.address.slice(0, 8)}…${flag}\n      <i>${sc.reasoning.slice(0, 150)}</i>`;
-            })
-            .join("\n\n")
-        : "   Nobody has applied yet.";
-
-      return void (await send(
-        chatId,
-        [
-          `<b>${detail.title}</b>  <code>#${id}</code>`,
-          `💰 $${detail.budget} USDC · ${detail.status}`,
-          "",
-          // The whole list. The board truncates to keep it scannable, and this
-          // is where "… and 1 more" actually resolves — testers could see there
-          // was more and had no way to reach it.
-          "<b>Everything they need:</b>",
-          ...detail.criteria.map((c, i) => `   ${i + 1}. ${c}`),
-          detail.milestones.length > 1
-            ? "\n<b>Paid in stages:</b>\n" + detail.milestones.map((m, i) => `   ${i + 1}. $${m.amount} — ${m.description}`).join("\n")
-            : "",
-          "",
-          `<b>${detail.scores.length} applicant${detail.scores.length !== 1 ? "s" : ""}, graded:</b>`,
-          graded,
-          "",
-          detail.outcome ? `<b>Outcome:</b> ${detail.outcome}` : "",
-          `Full reasoning, verbatim: ${WEB}/jobs/${id}`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-      ));
+      return void (await showJobDetail(chatId, id));
     }
 
     if (cmd === "/profile") {
