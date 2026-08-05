@@ -33,6 +33,7 @@ interface Quest {
   budget: number;
   durationDays: number;
   criteria: string[];
+  milestones: { description: string; amount: number }[];
   closesAt: number;
 }
 
@@ -319,6 +320,20 @@ export default function Work() {
                         <li key={i}>{c}</li>
                       ))}
                     </ul>
+                    {/* Parity with the bot, which shows this. Someone should not
+                        discover a job pays in stages only after being hired. */}
+                    {q.milestones && q.milestones.length > 1 && (
+                      <>
+                        <div className="brief-label">Paid in stages</div>
+                        <ul className="criteria-list" style={{ marginBottom: 14 }}>
+                          {q.milestones.map((m, i) => (
+                            <li key={i}>
+                              <span className="amount">${m.amount}</span> — {m.description}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                     <textarea
                       rows={3}
                       value={coverLetter}

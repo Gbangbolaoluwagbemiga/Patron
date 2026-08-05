@@ -197,7 +197,7 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
       "",
       "   <b>What they need:</b>",
       crit,
-      q.criteria.length > 4 ? `      … and ${q.criteria.length - 4} more` : "",
+      q.criteria.length > 4 ? `      … and ${q.criteria.length - 4} more — <code>/job ${q.escrowId}</code> for all of them` : "",
       milestones,
     ]
       .filter(Boolean)
@@ -365,7 +365,16 @@ async function handleText(msg: TgMessage) {
         chatId,
         [
           `<b>${detail.title}</b>  <code>#${id}</code>`,
-          `💰 $${detail.budget} · ${detail.status}`,
+          `💰 $${detail.budget} USDC · ${detail.status}`,
+          "",
+          // The whole list. The board truncates to keep it scannable, and this
+          // is where "… and 1 more" actually resolves — testers could see there
+          // was more and had no way to reach it.
+          "<b>Everything they need:</b>",
+          ...detail.criteria.map((c, i) => `   ${i + 1}. ${c}`),
+          detail.milestones.length > 1
+            ? "\n<b>Paid in stages:</b>\n" + detail.milestones.map((m, i) => `   ${i + 1}. $${m.amount} — ${m.description}`).join("\n")
+            : "",
           "",
           `<b>${detail.scores.length} applicant${detail.scores.length !== 1 ? "s" : ""}, graded:</b>`,
           graded,

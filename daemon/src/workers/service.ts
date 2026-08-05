@@ -343,6 +343,8 @@ export function jobDetail(escrowId: string): {
   title: string;
   budget: number;
   status: string;
+  criteria: string[];
+  milestones: { description: string; amount: number }[];
   scores: { address: string; score: number; reasoning: string; hired: boolean; injection: boolean }[];
   outcome: string | null;
 } | null {
@@ -371,7 +373,15 @@ export function jobDetail(escrowId: string): {
         ? "Deadline passed with no suitable applicant — the budget was returned in full."
         : null;
 
-  return { title: brief.title, budget: brief.budget, status: task.status, scores, outcome };
+  return {
+    title: brief.title,
+    budget: brief.budget,
+    status: task.status,
+    criteria: brief.criteria ?? [],
+    milestones: brief.milestones ?? [],
+    scores,
+    outcome,
+  };
 }
 
 /** What they've earned. On Arc this is both their spendable balance and their gas. */

@@ -14,6 +14,7 @@
 import { z } from "zod";
 import { groqStructured } from "../groq/structured.js";
 import type { Application, AcceptanceBrief, AgentDecision } from "../web3/types.js";
+import { getAverageRating } from "../web3/secureflow.js";
 
 const ScoredApplicationSchema = z.object({
   freelancerAddress: z.string().describe("Must exactly match one of the applicant addresses given"),
@@ -176,7 +177,53 @@ export async function pickBestApplicant(
   }
 
   const eligible = scores.filter((s) => s.recommendation === "accept" && s.score >= 70 && !s.injectionDetected);
-  const winner = eligible.sort((a, b) => b.score - a.score)[0];
+
+  // Ties are real — two people can both score 75 — and they were being broken by
+  // whatever order the model happened to emit its results in. That is arbitrary,
+  // non-deterministic between runs, and impossible to explain to the person who
+  // lost. A marketplace has to be able to say WHY.
+  //
+  // So, in order: the higher score; then the better on-chain reputation, which
+  // rewards a proven track record over an equally good pitch; then whoever
+  // applied first, because when nothing else separates two people, the one who
+  // showed up earlier has the better claim. Every step is explainable out loud.
+  const ratings = new Map<string, number>();
+  if (eligible.length > 1) {
+    await Promise.all(
+      eligible.map(async (e) => {
+        try {
+          const r = await getAverageRating(e.application.freelancerAddress as `0x${string}`);
+          ratings.set(e.application.freelancerAddress.toLowerCase(), r.count > 0 ? r.average : 0);
+        } catch {
+          ratings.set(e.application.freelancerAddress.toLowerCase(), 0);
+        }
+      }),
+    );
+  }
+  const ratingOf = (s: ScoredApplication) => ratings.get(s.application.freelancerAddress.toLowerCase()) ?? 0;
+
+  const ranked = [...eligible].sort(
+    (a, b) => b.score - a.score || ratingOf(b) - ratingOf(a) || a.application.appliedAt - b.application.appliedAt,
+  );
+  const winner = ranked[0];
+
+  // Say how a tie was settled, rather than leaving it to look like a coin toss.
+  if (winner && ranked.length > 1 && ranked[1] && ranked[1].score === winner.score) {
+    const wr = ratingOf(winner);
+    const reason =
+      wr > ratingOf(ranked[1])
+        ? `a higher on-chain rating (${wr.toFixed(1)}/5)`
+        : "applying first — nothing else separated them";
+    onDecision?.({
+      id: crypto.randomUUID(),
+      taskId: "",
+      type: "application_scored",
+      reasoning: `Tie at ${winner.score}/100. Settled on ${reason}.`,
+      target: winner.application.freelancerAddress,
+      score: winner.score,
+      timestamp: Date.now(),
+    });
+  }
 
   return { winner: winner?.application ?? null, scores };
 }
