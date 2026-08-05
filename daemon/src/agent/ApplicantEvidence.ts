@@ -51,6 +51,7 @@ function extractPortfolio(coverLetter: string): string | null {
 }
 
 const MAX_PORTFOLIO_CHARS = 4000;
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 /**
  * Actually READ what they linked, not just confirm it exists.
@@ -77,8 +78,34 @@ async function readPortfolio(url: string): Promise<{ url: string; reachable: boo
 
     const type = (res.headers.get("content-type") ?? "").toLowerCase();
 
+    // A PDF CV is one of the most common things a real freelancer will send, and
+    // reporting it as unreadable meant the single most likely piece of evidence
+    // was thrown away. unpdf extracts the text server-side.
     if (type.includes("pdf")) {
-      return { url, reachable: true, note: "a PDF — confirmed to exist, but its text could not be extracted here", content: null };
+      try {
+        const buf = new Uint8Array(await res.arrayBuffer());
+        if (buf.byteLength > MAX_PDF_BYTES) {
+          return { url, reachable: true, note: `a PDF, but too large to read (${(buf.byteLength / 1e6).toFixed(1)}MB)`, content: null };
+        }
+        const { extractText, getDocumentProxy } = await import("unpdf");
+        const doc = await getDocumentProxy(buf);
+        const { text } = await extractText(doc, { mergePages: true });
+        const clean = String(text).replace(/\s+/g, " ").trim();
+        // Don't guess at WHY a PDF is thin. An empty extraction really does
+        // suggest a scan; a short one is just short, and calling that "scanned
+        // images" is a guess dressed up as a finding.
+        if (clean.length === 0) {
+          return { url, reachable: true, note: "a PDF with no extractable text — most likely a scan or images", content: null };
+        }
+        return {
+          url,
+          reachable: true,
+          note: clean.length < 200 ? "a PDF, though it contains very little text" : "a PDF — text extracted and read below",
+          content: clean.slice(0, MAX_PORTFOLIO_CHARS),
+        };
+      } catch {
+        return { url, reachable: true, note: "a PDF whose text could not be extracted", content: null };
+      }
     }
     if (!type.includes("html") && !type.includes("text") && !type.includes("json")) {
       return { url, reachable: true, note: `confirmed to exist (${type.split(";")[0] || "unknown type"}), contents not readable as text`, content: null };
@@ -97,7 +124,29 @@ async function readPortfolio(url: string): Promise<{ url: string; reachable: boo
       .trim();
 
     if (text.length < 40) {
-      return { url, reachable: true, note: "resolves, but the page has almost no readable text (likely a JavaScript app)", content: null };
+      // A single-page app serves an empty shell to a plain fetch. Rendering it
+      // would mean running a browser inside the daemon, which is a lot of weight
+      // for one case — but many such sites publish the same information in
+      // metadata for link previews, which is free to read and often enough to
+      // tell what someone does.
+      const meta = [
+        raw.match(/<meta[^>]+(?:property=["']og:(?:title|description)["']|name=["'](?:description|twitter:description)["'])[^>]+content=["']([^"']+)["']/gi) ?? [],
+      ]
+        .flat()
+        .map((m) => m.match(/content=["']([^"']+)["']/i)?.[1] ?? "")
+        .filter(Boolean)
+        .join(" · ");
+      const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+      const fallback = [title, meta].filter(Boolean).join(" — ").trim();
+
+      return fallback.length > 20
+        ? {
+            url,
+            reachable: true,
+            note: "a JavaScript app whose page text could not be read directly; this is its published description",
+            content: fallback.slice(0, MAX_PORTFOLIO_CHARS),
+          }
+        : { url, reachable: true, note: "resolves, but serves no readable text (a JavaScript app we cannot render)", content: null };
     }
     return { url, reachable: true, note: "resolves — contents read below", content: text.slice(0, MAX_PORTFOLIO_CHARS) };
   } catch (err) {
