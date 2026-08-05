@@ -219,7 +219,32 @@ export async function pickBestApplicant(
     });
   }
 
-  const eligible = scores.filter((s) => s.recommendation === "accept" && s.score >= 70 && !s.injectionDetected);
+  // The SCORE decides, not the recommendation flag.
+  //
+  // These were both gates, and they are supposed to agree — the prompt says
+  // recommend "accept" only at 70+. But the model is stochastic, and a run that
+  // returned 85 with "reject" would silently drop that applicant: the ledger
+  // would show 85/100 and no hire, with nothing anywhere explaining why. Since
+  // the score now comes from an explicit 100-point allocation, it is the
+  // defensible number and the flag is redundant.
+  //
+  // A disagreement is still worth surfacing rather than swallowing, so it is
+  // written to the ledger where the applicant and a judge can both see it.
+  const eligible = scores.filter((s) => s.score >= 70 && !s.injectionDetected);
+
+  for (const s of scores) {
+    if (s.score >= 70 && !s.injectionDetected && s.recommendation === "reject") {
+      onDecision?.({
+        id: crypto.randomUUID(),
+        taskId: "",
+        type: "application_scored",
+        reasoning: `Scored ${s.score}/100 but flagged "reject" — the two disagree. Going with the score, which is derived from the stated allocation, so this applicant remains in contention.`,
+        target: s.application.freelancerAddress,
+        score: s.score,
+        timestamp: Date.now(),
+      });
+    }
+  }
 
   // Ties are real — two people can both score 75 — and they were being broken by
   // whatever order the model happened to emit its results in. That is arbitrary,
