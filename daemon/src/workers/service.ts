@@ -339,9 +339,11 @@ async function resolveMilestone(escrowId: string): Promise<number> {
  * their own jobs is a different reading of the same facts, not a second copy of
  * them that could drift.
  */
+export type WorkState = "applied" | "hired" | "completed" | "disputed" | "lost";
+
 export async function myWork(
   workerId: string,
-): Promise<{ escrowId: string; title: string; budget: number; status: string; icon: string }[]> {
+): Promise<{ escrowId: string; title: string; budget: number; status: string; icon: string; state: WorkState }[]> {
   const worker = store.getWorker(workerId);
   if (!worker?.walletAddress) return [];
   const me = worker.walletAddress.toLowerCase();
@@ -370,23 +372,36 @@ export async function myWork(
     }),
   );
 
-  const out: { escrowId: string; title: string; budget: number; status: string; icon: string }[] = [];
+  const out: { escrowId: string; title: string; budget: number; status: string; icon: string; state: WorkState }[] = [];
   for (const [i, t] of candidates.entries()) {
     const { hired, applied } = involvement[i]!;
     if (!hired && !applied) continue;
 
     const brief = JSON.parse(t.briefJson as string);
-    const [icon, status] = hired
+    // `state` is what a surface should BRANCH on; `status` is a sentence for a
+    // human. They were the same string, which meant the web page had to
+    // pattern-match prose to decide whether to show a submit button — and that
+    // prose told a web user to type a Telegram command.
+    const state: WorkState = hired
       ? t.status === "completed"
-        ? ["✅", "Finished and paid"]
+        ? "completed"
         : t.status === "disputed"
-          ? ["⚖️", "With a human arbiter"]
-          : ["🔨", "You were hired — send your work with /submit " + t.escrowId]
+          ? "disputed"
+          : "hired"
       : t.status === "posted"
-        ? ["⏳", "Applied, waiting on the guild master"]
-        : ["—", "Applied, but someone else was hired"];
+        ? "applied"
+        : "lost";
 
-    out.push({ escrowId: t.escrowId as string, title: brief.title, budget: brief.budget, status, icon });
+    const presentation: Record<WorkState, [string, string]> = {
+      completed: ["✅", "Finished and paid"],
+      disputed: ["⚖️", "With a human arbiter"],
+      hired: ["🔨", "You were hired — send your work"],
+      applied: ["⏳", "Applied, waiting on the guild master"],
+      lost: ["—", "Applied, but someone else was hired"],
+    };
+    const [icon, status] = presentation[state];
+
+    out.push({ escrowId: t.escrowId as string, title: brief.title, budget: brief.budget, status, icon, state });
   }
   return out;
 }

@@ -25,6 +25,33 @@ createRoot(document.getElementById("root")!).render(
             <Route path="payments" element={<Payments />} />
             <Route path="freelancers" element={<Freelancers />} />
           <Route path="work" element={<Work />} />
+          {/* Anything else rendered an empty frame — a blank page reads as a
+              broken site, and a mistyped or stale link is the likeliest way a
+              judge arrives somewhere that doesn't exist. */}
+          <Route
+            path="*"
+            element={
+              <div className="page">
+                <div className="page-header">
+                  <h1>Nothing here</h1>
+                  <p>That page doesn't exist. The guild hall is this way.</p>
+                </div>
+                <div className="panel">
+                  <div className="panel-body">
+                    <div className="empty">
+                      <a className="tx-link" href="/">
+                        Back to the command center
+                      </a>{" "}
+                      ·{" "}
+                      <a className="tx-link" href="/work">
+                        Find paid work
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            }
+          />
           </Route>
         </Routes>
       </DaemonProvider>

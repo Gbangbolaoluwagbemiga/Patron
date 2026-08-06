@@ -58,6 +58,8 @@ interface MyJob {
   budget: number;
   status: string;
   icon: string;
+  /** Branch on this, not on the human-readable status sentence. */
+  state: "applied" | "hired" | "completed" | "disputed" | "lost";
 }
 
 interface Quest {
@@ -332,10 +334,10 @@ export default function Work() {
                   <span className="quest-budget">${m.budget}</span>
                 </div>
                 <div className="quest-meta">
-                  #{m.escrowId} · {m.status.replace(/ with \/submit \d+/, "")}
+                  #{m.escrowId} · {m.status}
                 </div>
 
-                {m.status.startsWith("You were hired") &&
+                {m.state === "hired" &&
                   (submitFor === m.escrowId ? (
                     <div style={{ marginTop: 14 }}>
                       <textarea

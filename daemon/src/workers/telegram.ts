@@ -464,7 +464,18 @@ async function handleText(msg: TgMessage) {
       }
       return void (await send(
         chatId,
-        ["<b>Your jobs</b>", "", ...mine.map((m) => `${m.icon} <b>${m.title}</b> — $${m.budget}\n   ${m.status}`)].join("\n"),
+        [
+          "<b>Your jobs</b>",
+          "",
+          // The /submit hint belongs HERE, on the surface where it is a real
+          // command — not baked into the shared status text, where it followed
+          // web users onto a page with no command line to type it into.
+          ...mine.map(
+            (m) =>
+              `${m.icon} <b>${m.title}</b> — $${m.budget}\n   ${m.status}` +
+              (m.state === "hired" ? ` — <code>/submit ${m.escrowId}</code>` : ""),
+          ),
+        ].join("\n"),
       ));
     }
 
