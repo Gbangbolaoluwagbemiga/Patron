@@ -13,8 +13,8 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ARC_EXPLORER, DAEMON_URL } from "../api";
-import { cardMotion, shorten } from "../components";
-import { IconCheck, IconCoin, IconScroll, IconSwords } from "../Icon";
+import { TELEGRAM_BOT_URL, cardMotion, shorten } from "../components";
+import { IconCheck, IconCoin, IconScroll, IconSwords, IconTelegram } from "../Icon";
 import { useCountUp } from "../motion";
 
 const STORAGE_KEY = "patron.worker.id";
@@ -242,6 +242,19 @@ export default function Work() {
             </button>
           </div>
           {error && <div className="post-quest-msg error">{error}</div>}
+        </div>
+
+        {/* The other door, said plainly at the moment someone is deciding.
+            The bot has real users who all found it by word of mouth, because
+            nothing on this site had ever mentioned it existed. */}
+        <div className="tg-invite">
+          <div className="tg-invite-text">
+            <b>Prefer Telegram?</b> The same guild, the same jobs, the same wallet — in a chat. Get notified the moment
+            work appears instead of checking a page.
+          </div>
+          <a className="tg-invite-btn" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer">
+            <IconTelegram size={15} /> Open @PatronGuildbot
+          </a>
         </div>
 
         <div className="keycard">

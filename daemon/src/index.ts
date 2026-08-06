@@ -501,6 +501,59 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  /**
+   * The delivered work, for the person who paid for it.
+   *
+   * The loop was open at the most important point: a client commissioned a job,
+   * watched the guild master hire, review and pay — and had nowhere to COLLECT
+   * what they bought. The freelancer's submission goes on-chain, is read by the
+   * poller, handed to the reviewer, and then dropped. Nothing stored it and
+   * nothing served it, so the buyer could see that their logo had been approved
+   * and paid for without ever seeing the logo.
+   *
+   * Read straight from the subgraph rather than from a copy we keep, for the
+   * same reason ratings are: the client can verify every word of this against
+   * the chain, and a cache would be one more thing that can quietly disagree
+   * with the truth.
+   */
+  if (req.method === "GET" && url.pathname === "/api/jobs/work") {
+    const escrowId = url.searchParams.get("escrowId");
+    if (!escrowId) return json(res, 400, { error: "escrowId is required" });
+    try {
+      const task = store.listTasks(300).find((t) => t.escrowId === escrowId);
+      const brief = task?.briefJson ? JSON.parse(task.briefJson) : null;
+      const planned: { description?: string; amount?: number }[] = Array.isArray(brief?.milestones) ? brief.milestones : [];
+
+      const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId });
+      const onChain = new Map(
+        (result.escrow?.milestones ?? []).map((m) => [Number(m.milestoneIndex), m]),
+      );
+
+      const STATUS = ["awaiting delivery", "delivered — under review", "accepted and paid", "revision requested", "disputed", "resolved"];
+      const milestones = (planned.length ? planned : [{ description: brief?.title ?? "Deliverable", amount: brief?.budget }]).map((p, i) => {
+        const m = onChain.get(i);
+        const delivered = m?.description ?? null;
+        return {
+          index: i,
+          planned: p.description ?? "",
+          amount: p.amount ?? null,
+          status: STATUS[Number(m?.status ?? 0)] ?? "awaiting delivery",
+          statusCode: Number(m?.status ?? 0),
+          submittedAt: m?.submittedAt ? Number(m.submittedAt) * 1000 : null,
+          approvedAt: m?.approvedAt ? Number(m.approvedAt) * 1000 : null,
+          /** What the freelancer actually wrote and sent. */
+          delivered,
+          /** Pulled out so the client can just click the thing they paid for. */
+          links: delivered ? (delivered.match(/https?:\/\/[^\s<>"')]+/gi) ?? []) : [],
+        };
+      });
+
+      return json(res, 200, { escrowId, title: brief?.title ?? null, status: task?.status ?? null, milestones });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
   /** Humans who have joined the guild — the answer to "has anyone actually signed up". */
   if (req.method === "GET" && url.pathname === "/api/workers") {
     return json(

@@ -10,6 +10,7 @@ import { inkTransition, useCountUp, useFlashOnChange } from "./motion";
 import {
   IconAlert,
   IconBrain,
+  IconTelegram,
   IconCheck,
   IconCoin,
   IconDot,
@@ -25,6 +26,8 @@ import {
 } from "./Icon";
 
 const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
+/** The second door. Exported because more than one page needs to point at it. */
+export const TELEGRAM_BOT_URL = "https://t.me/PatronGuildbot";
 
 export function timeAgo(ts: number): string {
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -78,6 +81,12 @@ export function Nav({ connected }: { connected: boolean }) {
         ))}
       </div>
       <div className="status">
+        {/* The bot was invisible here. Two doors were built and only one was
+            ever advertised — people found the Telegram one by being told about
+            it in person, which is not a distribution strategy. */}
+        <a className="nav-tg" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" title="Patron on Telegram">
+          <IconTelegram size={13} /> Telegram bot
+        </a>
         <span className={`dot ${connected ? "live" : ""}`} />
         {connected ? "Live" : "Disconnected"}
       </div>
@@ -378,7 +387,15 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
       {status === "error" && <div className="post-quest-msg error">⚠ {error}</div>}
       {status === "done" && result && (
         <div className="post-quest-msg ok">
-          ✓ Posted — escrow #{result.escrowId}. Watch it flow through the panels below.
+          ✓ Posted — escrow #{result.escrowId}.{" "}
+          {/* Point them at THEIR job, not at the room. "Watch the panels below"
+              asked a client to find their own commission in a shared firehose;
+              the page that tracks this one job — applicants, every decision,
+              and the delivered file when it lands — is one link away. */}
+          <Link className="tx-link" to={`/jobs/${result.escrowId}`}>
+            Track it here ↗
+          </Link>{" "}
+          — applicants, the guild master's reasoning, and your finished file when it arrives.
         </div>
       )}
     </div>

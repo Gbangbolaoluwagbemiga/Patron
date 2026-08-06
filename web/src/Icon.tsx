@@ -177,3 +177,13 @@ export function IconDot(p: IconProps) {
     </svg>
   );
 }
+
+/** The paper-plane, drawn in the same one-stroke line style as the rest. */
+export function IconTelegram(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M21.5 4.5 2.8 11.4a.6.6 0 0 0 .05 1.13l4.5 1.42 1.7 5.2a.6.6 0 0 0 1.03.22l2.4-2.6 4.6 3.4a.6.6 0 0 0 .94-.35l3.4-14.6a.6.6 0 0 0-.82-.7Z" />
+      <path d="m7.35 13.95 11.3-7.6-7.9 8.6" />
+    </svg>
+  );
+}
