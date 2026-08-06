@@ -294,8 +294,24 @@ export function recordDecision(d: {
   ).run(d.id, d.taskId, d.type, d.reasoning, d.target ?? null, d.score ?? null, d.timestamp);
 }
 
-export function listDecisions(limit = 100): any[] {
-  return db.prepare(`SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?`).all(limit);
+/**
+ * Decisions, newest first.
+ *
+ * The offset matters more than it looks. This was capped at 100 with no way to
+ * ask for anything older, and production was sitting at 98 — so within days
+ * the ledger would have started dropping its own history off the bottom with
+ * nothing on screen to say so. "Every decision the guild master has ever made,
+ * verbatim" is the claim the whole project rests on; silently truncating it is
+ * the one failure that turns that claim into a lie.
+ */
+export function listDecisions(limit = 100, offset = 0): any[] {
+  return db.prepare(`SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(limit, offset);
+}
+
+/** How many there are in total, so a reader knows what they're paging through. */
+export function countDecisions(): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM decisions`).get() as { n: number };
+  return Number(row?.n ?? 0);
 }
 
 export function recordPayment(p: {

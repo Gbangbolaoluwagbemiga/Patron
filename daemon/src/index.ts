@@ -250,6 +250,9 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Payment");
+  // Without this the browser can SEE the response but not the header on it, so
+  // a paged reader would have no idea how many pages there are.
+  res.setHeader("Access-Control-Expose-Headers", "X-Total-Count");
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
@@ -326,8 +329,19 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/api/tasks") {
     return json(res, 200, store.listTasks());
   }
+  /**
+   * The decision log, paged.
+   *
+   * Still returns a bare array so every existing caller keeps working; the
+   * total rides along in a header rather than changing the response shape.
+   * Without limit/offset there was no way to read past the newest 100, which
+   * meant the public record quietly began deleting itself once traffic arrived.
+   */
   if (req.method === "GET" && url.pathname === "/api/decisions") {
-    return json(res, 200, store.listDecisions());
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 200);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    res.setHeader("X-Total-Count", String(store.countDecisions()));
+    return json(res, 200, store.listDecisions(limit, offset));
   }
   if (req.method === "GET" && url.pathname === "/api/payments") {
     return json(res, 200, store.listPayments());
