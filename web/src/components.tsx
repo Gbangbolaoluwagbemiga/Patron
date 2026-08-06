@@ -624,3 +624,81 @@ export function MilestoneList({ task, payments }: { task: TaskRow; payments: Pay
 }
 
 export { SECUREFLOW_JOBS_URL };
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+// Extracted after the second page needed it. The ledger pages all have the same
+// shape of problem — an unbounded list that used to be short — but NOT the same
+// solution: decisions, payments and commissions are paged by the server because
+// they grow without limit, while the freelancer register is derived in the
+// browser from three other feeds and has to be paged here. One control, three
+// call sites, three different sources.
+
+/** A short window of page numbers around the current one, with gaps. */
+export function pageWindow(current: number, total: number): (number | null)[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+  const out: (number | null)[] = [0];
+  const from = Math.max(1, current - 1);
+  const to = Math.min(total - 2, current + 1);
+  if (from > 1) out.push(null);
+  for (let p = from; p <= to; p++) out.push(p);
+  if (to < total - 2) out.push(null);
+  out.push(total - 1);
+  return out;
+}
+
+export function Pager({
+  page,
+  pages,
+  onPage,
+  busy = false,
+  newestLabel = "Newer",
+  oldestLabel = "Older",
+}: {
+  page: number;
+  pages: number;
+  onPage: (p: number) => void;
+  busy?: boolean;
+  newestLabel?: string;
+  oldestLabel?: string;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <div className="pager">
+      <button className="pager-btn" onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0 || busy}>
+        ← {newestLabel}
+      </button>
+      <div className="pager-pages">
+        {pageWindow(page, pages).map((p, i) =>
+          p === null ? (
+            <span key={`gap-${i}`} className="pager-gap">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              className={`pager-num ${p === page ? "current" : ""}`}
+              onClick={() => onPage(p)}
+              disabled={busy}
+              aria-current={p === page ? "page" : undefined}
+            >
+              {p + 1}
+            </button>
+          ),
+        )}
+      </div>
+      <button className="pager-btn" onClick={() => onPage(Math.min(pages - 1, page + 1))} disabled={page >= pages - 1 || busy}>
+        {oldestLabel} →
+      </button>
+    </div>
+  );
+}
+
+/** "1–20 of 98", or nothing when there is nothing to count. */
+export function PageCount({ page, size, total }: { page: number; size: number; total: number }) {
+  if (total <= 0) return null;
+  return (
+    <span className="page-count">
+      {page * size + 1}–{Math.min((page + 1) * size, total)} of {total}
+    </span>
+  );
+}

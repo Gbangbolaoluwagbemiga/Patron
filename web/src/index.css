@@ -1495,3 +1495,12 @@ textarea {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Page header right-hand group — a count and a link sitting together without
+   fighting for the same corner. */
+.page-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}

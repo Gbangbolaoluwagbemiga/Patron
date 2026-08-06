@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ARC_EXPLORER, DAEMON_URL } from "../api";
 import { useDaemon } from "../daemon-context";
 import { computeFreelancerStats } from "../types";
-import { shorten } from "../components";
+import { PageCount, Pager, shorten } from "../components";
 import { LedgerSkeleton } from "../motion";
 
 interface Rating {
@@ -10,11 +10,14 @@ interface Rating {
   count: number;
 }
 
+const PAGE_SIZE = 15;
+
 export default function Freelancers() {
   const { tasks, decisions, payments, loaded } = useDaemon();
   const stats = computeFreelancerStats(tasks, decisions, payments);
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
   const [handles, setHandles] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(0);
 
   const addressKey = stats.map((s) => s.address).join(",");
 
@@ -35,10 +38,19 @@ export default function Freelancers() {
       .catch(() => {});
   }, [addressKey]);
 
+  // Paged in the BROWSER, unlike the other ledgers. This register isn't a table
+  // the server keeps — it's derived by walking every task, decision and payment
+  // and folding them per person, so there is no query to offset. The rows are
+  // people rather than events, which also means it grows far more slowly than
+  // the feeds do.
+  const pages = Math.max(1, Math.ceil(stats.length / PAGE_SIZE));
+  const visible = stats.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   return (
     <div className="page">
       <div className="page-header">
         <h1>Register of Adventurers</h1>
+        <PageCount page={page} size={PAGE_SIZE} total={stats.length} />
       </div>
       <p className="page-sub">
         Every human who has taken a commission from Patron. The <b>on-chain rating</b> is written to the SecureFlow
@@ -65,7 +77,7 @@ export default function Freelancers() {
               </tr>
             </thead>
             <tbody>
-              {stats.map((s) => (
+              {visible.map((s) => (
                 <tr key={s.address}>
                   <td>
                     <a className="tx-link" href={`${ARC_EXPLORER}/address/${s.address}`} target="_blank" rel="noreferrer">
@@ -87,6 +99,8 @@ export default function Freelancers() {
           </table>
         </div>
       )}
+
+      <Pager page={page} pages={pages} onPage={setPage} newestLabel="Previous" oldestLabel="Next" />
     </div>
   );
 }

@@ -265,9 +265,9 @@ export function updateTaskBrief(id: string, briefJson: string): void {
   db.prepare(`UPDATE tasks SET brief_json = ? WHERE id = ?`).run(briefJson, id);
 }
 
-export function listTasks(limit = 50): TaskRow[] {
-  const rows = db.prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?`).all(limit) as any[];
-  return rows.map((r) => ({
+/** Column names to field names, in one place so every task query agrees. */
+function toTaskRow(r: any): TaskRow {
+  return {
     id: r.id,
     escrowId: r.escrow_id,
     instruction: r.instruction,
@@ -276,7 +276,12 @@ export function listTasks(limit = 50): TaskRow[] {
     briefJson: r.brief_json,
     createdAt: r.created_at,
     clientAddress: r.client_address ?? null,
-  }));
+  };
+}
+
+export function listTasks(limit = 50): TaskRow[] {
+  const rows = db.prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?`).all(limit) as any[];
+  return rows.map(toTaskRow);
 }
 
 export function recordDecision(d: {
@@ -329,8 +334,55 @@ export function recordPayment(p: {
   ).run(p.id, p.direction, p.escrowId ?? null, p.amountUsdc, p.counterparty ?? null, p.txHash ?? null, p.reason ?? null, Date.now());
 }
 
-export function listPayments(limit = 100): any[] {
-  return db.prepare(`SELECT * FROM payments ORDER BY timestamp DESC LIMIT ?`).all(limit);
+export function listPayments(limit = 100, offset = 0): any[] {
+  return db.prepare(`SELECT * FROM payments ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(limit, offset);
+}
+
+export function countPayments(): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM payments`).get() as { n: number };
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * Money in and money out, summed in SQL over EVERY row.
+ *
+ * The page headline reads "$X received from machines, $Y released to humans",
+ * and it was computed by adding up whatever rows the browser happened to be
+ * holding. Paginate that naively and the headline silently becomes "the totals
+ * for page 3" — a ledger quoting a wrong total is worse than a ledger that is
+ * merely long, so the totals have to come from the whole table, not the page.
+ */
+export function paymentTotals(): { in: number; out: number } {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'in' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS total_in,
+         COALESCE(SUM(CASE WHEN direction = 'escrow_release' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS total_out
+       FROM payments`,
+    )
+    .get() as { total_in: number; total_out: number };
+  return { in: Number(row?.total_in ?? 0), out: Number(row?.total_out ?? 0) };
+}
+
+/**
+ * Commissions for the public board — everything EXCEPT rows that never opened
+ * an escrow.
+ *
+ * The board filtered "failed" out in the browser, which is fine when you hold
+ * every row and wrong the moment you page: the server would send 20, the page
+ * would drop 3, and the reader would get a short page under a control that
+ * promised 20 of 60. Excluded in SQL so the count and the page agree.
+ */
+export function listCommissions(limit = 20, offset = 0): TaskRow[] {
+  const rows = db
+    .prepare(`SELECT * FROM tasks WHERE status != 'failed' ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(limit, offset) as any[];
+  return rows.map(toTaskRow);
+}
+
+export function countCommissions(): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'failed'`).get() as { n: number };
+  return Number(row?.n ?? 0);
 }
 
 // ── Review history (backs the escalation counter) ───────────────────────────

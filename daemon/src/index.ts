@@ -252,7 +252,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Payment");
   // Without this the browser can SEE the response but not the header on it, so
   // a paged reader would have no idea how many pages there are.
-  res.setHeader("Access-Control-Expose-Headers", "X-Total-Count");
+  res.setHeader("Access-Control-Expose-Headers", "X-Total-Count, X-Total-In, X-Total-Out");
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
@@ -343,8 +343,33 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("X-Total-Count", String(store.countDecisions()));
     return json(res, 200, store.listDecisions(limit, offset));
   }
+  /**
+   * The payment feed, paged.
+   *
+   * The totals ride in headers because they must describe the WHOLE ledger, not
+   * the page being viewed. Summing the rows the browser happens to hold was
+   * correct only while it held all of them.
+   */
   if (req.method === "GET" && url.pathname === "/api/payments") {
-    return json(res, 200, store.listPayments());
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 200);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    const totals = store.paymentTotals();
+    res.setHeader("X-Total-Count", String(store.countPayments()));
+    res.setHeader("X-Total-In", totals.in.toFixed(6));
+    res.setHeader("X-Total-Out", totals.out.toFixed(6));
+    return json(res, 200, store.listPayments(limit, offset));
+  }
+
+  /**
+   * The public commission board — every task that actually opened an escrow.
+   * Separate from /api/tasks, which stays exactly as it was for the dashboard
+   * and for anything already consuming it.
+   */
+  if (req.method === "GET" && url.pathname === "/api/commissions") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    res.setHeader("X-Total-Count", String(store.countCommissions()));
+    return json(res, 200, store.listCommissions(limit, offset));
   }
   if (req.method === "GET" && url.pathname === "/healthz") {
     return json(res, 200, { ok: true });
