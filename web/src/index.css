@@ -109,8 +109,9 @@ body::after {
 .app {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 0 32px 110px;
+  padding: 26px 40px 110px;
   position: relative;
+  min-width: 0; /* grid children must be allowed to shrink, or wide tables push the rail */
 }
 
 .amount,
@@ -126,14 +127,7 @@ code {
 
 /* ── Masthead ─────────────────────────────────────────────────────────────── */
 
-.nav {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 20px;
-  padding: 26px 0 20px;
-  margin-bottom: 20px;
-}
+
 
 .nav-brand {
   display: flex;
@@ -172,9 +166,6 @@ code {
    so without an explicit placement grid drops it onto its own row below them
    and the pill stretches the full width of the page. */
 .status {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -214,7 +205,6 @@ code {
 /* Nav as a floating glass pill — the single most "product" element on screen. */
 .nav-links {
   display: flex;
-  flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 4px;
   padding: 6px;
@@ -1510,14 +1500,7 @@ textarea {
    and cost ~240px of a layout whose content is two-column grids, verbatim
    reasoning and a six-column table. So the reading pages group, and the action
    steps out of the group. */
-.nav-row {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
+
 
 .nav-cta {
   display: inline-flex;
@@ -1558,6 +1541,122 @@ textarea {
 .nav-cta.active:hover { transform: none; filter: none; box-shadow: none; }
 
 @media (max-width: 700px) {
-  .nav-row { gap: 10px; }
-  .nav-cta { width: 100%; justify-content: center; }
+
+}
+
+/* ══ SIDEBAR LAYOUT ═══════════════════════════════════════════════════════════
+   A fixed rail on the left, content to the right. The rail holds the brand,
+   every route at equal weight, and the two persistent facts about the app —
+   whether the stream is live, and that a Telegram door exists. */
+.app-shell {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  align-items: start;
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 28px 18px 22px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter: blur(18px);
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  padding: 0 6px;
+}
+.sidebar-brand .logo { width: 38px; height: 38px; flex: 0 0 auto; }
+.sidebar-brand .nav-title { font-size: 22px; }
+.sidebar-brand .nav-subtitle { font-size: 10.5px; line-height: 1.35; max-width: 150px; }
+
+/* The links stack instead of sitting in a pill. Left-aligned with a gold marker
+   on the active row — a vertical list needs an edge to align to, and centring
+   six labels of very different lengths reads as noise. */
+.sidebar-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+}
+.sidebar-links .nav-link {
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 9px;
+  white-space: normal;
+  line-height: 1.35;
+  text-align: left;
+}
+.sidebar-links .nav-link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 2.5px;
+  height: 18px;
+  border-radius: 0 2px 2px 0;
+  background: var(--gold);
+  transition: transform 0.2s ease;
+}
+.sidebar-links .nav-link.active::before { transform: translateY(-50%) scaleY(1); }
+.sidebar-links .nav-link:hover { background: rgba(255, 255, 255, 0.035); }
+
+.sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 6px 0;
+  border-top: 1px solid var(--border);
+}
+.sidebar-foot .status { padding: 0 6px; font-size: 12px; }
+.sidebar-foot .nav-tg { justify-content: center; }
+
+/* Below this the rail costs more than it gives, so it becomes a header and the
+   links go back to a horizontal scroll strip. */
+@media (max-width: 1080px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 18px 22px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-brand { flex: 0 0 auto; }
+  .sidebar-brand .nav-subtitle { display: none; }
+  .sidebar-links {
+    flex-direction: row;
+    flex: 1 1 100%;
+    order: 3;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 2px;
+  }
+  .sidebar-links .nav-link { white-space: nowrap; }
+  .sidebar-links .nav-link::before { display: none; }
+  .sidebar-links .nav-link.active { background: color-mix(in srgb, var(--gold) 12%, transparent); color: var(--gold); }
+  .sidebar-foot {
+    flex-direction: row;
+    align-items: center;
+    margin-left: auto;
+    padding: 0;
+    border-top: none;
+    gap: 12px;
+  }
+  .app { padding: 22px 24px 90px; }
 }

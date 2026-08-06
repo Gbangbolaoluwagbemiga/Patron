@@ -56,52 +56,45 @@ export const cardMotion = {
 export function Nav({ connected }: { connected: boolean }) {
   // Named as sections of a guild's account book rather than as dashboard tabs.
   // Same routes, same data — the voice is what changes.
-  // Five of these are places to READ the ledger. The sixth is the only thing a
-  // person can DO here, and it was sitting in the row at exactly the same
-  // weight as "Account of Monies" — the entire human side of a labour market,
-  // styled as a fifth tab. Grouping the reading pages and pulling the action
-  // out fixes the flatness without spending screen width on a sidebar, which
-  // this layout can't afford: the content underneath is two-column grids, long
-  // verbatim reasoning and a six-column table.
   const ledger = [
     { to: "/", label: "The Ledger", end: true },
     { to: "/jobs", label: "Open Commissions" },
     { to: "/decisions", label: "The Guild Master's Hand" },
     { to: "/payments", label: "Account of Monies" },
     { to: "/freelancers", label: "Register of Adventurers" },
+    { to: "/work", label: "Get Hired" },
   ];
   return (
-    <div className="nav">
-      <div className="nav-brand">
+    <aside className="sidebar">
+      <NavLink to="/" className="sidebar-brand">
         <img src="/patron-logo.svg" alt="" className="logo" />
         <div>
           <div className="nav-title">PATRON</div>
           <div className="nav-subtitle">the human-labor endpoint of the agent economy</div>
         </div>
-      </div>
-      <div className="nav-row">
-        <div className="nav-links">
-          {ledger.map((l) => (
-            <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
-              {l.label}
-            </NavLink>
-          ))}
-        </div>
-        <NavLink to="/work" className={({ isActive }) => `nav-cta ${isActive ? "active" : ""}`}>
-          Get Hired <span aria-hidden="true">→</span>
-        </NavLink>
-      </div>
-      <div className="status">
-        {/* The bot was invisible here. Two doors were built and only one was
-            ever advertised — people found the Telegram one by being told about
-            it in person, which is not a distribution strategy. */}
+      </NavLink>
+
+      <nav className="sidebar-links">
+        {ledger.map((l) => (
+          <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+            {l.label}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Pinned to the bottom of the rail — the connection state and the second
+          door are both persistent facts about the app rather than places to go,
+          so they sit apart from the routes. */}
+      <div className="sidebar-foot">
         <a className="nav-tg" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" title="Patron on Telegram">
           <IconTelegram size={13} /> Telegram bot
         </a>
-        <span className={`dot ${connected ? "live" : ""}`} />
-        {connected ? "Live" : "Disconnected"}
+        <div className="status">
+          <span className={`dot ${connected ? "live" : ""}`} />
+          {connected ? "Live" : "Disconnected"}
+        </div>
       </div>
-    </div>
+    </aside>
   );
 }
 

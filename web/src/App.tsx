@@ -9,9 +9,10 @@ function App() {
   const location = useLocation();
 
   return (
-    <div className="app">
+    <div className="app-shell">
       <NotificationCenter liveEvents={liveEvents} />
       <Nav connected={connected} />
+      <div className="app">
 
       {/* Keyed on pathname so each route genuinely enters and leaves — a page
           being turned rather than content swapped in place. mode="wait" so the
@@ -39,6 +40,7 @@ function App() {
             signature.
           </>
         )}
+        </div>
       </div>
     </div>
   );
