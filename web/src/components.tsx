@@ -56,13 +56,19 @@ export const cardMotion = {
 export function Nav({ connected }: { connected: boolean }) {
   // Named as sections of a guild's account book rather than as dashboard tabs.
   // Same routes, same data — the voice is what changes.
-  const links = [
+  // Five of these are places to READ the ledger. The sixth is the only thing a
+  // person can DO here, and it was sitting in the row at exactly the same
+  // weight as "Account of Monies" — the entire human side of a labour market,
+  // styled as a fifth tab. Grouping the reading pages and pulling the action
+  // out fixes the flatness without spending screen width on a sidebar, which
+  // this layout can't afford: the content underneath is two-column grids, long
+  // verbatim reasoning and a six-column table.
+  const ledger = [
     { to: "/", label: "The Ledger", end: true },
     { to: "/jobs", label: "Open Commissions" },
     { to: "/decisions", label: "The Guild Master's Hand" },
     { to: "/payments", label: "Account of Monies" },
     { to: "/freelancers", label: "Register of Adventurers" },
-    { to: "/work", label: "Get Hired" },
   ];
   return (
     <div className="nav">
@@ -73,12 +79,17 @@ export function Nav({ connected }: { connected: boolean }) {
           <div className="nav-subtitle">the human-labor endpoint of the agent economy</div>
         </div>
       </div>
-      <div className="nav-links">
-        {links.map((l) => (
-          <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
-            {l.label}
-          </NavLink>
-        ))}
+      <div className="nav-row">
+        <div className="nav-links">
+          {ledger.map((l) => (
+            <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+              {l.label}
+            </NavLink>
+          ))}
+        </div>
+        <NavLink to="/work" className={({ isActive }) => `nav-cta ${isActive ? "active" : ""}`}>
+          Get Hired <span aria-hidden="true">→</span>
+        </NavLink>
       </div>
       <div className="status">
         {/* The bot was invisible here. Two doors were built and only one was
