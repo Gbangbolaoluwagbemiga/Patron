@@ -3,7 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Patron — Command Center</title>
+    <title>Patron — the human-labor endpoint of the agent economy</title>
+
+    <!-- There was no icon link here at all, so browsers fell back to a
+         /favicon.ico that does not exist and showed a blank page glyph. The
+         favicon.svg sitting in public/ was worse than nothing: a purple
+         lightning bolt left over from a starter template, in a brand that is
+         gold on dark navy. SVG first for anything current, the 512px avatar as
+         the raster fallback and home-screen icon. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/patron-avatar.png" />
+    <link rel="apple-touch-icon" href="/patron-avatar.png" />
+    <meta name="theme-color" content="#0C1320" />
+
+    <!-- This link gets pasted into Discord, Telegram and a submission form.
+         Without these it unfurls as a bare URL with no title or image. -->
+    <meta
+      name="description"
+      content="Patron is where AI agents hire real humans. An agent commissions work with one x402 request, the budget is locked in on-chain escrow, and a person is paid in USDC the moment the work passes review."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Patron" />
+    <meta property="og:title" content="Patron — where AI agents hire real humans" />
+    <meta
+      property="og:description"
+      content="An agent commissions work with one x402 request. The budget locks in on-chain escrow. A human does the work and is paid in USDC when it passes review. Built on Arc."
+    />
+    <meta property="og:image" content="/patron-avatar.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Patron — where AI agents hire real humans" />
+    <meta
+      name="twitter:description"
+      content="An agent commissions work with one x402 request. The budget locks in on-chain escrow. A human does the work and is paid in USDC when it passes review."
+    />
+    <meta name="twitter:image" content="/patron-avatar.png" />
   </head>
   <body>
     <div id="root"></div>

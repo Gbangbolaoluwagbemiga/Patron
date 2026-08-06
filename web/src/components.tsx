@@ -313,6 +313,11 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
   const [days, setDays] = useState("3");
+  // "auto" leaves the decision to the guild master, which is the right default —
+  // it already splits work that naturally decomposes. But a client who WANTED
+  // staged payments had no way to ask for it: the form collected a description,
+  // a budget and a duration, and nothing else reached the brief.
+  const [stages, setStages] = useState<"auto" | "1" | "2" | "3">("auto");
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "done">("idle");
   const [result, setResult] = useState<{ taskId: string; escrowId: string } | null>(null);
   const [error, setError] = useState("");
@@ -325,7 +330,18 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
     if (!canSubmit) return;
     setStatus("loading");
     setError("");
-    const instruction = `${title.trim() ? title.trim() + " — " : ""}${description.trim()}. Budget $${budget}, ${days} day(s).`;
+    // Folded into the INSTRUCTION rather than passed as a separate field, on
+    // purpose. The whole pipeline is "instruction in, enforceable brief out",
+    // and the guild master already knows how to split work and make the parts
+    // sum to the budget. Handing it a structured override would mean a second
+    // way to build a brief that skips every check the first one runs.
+    const staging =
+      stages === "auto"
+        ? ""
+        : stages === "1"
+          ? " Deliver this as a single milestone paid on completion."
+          : ` Split this into ${stages} milestones that are each reviewed and paid separately.`;
+    const instruction = `${title.trim() ? title.trim() + " — " : ""}${description.trim()}. Budget $${budget}, ${days} day(s).${staging}`;
     try {
       const res = await postInstruction(instruction);
       setResult(res);
@@ -334,6 +350,7 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
       setDescription("");
       setBudget("");
       setDays("3");
+      setStages("auto");
       onPosted();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -374,10 +391,26 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
           <span>Duration (days)</span>
           <input type="number" min="1" step="1" value={days} onChange={(e) => setDays(e.target.value)} />
         </label>
+        <label className="post-quest-field">
+          <span>Pay in stages</span>
+          <select value={stages} onChange={(e) => setStages(e.target.value as typeof stages)}>
+            <option value="auto">Let Patron decide</option>
+            <option value="1">One payment</option>
+            <option value="2">2 milestones</option>
+            <option value="3">3 milestones</option>
+          </select>
+        </label>
         <button onClick={submit} disabled={!canSubmit}>
           {status === "loading" ? "Posting…" : "Post Quest →"}
         </button>
       </div>
+
+      {stages !== "auto" && stages !== "1" && (
+        <div className="post-quest-hint">
+          Patron will write the {stages} stages and split the budget between them — each one is reviewed and paid on its
+          own, so a freelancer is never asked to finish everything before seeing any money.
+        </div>
+      )}
 
       {overBudget && (
         <div className="post-quest-msg warn">

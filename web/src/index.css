@@ -1374,3 +1374,44 @@ textarea {
 @media (max-width: 720px) {
   .nav-tg span { display: none; }
 }
+
+/* ── Staged payment control ───────────────────────────────────────────────────
+   The brief generator has always been able to split work into milestones, and
+   the post form had no way to ask for it — the client could set a budget and a
+   duration and nothing else reached the brief. Styled to match the number
+   inputs beside it so the row still reads as one control group. */
+.post-quest-field select {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--field-bg, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 32px 11px 12px;
+  cursor: pointer;
+  appearance: none;
+  /* Chevron drawn inline so the control needs no image request and still
+     inherits the gold on a dark field. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23C9A84C' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  transition: border-color 0.18s ease;
+}
+.post-quest-field select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+}
+.post-quest-field select option {
+  background: #12131a;
+  color: var(--ink);
+}
+.post-quest-field:has(select) { max-width: 190px; }
+
+.post-quest-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--gold) 35%, transparent);
+}
