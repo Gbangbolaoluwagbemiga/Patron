@@ -1550,10 +1550,12 @@ textarea {
    whether the stream is live, and that a Telegram door exists. */
 .app-shell {
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: var(--rail-w, 258px) minmax(0, 1fr);
   align-items: start;
   min-height: 100vh;
+  transition: grid-template-columns 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
+:root[data-rail="collapsed"] { --rail-w: 76px; }
 
 .sidebar {
   position: sticky;
@@ -1659,4 +1661,180 @@ textarea {
     gap: 12px;
   }
   .app { padding: 22px 24px 90px; }
+}
+
+/* ══ RAIL: refinements ════════════════════════════════════════════════════════
+   Vertical rhythm, icons, a remembered collapse, and just enough motion that
+   the thing feels built rather than laid out. */
+.sidebar {
+  gap: 0;
+  padding: 22px 14px 18px;
+  transition: padding 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.sidebar-brand {
+  gap: 12px;
+  padding: 6px 8px 0;
+  margin-bottom: 26px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sidebar-brand .logo {
+  transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.sidebar-brand:hover .logo { transform: rotate(-4deg) scale(1.04); }
+.sidebar-brand-text {
+  min-width: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* ── Links ── */
+.sidebar-links { gap: 3px; }
+
+.sidebar-links .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  /* Assembles on first paint rather than appearing all at once. */
+  animation: rail-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes rail-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-links .nav-link { animation: none; }
+  .app-shell, .sidebar, .nav-link-label { transition: none !important; }
+}
+
+.nav-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  color: var(--faint);
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+.sidebar-links .nav-link:hover .nav-link-icon { color: var(--gold); transform: translateX(1px); }
+.sidebar-links .nav-link.active .nav-link-icon { color: inherit; }
+
+.nav-link-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.18s ease;
+}
+
+/* ── Foot ── */
+.sidebar-foot {
+  gap: 6px;
+  margin-top: 18px;
+  padding: 14px 4px 0;
+}
+.sidebar-foot .nav-tg {
+  justify-content: flex-start;
+  gap: 11px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+}
+.sidebar-foot .nav-tg:hover { background: rgba(255, 255, 255, 0.04); }
+.sidebar-foot .status {
+  gap: 11px;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--faint);
+}
+/* The dot sits where the icons sit, so the column of glyphs stays a column. */
+.sidebar-foot .status .dot { flex: 0 0 auto; margin: 0 3px; }
+
+.rail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  margin-top: 4px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--faint);
+  background: none;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+.rail-toggle:hover { color: var(--gold); background: rgba(255, 255, 255, 0.04); }
+.rail-toggle svg {
+  flex: 0 0 auto;
+  width: 20px;
+  transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ══ COLLAPSED ═══════════════════════════════════════════════════════════════ */
+.sidebar.collapsed { padding: 22px 10px 18px; align-items: center; }
+.sidebar.collapsed .sidebar-brand { justify-content: center; padding: 6px 0 0; margin-bottom: 24px; }
+.sidebar.collapsed .sidebar-brand-text { display: none; }
+
+.sidebar.collapsed .nav-link-label { display: none; }
+.sidebar.collapsed .sidebar-links .nav-link,
+.sidebar.collapsed .sidebar-foot .nav-tg,
+.sidebar.collapsed .sidebar-foot .status,
+.sidebar.collapsed .rail-toggle {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+.sidebar.collapsed .rail-toggle svg { transform: rotate(180deg); }
+
+/* Tooltips, because collapsed the icon is the entire label. Rendered on the
+   rail rather than as a title attribute so they appear immediately — a 1.5s
+   browser delay on the only remaining affordance is not a tooltip, it's a
+   guessing game. */
+.nav-tip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  padding: 7px 11px;
+  border-radius: 8px;
+  background: #171821;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  z-index: 60;
+}
+.sidebar.collapsed .nav-link,
+.sidebar.collapsed .nav-tg { position: relative; }
+.sidebar.collapsed .nav-link:hover .nav-tip,
+.sidebar.collapsed .nav-tg:hover .nav-tip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Collapsing is a desktop affordance; the stacked header has no rail to shrink. */
+@media (max-width: 1080px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar.collapsed { padding: 18px 22px; align-items: center; }
+  .sidebar.collapsed .sidebar-brand-text { display: block; }
+  .sidebar.collapsed .nav-link-label { display: inline; }
+  .rail-toggle { display: none; }
+  .nav-tip { display: none; }
+  .sidebar-brand { margin-bottom: 0; }
+  .sidebar-foot { margin-top: 0; padding-top: 0; }
 }

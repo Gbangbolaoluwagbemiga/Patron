@@ -187,3 +187,12 @@ export function IconTelegram(p: IconProps) {
     </svg>
   );
 }
+
+/** Rail collapse affordance. Rotates 180° when the rail is already closed. */
+export function IconChevronLeft(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}

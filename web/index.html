@@ -39,6 +39,14 @@
     <meta name="twitter:image" content="/patron-avatar.png" />
   </head>
   <body>
+    <!-- Read the rail preference BEFORE React mounts. Setting it from an effect
+         means the first painted frame is always the expanded rail, so a user who
+         collapsed it sees it snap shut on every single page load. -->
+    <script>
+      try {
+        document.documentElement.dataset.rail = localStorage.getItem("patron.sidebar.collapsed") === "1" ? "collapsed" : "open";
+      } catch (e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -9,7 +9,10 @@ import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type Mi
 import { inkTransition, useCountUp, useFlashOnChange } from "./motion";
 import {
   IconAlert,
+  IconBolt,
   IconBrain,
+  IconChevronLeft,
+  IconMap,
   IconTelegram,
   IconCheck,
   IconCoin,
@@ -53,31 +56,72 @@ export const cardMotion = {
 };
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
+const COLLAPSE_KEY = "patron.sidebar.collapsed";
+
 export function Nav({ connected }: { connected: boolean }) {
   // Named as sections of a guild's account book rather than as dashboard tabs.
   // Same routes, same data — the voice is what changes.
+  //
+  // The icons are not decoration. Collapsed, they are the ONLY thing left, so
+  // each has to carry its section on its own: the brief a commission is written
+  // on, the mind that judges it, the coin that settles it.
   const ledger = [
-    { to: "/", label: "The Ledger", end: true },
-    { to: "/jobs", label: "Open Commissions" },
-    { to: "/decisions", label: "The Guild Master's Hand" },
-    { to: "/payments", label: "Account of Monies" },
-    { to: "/freelancers", label: "Register of Adventurers" },
-    { to: "/work", label: "Get Hired" },
+    { to: "/", label: "The Ledger", icon: IconMap, end: true },
+    { to: "/jobs", label: "Open Commissions", icon: IconScroll },
+    { to: "/decisions", label: "The Guild Master's Hand", icon: IconBrain },
+    { to: "/payments", label: "Account of Monies", icon: IconCoin },
+    { to: "/freelancers", label: "Register of Adventurers", icon: IconFlag },
+    { to: "/work", label: "Get Hired", icon: IconBolt },
   ];
+
+  // Remembered, because a rail that forgets is worse than one that never
+  // collapsed: you set it once and it undoes itself on every navigation.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* private mode — the preference just won't survive the session */
+    }
+    // The grid column lives on the shell, which is a parent, so the flag has to
+    // reach it through the DOM rather than through props.
+    document.documentElement.dataset.rail = collapsed ? "collapsed" : "open";
+  }, [collapsed]);
+
   return (
-    <aside className="sidebar">
-      <NavLink to="/" className="sidebar-brand">
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+      <NavLink to="/" className="sidebar-brand" title="Patron">
         <img src="/patron-logo.svg" alt="" className="logo" />
-        <div>
+        <div className="sidebar-brand-text">
           <div className="nav-title">PATRON</div>
           <div className="nav-subtitle">the human-labor endpoint of the agent economy</div>
         </div>
       </NavLink>
 
       <nav className="sidebar-links">
-        {ledger.map((l) => (
-          <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
-            {l.label}
+        {ledger.map((l, i) => (
+          <NavLink
+            key={l.to}
+            to={l.to}
+            end={l.end}
+            title={collapsed ? l.label : undefined}
+            className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+            // A short stagger on first paint so the rail assembles rather than
+            // appearing. Index-delayed, tiny, and never on navigation.
+            style={{ animationDelay: `${i * 34}ms` }}
+          >
+            <span className="nav-link-icon">
+              <l.icon size={16} />
+            </span>
+            <span className="nav-link-label">{l.label}</span>
+            {collapsed && <span className="nav-tip">{l.label}</span>}
           </NavLink>
         ))}
       </nav>
@@ -86,13 +130,33 @@ export function Nav({ connected }: { connected: boolean }) {
           door are both persistent facts about the app rather than places to go,
           so they sit apart from the routes. */}
       <div className="sidebar-foot">
-        <a className="nav-tg" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" title="Patron on Telegram">
-          <IconTelegram size={13} /> Telegram bot
+        <a
+          className="nav-tg"
+          href={TELEGRAM_BOT_URL}
+          target="_blank"
+          rel="noreferrer"
+          title={collapsed ? "Patron on Telegram" : undefined}
+        >
+          <IconTelegram size={14} />
+          <span className="nav-link-label">Telegram bot</span>
+          {collapsed && <span className="nav-tip">Telegram bot</span>}
         </a>
-        <div className="status">
+
+        <div className="status" title={connected ? "Live" : "Disconnected"}>
           <span className={`dot ${connected ? "live" : ""}`} />
-          {connected ? "Live" : "Disconnected"}
+          <span className="nav-link-label">{connected ? "Live" : "Disconnected"}</span>
         </div>
+
+        <button
+          className="rail-toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand" : "Collapse"}
+        >
+          <IconChevronLeft size={15} />
+          <span className="nav-link-label">Collapse</span>
+        </button>
       </div>
     </aside>
   );
