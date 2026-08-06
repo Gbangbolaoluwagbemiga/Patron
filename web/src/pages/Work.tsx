@@ -18,6 +18,30 @@ import { IconCheck, IconCoin, IconScroll, IconSwords } from "../Icon";
 import { useCountUp } from "../motion";
 
 const STORAGE_KEY = "patron.worker.id";
+const DEVICE_KEY = "patron.device.id";
+
+/**
+ * A stable per-browser id used as the join key.
+ *
+ * This used to be `web-${handle}`, which quietly made the handle a password:
+ * join() treats a repeated channelRef as the SAME person and hands back the
+ * existing worker, wallet and balance. Two people who both picked "alex" would
+ * have shared one wallet, and the second could have withdrawn the first's
+ * earnings. Telegram was never exposed — its channelRef is the chat id, which
+ * is genuinely unique — but the web derived it from something the user types.
+ *
+ * A random id per browser keeps what the channelRef was actually for (tapping
+ * "join" twice must not mint two wallets) without making a chosen name into
+ * anyone's credential.
+ */
+function deviceRef(): string {
+  let id = window.localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    window.localStorage.setItem(DEVICE_KEY, id);
+  }
+  return `web-${id}`;
+}
 
 interface Me {
   id: string;
@@ -25,6 +49,15 @@ interface Me {
   address: string | null;
   mode: "managed" | "own";
   balance: string | null;
+}
+
+/** One of this worker's own commissions — applied to, hired for, or finished. */
+interface MyJob {
+  escrowId: string;
+  title: string;
+  budget: number;
+  status: string;
+  icon: string;
 }
 
 interface Quest {
@@ -69,6 +102,7 @@ export default function Work() {
   const [portfolio, setPortfolio] = useState("");
   const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [deliverable, setDeliverable] = useState("");
+  const [mine, setMine] = useState<MyJob[]>([]);
 
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<"newest" | "budget">("newest");
@@ -96,6 +130,15 @@ export default function Work() {
     } catch {
       window.localStorage.removeItem(STORAGE_KEY); // stale id (e.g. a reset database)
       setMe(null);
+      setMine([]);
+      return;
+    }
+    // Separate call, and a failure here must not sign anyone out: this is the
+    // view of their own jobs, not their identity.
+    try {
+      setMine(await api<MyJob[]>(`/api/worker/mine?id=${id}`));
+    } catch {
+      /* leave whatever we last showed rather than blanking their work */
     }
   }
 
@@ -118,7 +161,7 @@ export default function Work() {
     try {
       const w = await api<{ id: string }>("/api/worker/join", {
         method: "POST",
-        body: JSON.stringify({ handle, skills, channelRef: `web-${handle.trim().toLowerCase()}` }),
+        body: JSON.stringify({ handle, skills, channelRef: deviceRef() }),
       });
       window.localStorage.setItem(STORAGE_KEY, w.id);
       await refreshMe(w.id);
@@ -157,7 +200,7 @@ export default function Work() {
     try {
       const r = await api<{ txHash: string }>("/api/worker/submit", {
         method: "POST",
-        body: JSON.stringify({ workerId: me.id, escrowId, milestoneIndex: 0, description: deliverable }),
+        body: JSON.stringify({ workerId: me.id, escrowId, description: deliverable }),
       });
       setNotice({ text: "Work sent. It gets reviewed against the acceptance criteria, then paid.", tx: r.txHash });
       setSubmitFor(null);
@@ -265,6 +308,63 @@ export default function Work() {
         )}
       </AnimatePresence>
       {error && <div className="post-quest-msg error">{error}</div>}
+
+      {/* Your own commissions, before the open board.
+          The board only ever lists jobs still at "posted", so being hired made
+          a job VANISH from this page — along with the only button that could
+          send work. The bot had /mine; the web had nothing, and a web user
+          could be hired with no way to deliver. This is that missing view. */}
+      {mine.length > 0 && (
+        <div className="panel">
+          <h2>
+            <IconCheck size={15} /> Your commissions
+            <span className="panel-header-link" style={{ color: "var(--faint)" }}>
+              {mine.length}
+            </span>
+          </h2>
+          <div className="panel-body">
+            {mine.map((m) => (
+              <motion.div key={m.escrowId} className="quest-card" {...cardMotion}>
+                <div className="quest-head">
+                  <b>
+                    {m.icon} {m.title}
+                  </b>
+                  <span className="quest-budget">${m.budget}</span>
+                </div>
+                <div className="quest-meta">
+                  #{m.escrowId} · {m.status.replace(/ with \/submit \d+/, "")}
+                </div>
+
+                {m.status.startsWith("You were hired") &&
+                  (submitFor === m.escrowId ? (
+                    <div style={{ marginTop: 14 }}>
+                      <textarea
+                        rows={3}
+                        value={deliverable}
+                        onChange={(e) => setDeliverable(e.target.value)}
+                        placeholder="Describe what you're delivering and paste a link to the file."
+                      />
+                      <div className="post-quest-fields">
+                        <button onClick={() => void submitWork(m.escrowId)} disabled={busy || !deliverable.trim()}>
+                          {busy ? "Sending…" : "Send work →"}
+                        </button>
+                        <button className="treasury-connect-btn" onClick={() => setSubmitFor(null)} disabled={busy}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="post-quest-fields" style={{ marginTop: 14 }}>
+                      <button onClick={() => setSubmitFor(m.escrowId)} disabled={busy}>
+                        Send your work
+                      </button>
+                    </div>
+                  ))}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <h2>

@@ -50,7 +50,7 @@ type Pending =
   | { kind: "handle" }
   | { kind: "cover"; escrowId: string }
   | { kind: "portfolio"; escrowId: string; coverLetter: string }
-  | { kind: "deliverable"; escrowId: string; milestoneIndex: number }
+  | { kind: "deliverable"; escrowId: string }
   | { kind: "withdraw" };
 
 const pending = new Map<number, Pending>();
@@ -368,7 +368,7 @@ async function handleText(msg: TgMessage) {
       if (!id) {
         return void (await send(chatId, "Which commission? Send <code>/submit 31</code> using the entry number from /jobs."));
       }
-      pending.set(chatId, { kind: "deliverable", escrowId: id, milestoneIndex: 0 });
+      pending.set(chatId, { kind: "deliverable", escrowId: id });
       return void (await send(chatId, "Describe what you're delivering, and paste a link to the file."));
     }
 
@@ -610,7 +610,7 @@ async function handleText(msg: TgMessage) {
     pending.delete(chatId);
     await send(chatId, "Sending your work…");
     try {
-      const { txHash } = await workers.submit(worker.id, state.escrowId, state.milestoneIndex, text);
+      const { txHash } = await workers.submit(worker.id, state.escrowId, text);
       await send(
         chatId,
         [
@@ -678,7 +678,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   }
 
   if (action === "submit" && arg) {
-    pending.set(chatId, { kind: "deliverable", escrowId: arg, milestoneIndex: 0 });
+    pending.set(chatId, { kind: "deliverable", escrowId: arg });
     return void (await send(chatId, "Describe what you're delivering, and paste a link to the file."));
   }
 }
@@ -741,6 +741,20 @@ export function startTelegramBot(): void {
             else if (u.callback_query) await handleCallback(u.callback_query);
           } catch (err) {
             console.error("[telegram] update failed:", err instanceof Error ? err.message : err);
+            // Say SOMETHING. This used to log and move on, so a command that
+            // threw — /link with a malformed address, /mine when the chain was
+            // unreachable — produced total silence: from the outside the bot
+            // had simply ignored you, which reads as broken rather than failed.
+            // The pending-reply handlers each caught their own errors; the
+            // command path had no such net.
+            const chatId = u.message?.chat.id ?? u.callback_query?.message?.chat.id;
+            if (chatId) {
+              const text =
+                err instanceof workers.UserFacingError
+                  ? err.message
+                  : "Something went wrong on my side — nothing was lost or sent. Try that again, or /help for what I can do.";
+              await send(chatId, text).catch(() => {});
+            }
           }
         }
       } else if (updates === null) {

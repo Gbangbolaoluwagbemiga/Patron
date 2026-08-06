@@ -530,6 +530,38 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  /**
+   * Everything this worker is involved in — applied to, hired for, finished.
+   *
+   * The bot had this as /mine from the start; the web page did not, and the
+   * omission was worse than a missing convenience. The job board only lists
+   * commissions still at "posted", so the instant someone was HIRED their job
+   * left the board — taking the "I was hired, send work" button with it. A web
+   * user could be hired and then have no way to deliver, while the identical
+   * account on Telegram could. Both doors are supposed to be the same door.
+   */
+  if (req.method === "GET" && url.pathname === "/api/worker/mine") {
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    try {
+      return json(res, 200, await workers.myWork(id));
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /** Graduation to self-custody — the bot's /link, which the web could not do. */
+  if (req.method === "POST" && url.pathname === "/api/worker/switch-wallet") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { workerId?: string; address?: string };
+      if (!b.workerId || !b.address) return json(res, 400, { error: "workerId and address are required" });
+      const worker = await workers.switchToOwnWallet(b.workerId, b.address as `0x${string}`);
+      return json(res, 200, { id: worker.id, handle: worker.handle, address: worker.walletAddress, mode: worker.mode });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/worker/apply") {
     try {
       const b = JSON.parse(await readBody(req)) as {
@@ -560,7 +592,10 @@ const server = http.createServer(async (req, res) => {
       if (!b.workerId || !b.escrowId || !b.description) {
         return json(res, 400, { error: "workerId, escrowId and description are required" });
       }
-      const result = await workers.submit(b.workerId, b.escrowId, b.milestoneIndex ?? 0, b.description);
+      // milestoneIndex stays honoured when a caller genuinely means a specific
+      // stage, but is no longer defaulted to 0 — undefined lets the service pick
+      // the stage that actually needs delivering.
+      const result = await workers.submit(b.workerId, b.escrowId, b.description, b.milestoneIndex);
       return json(res, 200, result);
     } catch (err) {
       return json(res, 500, { error: clientError(err) });
@@ -598,7 +633,24 @@ const MILESTONE_DISPUTED = 4;
 const ESCROW_RELEASED = 2;
 const ESCROW_DISPUTED = 4;
 
-const reviewedMilestones = new Set<string>();
+/**
+ * Which milestone reviews have actually COMPLETED.
+ *
+ * This was an in-memory Set marked BEFORE the review ran — the identical
+ * mistake already fixed for application scoring below, still live on the path
+ * that decides whether someone gets paid. A review that threw (a rate limit, a
+ * timeout) had its key recorded anyway, so the submission was never looked at
+ * again: the freelancer delivered real work, the guild master hit a 429 once,
+ * and the job sat "active" forever with the money locked. On a tight token
+ * budget that is not an edge case, it is the expected path.
+ *
+ * Now: persisted like every other poller marker, written only on success, and
+ * attempt-bounded so a genuinely poisonous submission (one too large for the
+ * model, say) gives up instead of retrying every 15 seconds forever.
+ */
+const reviewDoneKey = (escrowId: string, index: number, submittedAt: string) => `milestone_reviewed:${escrowId}:${index}:${submittedAt}`;
+const reviewTriesKey = (escrowId: string, index: number, submittedAt: string) => `milestone_review_tries:${escrowId}:${index}:${submittedAt}`;
+const MAX_REVIEW_ATTEMPTS = 5;
 
 // Last application count Patron has actually SCORED for a given job. Without this,
 // a job with zero (or unchanged) applicants gets re-queried and re-scored every
@@ -787,6 +839,8 @@ async function pollOnce() {
     if (!task.escrowId || !task.briefJson) continue;
     const brief = JSON.parse(task.briefJson);
     const escrowId = BigInt(task.escrowId);
+    /** Attempt counter of a review in progress, so a rate limit can give it back. */
+    let inFlightReview: string | null = null;
 
     try {
       if (task.status === "posted") {
@@ -831,17 +885,41 @@ async function pollOnce() {
         const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
         const milestones = result.escrow?.milestones ?? [];
         for (const [index, m] of milestones.entries()) {
+          if (m.status !== MILESTONE_SUBMITTED) continue;
           // Keyed on submittedAt, not just index — a rejected milestone gets
           // resubmitted at the SAME index with a NEW submittedAt. Keying on index
           // alone meant a resubmission after rejection was permanently skipped:
           // the first review's key stayed in the set forever, so the revision the
           // freelancer actually sent in response to feedback never got looked at.
           // Caught by actually driving a real reject -> resubmit cycle end to end.
-          const key = `${task.escrowId}:${index}:${m.submittedAt ?? ""}`;
-          if (m.status === MILESTONE_SUBMITTED && !reviewedMilestones.has(key)) {
-            reviewedMilestones.add(key);
-            await agent.reviewMilestone(escrowId, BigInt(index), m.description, "", brief, m.description);
+          const submittedAt = String(m.submittedAt ?? "");
+          if (store.getPollerInt(reviewDoneKey(task.escrowId, index, submittedAt))) continue;
+
+          const tries = store.getPollerInt(reviewTriesKey(task.escrowId, index, submittedAt)) ?? 0;
+          if (tries >= MAX_REVIEW_ATTEMPTS) {
+            // Out of retries. Say so loudly — someone's delivered work is sitting
+            // here unpaid, and silence is how that stays invisible.
+            if (tries === MAX_REVIEW_ATTEMPTS) {
+              store.setPollerInt(reviewTriesKey(task.escrowId, index, submittedAt), tries + 1);
+              console.error(`[poller] milestone ${task.escrowId}:${index} could not be reviewed after ${MAX_REVIEW_ATTEMPTS} attempts — needs a human`);
+              broadcast({
+                type: "escalated_to_human",
+                message: "A submission could not be reviewed automatically after repeated attempts and needs a human look. The escrowed funds are untouched.",
+                escrowId: task.escrowId,
+                timestamp: Date.now(),
+              });
+            }
+            continue;
           }
+
+          // Count the attempt BEFORE the call so a submission that reliably
+          // breaks the model cannot loop forever; record DONE only after it
+          // genuinely succeeds so a transient failure is retried.
+          store.setPollerInt(reviewTriesKey(task.escrowId, index, submittedAt), tries + 1);
+          inFlightReview = reviewTriesKey(task.escrowId, index, submittedAt);
+          await agent.reviewMilestone(escrowId, BigInt(index), m.description, "", brief, m.description);
+          inFlightReview = null;
+          store.setPollerInt(reviewDoneKey(task.escrowId, index, submittedAt), 1);
         }
 
         // Re-fetch rather than trust the pre-review snapshot above, since a
@@ -905,6 +983,13 @@ async function pollOnce() {
       if (/413|too large/i.test(msg)) {
         console.error("[poller] prompt too large for the model — this will not resolve by waiting");
       } else if (/rate limit|rate_limit|429/i.test(msg)) {
+        // Being rate-limited says nothing about the submission, so it must not
+        // spend one of its five chances. Otherwise a quiet afternoon of 429s
+        // exhausts a perfectly good milestone's retries and strands the payout.
+        if (inFlightReview) {
+          const spent = store.getPollerInt(inFlightReview) ?? 1;
+          store.setPollerInt(inFlightReview, Math.max(0, spent - 1));
+        }
         noteLlmRateLimit(msg);
         if (!llmExhausted) {
           llmExhausted = true;

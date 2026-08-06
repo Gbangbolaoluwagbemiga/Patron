@@ -69,7 +69,7 @@ export async function join(params: JoinParams): Promise<store.WorkerRow> {
       channelRef: params.channelRef ?? null,
       skills: params.skills ?? null,
       walletId: null,
-      walletAddress: params.ownAddress,
+      walletAddress: requireAddress(params.ownAddress, "wallet address"),
       mode: "own",
     });
   }
@@ -261,13 +261,16 @@ export async function apply(
 export async function submit(
   workerId: string,
   escrowId: string,
-  milestoneIndex: number,
   description: string,
+  /** Omit to send the next milestone that actually needs work — see resolveMilestone. */
+  milestoneIndex?: number,
 ): Promise<{ txHash: string }> {
   const worker = store.getWorker(workerId);
   if (!worker) throw new UserFacingError("Unknown worker.");
   const text = description.trim();
   if (!text) throw new UserFacingError("Describe what you're delivering, and include a link to the file.");
+
+  const index = milestoneIndex ?? (await resolveMilestone(escrowId));
 
   const signer = signerFor(worker);
   await ensureGas(worker);
@@ -276,8 +279,56 @@ export async function submit(
   } catch {
     // already started — expected on every milestone after the first
   }
-  const txHash = await secureflow.submitMilestone(BigInt(escrowId), BigInt(milestoneIndex), text, signer);
+  const txHash = await secureflow.submitMilestone(BigInt(escrowId), BigInt(index), text, signer);
   return { txHash };
+}
+
+/**
+ * Which milestone is a worker actually delivering?
+ *
+ * Both surfaces hard-coded 0. For the single-milestone jobs that make up almost
+ * everything posted so far that was invisibly correct, and for anything staged
+ * it was a dead end: milestone 0 gets approved, the worker sends stage two, it
+ * goes to index 0 again, and the job can never reach the approved-milestone
+ * count that marks it complete. Job #38 is a two-stage voiceover sitting open
+ * right now, so this was a live trap rather than a hypothetical one.
+ *
+ * Resolved against the BRIEF's milestone count rather than the subgraph's list,
+ * because the subgraph only indexes milestones that have been touched — a job
+ * whose first stage was just approved comes back as a one-element list, and
+ * "the next one" would be off the end of it.
+ */
+const MS_SUBMITTED = 1;
+const MS_APPROVED = 2;
+
+async function resolveMilestone(escrowId: string): Promise<number> {
+  const task = store.listTasks(100).find((t) => t.escrowId === escrowId);
+  let expected = 1;
+  if (task?.briefJson) {
+    try {
+      const b = JSON.parse(task.briefJson);
+      if (Array.isArray(b.milestones) && b.milestones.length > 0) expected = b.milestones.length;
+    } catch {
+      /* a malformed brief just means we assume one stage */
+    }
+  }
+  if (expected === 1) return 0;
+
+  try {
+    const { graphQuery } = await import("../graph/client.js");
+    const { GET_JOB_BY_ID } = await import("../graph/queries.js");
+    const result = await graphQuery<{ escrow: { milestones: { milestoneIndex: number; status: number }[] } | null }>(GET_JOB_BY_ID, { escrowId });
+    const byIndex = new Map((result.escrow?.milestones ?? []).map((m) => [Number(m.milestoneIndex), Number(m.status)]));
+    for (let i = 0; i < expected; i++) {
+      const status = byIndex.get(i) ?? 0; // never touched = still to do
+      if (status !== MS_SUBMITTED && status !== MS_APPROVED) return i; // pending or sent back for revision
+    }
+    // Everything is either awaiting review or already approved. Re-sending the
+    // last stage is the only sensible reading of "here is my work".
+    return expected - 1;
+  } catch {
+    return 0; // subgraph down: the old behaviour, which is right for most jobs
+  }
 }
 
 /**
@@ -302,21 +353,29 @@ export async function myWork(
       .map((d: { task_id?: string }) => d.task_id),
   );
 
-  const out: { escrowId: string; title: string; budget: number; status: string; icon: string }[] = [];
-  for (const t of store.listTasks(100)) {
-    if (!t.escrowId || !t.briefJson) continue;
-    const hired = hiredFor.has(t.escrowId);
-    let applied = false;
-    if (!hired) {
+  // One chain read per job, run TOGETHER rather than one after another. As a
+  // sequential loop this was up to 100 round trips before the first character of
+  // output — several seconds of a bot that looks hung, growing every time anyone
+  // posts a job. Nothing here depends on the previous answer, so nothing needed
+  // to wait for it.
+  const candidates = store.listTasks(100).filter((t) => t.escrowId && t.briefJson);
+  const involvement = await Promise.all(
+    candidates.map(async (t) => {
+      if (hiredFor.has(t.escrowId as string)) return { hired: true, applied: true };
       try {
-        applied = await secureflow.hasApplied(BigInt(t.escrowId), worker.walletAddress as `0x${string}`);
+        return { hired: false, applied: await secureflow.hasApplied(BigInt(t.escrowId as string), worker.walletAddress as `0x${string}`) };
       } catch {
-        continue;
+        return { hired: false, applied: false }; // a chain hiccup hides a row, never breaks the list
       }
-    }
+    }),
+  );
+
+  const out: { escrowId: string; title: string; budget: number; status: string; icon: string }[] = [];
+  for (const [i, t] of candidates.entries()) {
+    const { hired, applied } = involvement[i]!;
     if (!hired && !applied) continue;
 
-    const brief = JSON.parse(t.briefJson);
+    const brief = JSON.parse(t.briefJson as string);
     const [icon, status] = hired
       ? t.status === "completed"
         ? ["✅", "Finished and paid"]
@@ -327,7 +386,7 @@ export async function myWork(
         ? ["⏳", "Applied, waiting on the guild master"]
         : ["—", "Applied, but someone else was hired"];
 
-    out.push({ escrowId: t.escrowId, title: brief.title, budget: brief.budget, status, icon });
+    out.push({ escrowId: t.escrowId as string, title: brief.title, budget: brief.budget, status, icon });
   }
   return out;
 }
@@ -391,17 +450,44 @@ export async function balance(workerId: string): Promise<{ balance: string; addr
   return { balance: await workerBalance(worker.walletAddress as `0x${string}`), address: worker.walletAddress };
 }
 
+/**
+ * Check an address before we send money to it.
+ *
+ * There was no validation anywhere on either surface, so a mistyped destination
+ * went all the way down to viem and came back as an encoding error — on the one
+ * path where the user is moving their own earnings and most deserves a sentence
+ * they can act on. We cannot catch a typo that is still a VALID address; we can
+ * catch every string that could never have been one, and refuse the burn address.
+ */
+function requireAddress(value: string | undefined, what: string): `0x${string}` {
+  const v = (value ?? "").trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(v)) {
+    throw new UserFacingError(
+      `That ${what} doesn't look like a wallet address — it should start with 0x and have 40 characters after it. Nothing was sent.`,
+    );
+  }
+  if (/^0x0{40}$/.test(v)) {
+    throw new UserFacingError(`That address is the burn address — anything sent there is gone forever. Nothing was sent.`);
+  }
+  return v as `0x${string}`;
+}
+
 /** The escape hatch. A withdrawal, not a key export — see workers/wallets.ts. */
 export async function withdraw(workerId: string, destination: `0x${string}`, amountUsdc?: string) {
   const worker = store.getWorker(workerId);
   if (!worker) throw new UserFacingError("Unknown worker.");
   if (worker.mode === "own") throw new UserFacingError("You're already using your own wallet — the money is in it.");
   if (!worker.walletAddress) throw new UserFacingError("No wallet on this account yet.");
-  return withdrawTo({ walletAddress: worker.walletAddress }, destination, amountUsdc);
+  const to = requireAddress(destination, "destination address");
+  if (amountUsdc !== undefined && !(Number(amountUsdc) > 0)) {
+    throw new UserFacingError("The amount to withdraw has to be a positive number. Nothing was sent.");
+  }
+  return withdrawTo({ walletAddress: worker.walletAddress }, to, amountUsdc);
 }
 
 /** Graduation: keep the account, move to self-custody. Mode A is a ramp, not a trap. */
-export async function switchToOwnWallet(workerId: string, address: `0x${string}`) {
+export async function switchToOwnWallet(workerId: string, addressInput: `0x${string}`) {
+  const address = requireAddress(addressInput, "wallet address");
   const worker = store.getWorker(workerId);
   if (!worker) throw new UserFacingError("Unknown worker.");
   if (worker.mode === "managed" && worker.walletAddress) {
