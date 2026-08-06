@@ -111,7 +111,9 @@ export interface Quest {
 /** Open commissions, optionally marked up for one worker. */
 export function openQuests(): Quest[] {
   return store
-    .listTasks(50)
+    // Same reason as the poller's window: open jobs are filtered out of the
+    // most-recent N, so N has to outrun the finished ones stacking up in front.
+    .listTasks(300)
     .filter((t) => t.status === "posted" && t.escrowId && t.briefJson)
     .map((t) => {
       const brief = JSON.parse(t.briefJson as string);

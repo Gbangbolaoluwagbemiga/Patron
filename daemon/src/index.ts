@@ -832,7 +832,11 @@ async function pollOnce() {
   // rate-limited there is nothing useful to do, and trying anyway is what kept
   // the budget pinned at zero.
   if (Date.now() < llmCooldownUntil) return;
-  const tasks = store.listTasks(50).filter((t) => t.escrowId && (t.status === "posted" || t.status === "active"));
+  // Filtered AFTER the fetch, so the window has to be wide enough to still
+  // contain live work once finished jobs pile up in front of it. At 50 a busy
+  // week would have pushed a genuinely active job out of the poller's sight and
+  // frozen it — nothing would advance it, and nothing would say why.
+  const tasks = store.listTasks(300).filter((t) => t.escrowId && (t.status === "posted" || t.status === "active"));
   let pollFailures = 0;
 
   for (const task of tasks) {
