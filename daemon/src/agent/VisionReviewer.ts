@@ -17,9 +17,13 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { imageDimensions, readSvgSource, transcribeAudio, isAudio } from "./DeliverableFacts.js";
 
+/** What a vision model will accept. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 15_000;
+/** What we will pull down at all — audio is legitimately larger than an image. */
+const MAX_FETCH_BYTES = 25 * 1024 * 1024;
+const FETCH_TIMEOUT_MS = 20_000;
 
 /** Types a vision model can actually look at. */
 const SUPPORTED = {
@@ -55,6 +59,8 @@ export interface VisionReview {
   note: string;
   findings: { criterion: string; observed: string; verdict: "met" | "not_met" | "cannot_tell" }[];
   description?: string;
+  /** Verbatim file contents when the file is genuinely text (SVG source). */
+  sourceExcerpt?: string;
 }
 
 /**
@@ -65,8 +71,9 @@ export function extractImageUrl(text: string): string | null {
   const urls = text.match(/https?:\/\/[^\s<>"')]+/gi) ?? [];
   // svg/pdf included: they are the most likely design deliverables, and leaving
   // them out meant a submission linking one fell through to "first URL found".
-  const imageLike = urls.find((u) => /\.(png|jpe?g|gif|webp|svg|pdf)(\?|#|$)/i.test(u));
-  return imageLike ?? urls[0] ?? null;
+  // audio included because we can now transcribe it.
+  const deliverableLike = urls.find((u) => /\.(png|jpe?g|gif|webp|svg|pdf|mp3|wav|m4a|ogg|flac|webm)(\?|#|$)/i.test(u));
+  return deliverableLike ?? urls[0] ?? null;
 }
 
 /** True when some vision-capable model is configured and usable. */
@@ -75,28 +82,31 @@ export function visionAvailable(): boolean {
 }
 
 type FetchResult =
-  | { base64: string; mediaType: SupportedMedia; bytes: number }
-  /** Fetched fine and is a genuine file of a known type — just not one we can rasterise. */
-  | { confirmedType: string; bytes: number }
+  /** Fetched. `buf` is kept for the model-free inspections in DeliverableFacts. */
+  | { buf: Uint8Array; mediaType: string; bytes: number }
   | { error: string };
 
 async function fetchImage(url: string): Promise<FetchResult> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: "follow" });
+    // Identify ourselves. Sending no User-Agent gets a bare 403 from a lot of
+    // image hosts (Wikimedia among them), and the failure was invisible: the
+    // review degraded to "could not inspect" and read as a broken link, so
+    // honest work was rejected for the crime of being hosted somewhere strict.
+    // ApplicantEvidence already did this; the higher-stakes call did not.
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      redirect: "follow",
+      headers: { "User-Agent": "PatronBot/1.0 (+https://web-plum-one-12.vercel.app)" },
+    });
     if (!res.ok) return { error: `the link returned ${res.status}` };
 
     const mediaType = (res.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
-    if (mediaType && UNRASTERISABLE_IMAGE.has(mediaType)) {
-      return { confirmedType: mediaType, bytes: Number(res.headers.get("content-length") ?? 0) };
-    }
-    if (!mediaType || !(mediaType in SUPPORTED)) {
-      return { error: `the link returned ${mediaType || "an unknown type"} rather than a file` };
-    }
+    if (!mediaType) return { error: "the link returned no content type" };
 
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_IMAGE_BYTES) return { error: `the file is ${(buf.byteLength / 1e6).toFixed(1)}MB, too large to inspect` };
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > MAX_FETCH_BYTES) return { error: `the file is ${(buf.byteLength / 1e6).toFixed(1)}MB, too large to inspect` };
 
-    return { base64: buf.toString("base64"), mediaType: mediaType as SupportedMedia, bytes: buf.byteLength };
+    return { buf, mediaType, bytes: buf.byteLength };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { error: /timeout|abort/i.test(msg) ? "the link timed out" : `the link could not be fetched (${msg})` };
@@ -115,30 +125,81 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
   if (!url) {
     return { available: false, note: "No file link was included in the submission, so only the written description could be assessed.", findings: [] };
   }
-  if (!visionAvailable()) {
+
+  // Fetch FIRST. The old order bailed out here whenever no vision model was
+  // configured — which threw away every model-free check along with it, and
+  // that is the state we actually run in. Whether we can rasterise an image
+  // has nothing to do with whether we can read an SVG or hear a voiceover.
+  const file = await fetchImage(url);
+  if ("error" in file) {
+    return { available: false, note: `The delivered file could not be inspected: ${file.error}. Only the written description was assessed.`, findings: [] };
+  }
+
+  const sizeKb = `${(file.bytes / 1024).toFixed(0)}KB`;
+
+  // ── An SVG is text. Read it. ────────────────────────────────────────────
+  // The most likely logo deliverable there is, and we were filing it under
+  // "cannot inspect" while the answer sat in plain XML.
+  if (file.mediaType === "image/svg+xml") {
+    const svg = readSvgSource(new TextDecoder().decode(file.buf));
+    return {
+      available: true,
+      note: `The delivered file was fetched and its SVG source was read directly (${sizeKb}).`,
+      description: `A genuine SVG file (${sizeKb}). Read from its source: ${svg.summary}.`,
+      findings: [],
+      sourceExcerpt: svg.excerpt,
+    };
+  }
+
+  // ── Audio can be listened to. ──────────────────────────────────────────
+  if (isAudio(file.mediaType)) {
+    const transcript = await transcribeAudio(file.buf, url.split("/").pop() ?? "audio.mp3");
+    if (transcript) {
+      return {
+        available: true,
+        note: `The delivered audio was fetched (${sizeKb}) and transcribed. Judge the words against the brief.`,
+        description: `A genuine ${file.mediaType} audio file (${sizeKb}). This is what it actually says, transcribed:\n"${transcript}"`,
+        findings: [],
+      };
+    }
     return {
       available: false,
-      note: "No vision-capable model is configured, so the delivered file was not opened — only the freelancer's description of it was assessed.",
+      note: `The delivered link resolves and is genuinely ${file.mediaType} (${sizeKb}), so the file and its FORMAT are verified, but it could not be transcribed. Judge its contents on the freelancer's description — never treat this as a broken link.`,
       findings: [],
     };
   }
 
-  const image = await fetchImage(url);
-  if ("error" in image) {
-    return { available: false, note: `The delivered file could not be inspected: ${image.error}. Only the written description was assessed.`, findings: [] };
-  }
+  // ── Rasters: dimensions are free, even with no model. ──────────────────
+  const dims = imageDimensions(file.buf, file.mediaType);
+  const dimFact = dims ? ` Its real dimensions are ${dims.width}×${dims.height}px, read from the file header.` : "";
 
-  // The file is real and its type is confirmed, even though we can't look inside
-  // it. Say exactly that — it settles any format criterion on its own, and the
-  // reviewer must not mistake it for a broken link.
-  if ("confirmedType" in image) {
+  /**
+   * The facts we hold regardless of whether any model runs. Appended to every
+   * degraded path so a vision failure never downgrades us below what the bytes
+   * already told us — the link resolves, the format is real, the size is known.
+   */
+  const verifiedTail =
+    ` The link DOES resolve and the file is genuinely ${file.mediaType} (${sizeKb}) — never treat this as a broken link.${dimFact}` +
+    (dims ? " Any criterion about resolution or print size is settled by those real dimensions, not by the freelancer's claim." : "");
+
+  if (UNRASTERISABLE_IMAGE.has(file.mediaType) || !(file.mediaType in SUPPORTED)) {
     return {
       available: false,
       note:
-        `The delivered link resolves and the file is genuinely ${image.confirmedType}` +
-        (image.bytes ? ` (${(image.bytes / 1024).toFixed(0)}KB)` : "") +
-        `, so the file exists and its FORMAT is confirmed. Its visual contents could not be rasterised for inspection, ` +
-        `so judge appearance on the freelancer's description — but treat the format and the link as verified.`,
+        `The delivered link resolves and the file is genuinely ${file.mediaType} (${sizeKb}), so the file exists and its FORMAT is confirmed.${dimFact} ` +
+        `Its visual contents could not be inspected, so judge appearance on the freelancer's description — but treat the format, size and the link as verified.`,
+      findings: [],
+    };
+  }
+
+  if (file.bytes > MAX_IMAGE_BYTES || !visionAvailable()) {
+    const why = file.bytes > MAX_IMAGE_BYTES ? `it is ${(file.bytes / 1e6).toFixed(1)}MB, too large to send to a vision model` : "no vision-capable model is configured";
+    return {
+      available: false,
+      note:
+        `The delivered link resolves and is genuinely ${file.mediaType} (${sizeKb}), so the file and its FORMAT are verified.${dimFact} ` +
+        `Its visual contents were NOT examined because ${why} — judge appearance on the freelancer's description, and never treat this as a broken link. ` +
+        `Any criterion about size or resolution can be settled from the real dimensions above.`,
       findings: [],
     };
   }
@@ -162,7 +223,7 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
         {
           role: "user",
           content: [
-            { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } },
+            { type: "image", source: { type: "base64", media_type: file.mediaType as SupportedMedia, data: Buffer.from(file.buf).toString("base64") } },
             {
               type: "text",
               text: `Acceptance criteria:\n${criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n\nDescribe what this image actually is, then judge each criterion.`,
@@ -175,22 +236,27 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
     const text = response.content.find((c) => c.type === "text");
     const raw = text && "text" in text ? text.text : "";
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { available: false, note: "The vision model returned no usable result; only the description was assessed.", findings: [] };
+    if (!jsonMatch) return { available: false, note: `The vision model returned no usable result, so the file's appearance was not assessed.${verifiedTail}`, findings: [] };
 
     const parsed = JSON.parse(jsonMatch[0]) as { description?: string; findings?: unknown[] };
     const findings = z.array(VisionFindingSchema).safeParse(parsed.findings ?? []);
 
     return {
       available: true,
-      note: "The delivered file was opened and inspected.",
+      note: `The delivered file was opened and inspected (${file.mediaType}, ${sizeKb}).${dimFact}`,
       description: parsed.description,
       findings: findings.success ? findings.data : [],
     };
   } catch (err) {
+    // A vision model that is configured but unusable (no credit, rate limited,
+    // down) must not cost us the facts we already established for free. The
+    // first version returned a bare "could not be inspected" here and threw the
+    // real dimensions away with it — so a 40x40 thumbnail sold as print-ready
+    // went back to being judged on the freelancer's word.
     const msg = err instanceof Error ? err.message : String(err);
     return {
       available: false,
-      note: `The delivered file could not be inspected (${msg.slice(0, 120)}). Only the written description was assessed.`,
+      note: `The delivered file's appearance could not be inspected (${msg.slice(0, 100)}).${verifiedTail}`,
       findings: [],
     };
   }
