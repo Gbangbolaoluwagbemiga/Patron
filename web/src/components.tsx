@@ -62,11 +62,20 @@ export const cardMotion = {
 const COLLAPSE_KEY = "patron.sidebar.collapsed";
 
 export function Nav({ connected }: { connected: boolean }) {
-  // Appears only for someone who has actually commissioned something. A tracking
-  // page is meaningless to a visitor with nothing to track, and a permanently
-  // empty nav item teaches people to ignore that part of the rail.
-  const { address, account } = useWallet();
-  const hasCommissions = !!address && !!account && Number(account.spent) > 0;
+  const { address } = useWallet();
+  /**
+   * Shown to anyone with a wallet connected.
+   *
+   * This used to also require spent > 0, which was too clever by half: you
+   * could not find the tracking page until you had already commissioned
+   * something, and you could not learn what it was for until you found it. With
+   * no signed commission anywhere in the system yet, that condition was false
+   * for every single visitor and the link never appeared at all.
+   *
+   * Connected is the right gate. The page's own empty state explains what will
+   * appear here, which is more use than hiding it.
+   */
+  const hasWallet = !!address;
   // Named as sections of a guild's account book rather than as dashboard tabs.
   // Same routes, same data — the voice is what changes.
   //
@@ -79,7 +88,7 @@ export function Nav({ connected }: { connected: boolean }) {
     { to: "/decisions", label: "The Guild Master's Hand", icon: IconBrain },
     { to: "/payments", label: "Account of Monies", icon: IconCoin },
     { to: "/freelancers", label: "Register of Adventurers", icon: IconFlag },
-    ...(hasCommissions ? [{ to: "/my-jobs", label: "Your Commissions", icon: IconCheck }] : []),
+    ...(hasWallet ? [{ to: "/my-jobs", label: "Your Commissions", icon: IconCheck }] : []),
     { to: "/work", label: "Get Hired", icon: IconBolt },
   ];
 
