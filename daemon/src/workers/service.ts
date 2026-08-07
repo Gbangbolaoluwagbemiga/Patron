@@ -202,11 +202,37 @@ function signerFor(worker: store.WorkerRow) {
  * Patron as the applicant. Their tap is the instruction; Patron is the broker
  * executing it in their name.
  */
+/**
+ * How long the applicant says they need.
+ *
+ * Both surfaces hard-coded 3. The scorer gives 15 points for a realistic
+ * timeline and compares this against the brief's duration — so every applicant
+ * to a 1-day or 2-day job automatically lost all 15 for a number they never
+ * chose and were never shown. A real person applying to a one-day brief was
+ * told their proposed 3 days "exceeds the brief's duration"; they had proposed
+ * nothing at all.
+ *
+ * Defaulting to the brief's OWN duration is the honest reading of an applicant
+ * who didn't specify: they are applying to the job as advertised, so they are
+ * saying they can meet the deadline in it.
+ */
+async function defaultTimelineFor(escrowId: string): Promise<number> {
+  const task = store.listTasks(300).find((t) => t.escrowId === escrowId);
+  if (!task?.briefJson) return 3;
+  try {
+    const days = Number(JSON.parse(task.briefJson).durationDays);
+    return Number.isFinite(days) && days > 0 ? days : 3;
+  } catch {
+    return 3;
+  }
+}
+
 export async function apply(
   workerId: string,
   escrowId: string,
   coverLetter: string,
-  proposedTimelineDays: number,
+  /** Omit to say "I can do it in the time you asked for". */
+  proposedTimelineDays: number | undefined,
   /**
    * A link to past work — portfolio, CV, Behance, a repo, anything.
    *
@@ -248,7 +274,8 @@ export async function apply(
   // readable on-chain and on SecureFlow's own interface.
   const full = portfolio ? `${letter}\n\nPast work: ${portfolio}` : letter;
 
-  const txHash = await secureflow.applyToJob(BigInt(escrowId), full, BigInt(proposedTimelineDays), signer);
+  const timeline = proposedTimelineDays ?? (await defaultTimelineFor(escrowId));
+  const txHash = await secureflow.applyToJob(BigInt(escrowId), full, BigInt(timeline), signer);
   return { txHash };
 }
 

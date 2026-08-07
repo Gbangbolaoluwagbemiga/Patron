@@ -596,7 +596,7 @@ async function handleText(msg: TgMessage) {
     pending.delete(chatId);
     await send(chatId, "Applying…");
     try {
-      const { txHash } = await workers.apply(worker.id, state.escrowId, state.coverLetter, 3, skipped ? undefined : text);
+      const { txHash } = await workers.apply(worker.id, state.escrowId, state.coverLetter, undefined, skipped ? undefined : text);
       await send(
         chatId,
         [

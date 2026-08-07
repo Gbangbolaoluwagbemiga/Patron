@@ -112,9 +112,34 @@ async function readPortfolio(url: string): Promise<{ url: string; reachable: boo
     }
 
     const raw = await res.text();
-    const text = raw
+
+    /**
+     * Take the CONTENT, not the chrome.
+     *
+     * This used to strip tags off the whole document and keep the first 4000
+     * characters, which on any real site means the navigation menu. A GitHub
+     * profile spent every one of those characters on "Skip to content ·
+     * Navigation Menu · Sign in · GitHub Copilot Write better code with AI ·
+     * MCP Registry · Actions Automate any workflow…" and never reached a single
+     * repository — so an applicant with years of public work was scored on
+     * GitHub's marketing copy. The richer the site, the worse it got.
+     *
+     * <main> is where sites put the thing the page is actually about, and it is
+     * a standard the whole web follows. Prefer it, fall back to <article>, and
+     * only use the entire body when a page offers neither.
+     */
+    const region =
+      raw.match(/<main[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+      raw.match(/<article[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+      raw;
+
+    const text = region
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+      .replace(/<header[\s\S]*?<\/header>/gi, " ")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
       .replace(/<[^>]+>/g, " ")
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")

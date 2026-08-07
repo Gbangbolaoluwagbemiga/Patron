@@ -182,7 +182,7 @@ export default function Work() {
     try {
       const r = await api<{ txHash: string }>("/api/worker/apply", {
         method: "POST",
-        body: JSON.stringify({ workerId: me.id, escrowId, coverLetter, proposedTimelineDays: 3, portfolioUrl: portfolio || undefined }),
+        body: JSON.stringify({ workerId: me.id, escrowId, coverLetter, portfolioUrl: portfolio || undefined }),
       });
       setNotice({ text: "Applied. The guild master reviews every applicant — you'll see it on the ledger.", tx: r.txHash });
       setOpenQuest(null);

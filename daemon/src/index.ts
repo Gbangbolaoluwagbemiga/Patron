@@ -976,7 +976,7 @@ const server = http.createServer(async (req, res) => {
       if (!b.workerId || !b.escrowId || !b.coverLetter) {
         return json(res, 400, { error: "workerId, escrowId and coverLetter are required" });
       }
-      const result = await workers.apply(b.workerId, b.escrowId, b.coverLetter, b.proposedTimelineDays ?? 3, b.portfolioUrl);
+      const result = await workers.apply(b.workerId, b.escrowId, b.coverLetter, b.proposedTimelineDays, b.portfolioUrl);
       return json(res, 200, result);
     } catch (err) {
       return json(res, 500, { error: clientError(err) });
