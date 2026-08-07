@@ -107,7 +107,7 @@ body::after {
 }
 
 .app {
-  max-width: 1560px;
+  max-width: 1360px;
   margin: 0 auto;
   padding: 30px 56px 110px;
   position: relative;
@@ -275,18 +275,18 @@ code {
 /* ── Hero ─────────────────────────────────────────────────────────────────── */
 
 .hero {
-  margin-bottom: 60px;
-  padding-top: 8px;
+  margin-bottom: 48px;
+  padding-top: 4px;
 }
 
 .hero h1 {
   font-family: var(--serif);
-  font-size: clamp(44px, 7.4vw, 92px);
+  font-size: clamp(38px, 5vw, 64px);
   font-weight: 700;
   line-height: 0.98;
   letter-spacing: -0.03em;
   margin: 0 0 26px;
-  max-width: 15ch;
+  max-width: 17ch;
   background: linear-gradient(168deg, #fff 0%, #efe7d8 42%, var(--gold) 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -324,7 +324,7 @@ code {
 
 .stat-hero .stat-value {
   font-family: var(--serif);
-  font-size: clamp(56px, 10vw, 104px);
+  font-size: clamp(44px, 6.4vw, 74px);
   font-weight: 700;
   line-height: 0.9;
   letter-spacing: -0.035em;
@@ -1612,7 +1612,6 @@ textarea {
   transition: transform 0.2s ease;
 }
 .sidebar-links .nav-link.active::before { transform: translateY(-50%) scaleY(1); }
-.sidebar-links .nav-link:hover { background: rgba(255, 255, 255, 0.035); }
 
 .sidebar-foot {
   display: flex;
@@ -1780,7 +1779,7 @@ textarea {
 }
 
 /* ══ COLLAPSED ═══════════════════════════════════════════════════════════════ */
-.sidebar.collapsed { padding: 22px 10px 18px; align-items: center; }
+.sidebar.collapsed { width: 76px; padding: 22px 10px 18px; align-items: center; }
 .sidebar.collapsed .sidebar-brand { justify-content: center; padding: 6px 0 0; margin-bottom: 24px; }
 .sidebar.collapsed .sidebar-brand-text { display: none; }
 
@@ -1880,9 +1879,18 @@ textarea {
 /* The active row is gold; hovering it was laying a translucent white film over
    that gold and visibly DIMMING the item under the cursor — the one thing
    hover must never do. Hover styling now applies only to inactive rows. */
-.sidebar-links .nav-link:hover { background: none; }
+/* Hover must never touch the active row's own background. The previous attempt
+   set `background: none` on ALL hovered links and, because that rule sits later
+   in the file than .nav-link.active, it stripped the gold gradient off the very
+   row you were pointing at — which is what "dims on hover" actually was. The
+   active row now RESTATES its gradient here so nothing can take it away, and
+   brightens instead. */
 .sidebar-links .nav-link:not(.active):hover { background: var(--surface-hi); }
-.sidebar-links .nav-link.active:hover { filter: brightness(1.06); }
+.sidebar-links .nav-link.active:hover {
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%);
+  filter: brightness(1.07);
+  box-shadow: 0 6px 22px var(--gold-glow);
+}
 
 /* ── Telegram: a door, not a footnote ── */
 .tg-rail {
@@ -1993,3 +2001,41 @@ textarea {
 :root[data-theme="light"] .post-quest-field select option { background: #f7f3e9; color: var(--text); }
 
 html, body { background: var(--bg); color: var(--text); }
+
+/* ══ Collapsed rail: reveal on hover ══════════════════════════════════════════
+   Pointing at the rail opens it to full width so the labels come back, then it
+   closes again on the way out. Deliberately an OVERLAY rather than a change to
+   the grid column: expanding the track would reflow the entire page every time
+   the cursor crossed the edge, which is motion sickness, not a feature. */
+.sidebar.collapsed {
+  transition: width 0.26s cubic-bezier(0.22, 0.61, 0.36, 1), padding 0.26s cubic-bezier(0.22, 0.61, 0.36, 1),
+    background 0.26s ease, box-shadow 0.26s ease;
+}
+
+@media (hover: hover) and (min-width: 1081px) {
+  .sidebar.collapsed:hover {
+    width: 272px;
+    padding: 22px 14px 18px;
+    align-items: stretch;
+    background: color-mix(in srgb, var(--bg-deep) 96%, transparent);
+    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.45);
+    z-index: 70;
+  }
+  .sidebar.collapsed:hover .sidebar-brand-text,
+  .sidebar.collapsed:hover .nav-link-label { display: block; }
+  .sidebar.collapsed:hover .sidebar-head { flex-direction: row; align-items: flex-start; justify-content: space-between; }
+  .sidebar.collapsed:hover .sidebar-brand { justify-content: flex-start; }
+  .sidebar.collapsed:hover .rail-toggle { margin-top: 3px; }
+  .sidebar.collapsed:hover .sidebar-links .nav-link,
+  .sidebar.collapsed:hover .tg-rail,
+  .sidebar.collapsed:hover .theme-toggle {
+    justify-content: flex-start;
+    gap: 11px;
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+  .sidebar.collapsed:hover .theme-toggle { width: auto; height: auto; padding: 7px 11px; }
+  .sidebar.collapsed:hover .sidebar-foot-row { flex-direction: row; }
+  /* The tooltips are what the labels replace — showing both is a stutter. */
+  .sidebar.collapsed:hover .nav-tip { display: none; }
+}
