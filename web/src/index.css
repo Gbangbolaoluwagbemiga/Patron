@@ -1625,42 +1625,6 @@ textarea {
 
 /* Below this the rail costs more than it gives, so it becomes a header and the
    links go back to a horizontal scroll strip. */
-@media (max-width: 1080px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 14px;
-    padding: 18px 22px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar-brand { flex: 0 0 auto; }
-  .sidebar-brand .nav-subtitle { display: none; }
-  .sidebar-links {
-    flex-direction: row;
-    flex: 1 1 100%;
-    order: 3;
-    overflow-x: auto;
-    gap: 4px;
-    padding-bottom: 2px;
-  }
-  .sidebar-links .nav-link { white-space: nowrap; }
-  .sidebar-links .nav-link::before { display: none; }
-  .sidebar-links .nav-link.active { background: color-mix(in srgb, var(--gold) 12%, transparent); color: var(--gold); }
-  .sidebar-foot {
-    flex-direction: row;
-    align-items: center;
-    margin-left: auto;
-    padding: 0;
-    border-top: none;
-    gap: 12px;
-  }
-  .app { padding: 22px 24px 90px; }
-}
 
 /* ══ RAIL: refinements ════════════════════════════════════════════════════════
    Vertical rhythm, icons, a remembered collapse, and just enough motion that
@@ -1827,16 +1791,6 @@ textarea {
 }
 
 /* Collapsing is a desktop affordance; the stacked header has no rail to shrink. */
-@media (max-width: 1080px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar.collapsed { padding: 18px 22px; align-items: center; }
-  .sidebar.collapsed .sidebar-brand-text { display: block; }
-  .sidebar.collapsed .nav-link-label { display: inline; }
-  .rail-toggle { display: none; }
-  .nav-tip { display: none; }
-  .sidebar-brand { margin-bottom: 0; }
-  .sidebar-foot { margin-top: 0; padding-top: 0; }
-}
 
 /* ══ RAIL v2 ═════════════════════════════════════════════════════════════════ */
 .sidebar-head {
@@ -1948,10 +1902,6 @@ textarea {
 .sidebar.collapsed .sidebar-foot-row { flex-direction: column; gap: 6px; }
 .sidebar.collapsed .theme-toggle { width: 38px; height: 34px; }
 
-@media (max-width: 1080px) {
-  .sidebar-head { margin-bottom: 0; flex: 0 0 auto; }
-  .app { padding: 22px 24px 90px; }
-}
 
 /* ══ LIGHT THEME — parchment, not white ═════════════════════════════════════
    This is a ledger, so the light side is warm paper and the gold darkens to
@@ -2498,3 +2448,133 @@ html, body { background: var(--bg); color: var(--text); }
   background: color-mix(in srgb, var(--red) 8%, transparent);
 }
 .cancel-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* ══ MOBILE HEADER ═══════════════════════════════════════════════════════════
+   Below the rail's useful width the sidebar becomes a header. This was written
+   three separate times over the course of building the rail, in three separate
+   media blocks that overrode each other — which is exactly why it looked
+   broken: a full-width gold Telegram bar and a "Live" pill were competing with
+   the brand for one cramped row, and the routes were being squeezed into
+   whatever was left.
+
+   The shape it wants is obvious once the blocks are merged: identity and
+   controls on one row, routes on their own row underneath, scrolling. */
+@media (max-width: 1080px) {
+  .app-shell { grid-template-columns: 1fr; }
+
+  .sidebar {
+    position: sticky;      /* still pinned — a nav you have to scroll up to reach is worse than none */
+    top: 0;
+    z-index: 50;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    width: auto;
+    padding: 12px 18px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+  }
+
+  /* ── Row 1: who this is, and the two switches ── */
+  .sidebar-head { order: 1; flex: 1 1 auto; margin-bottom: 0; min-width: 0; }
+  .sidebar-brand { margin-bottom: 0; padding: 0; gap: 10px; }
+  .sidebar-brand .logo { width: 32px; height: 32px; }
+  .sidebar-brand .nav-title { font-size: 19px; }
+  .sidebar-brand-text .nav-subtitle { display: none; }
+  .rail-toggle { display: none; }   /* nothing to collapse when it is a header */
+  .nav-tip { display: none; }
+
+  .sidebar-foot {
+    order: 2;
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    border-top: none;
+  }
+
+  /* The gold bar was the single biggest offender — it is an icon here. */
+  .sidebar-foot .tg-rail,
+  .sidebar-foot .theme-toggle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    border-radius: 10px;
+  }
+  .sidebar-foot .tg-rail .nav-link-label,
+  .sidebar-foot .theme-toggle .nav-link-label,
+  .sidebar-foot .status .nav-link-label { display: none; }
+  .sidebar-foot .tg-rail .nav-link-icon { width: auto; }
+  .sidebar-foot .status { padding: 0 4px; }
+
+  /* ── Row 2: the routes, scrolling ── */
+  .sidebar-links {
+    order: 3;
+    flex: 1 1 100%;
+    flex-direction: row;
+    gap: 2px;
+    margin: 0 -18px;
+    padding: 4px 18px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar-links::-webkit-scrollbar { display: none; }
+  .sidebar-links .nav-link {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 8px 13px;
+    font-size: 13px;
+    animation: none;        /* the stagger reads as jitter on a scrolling strip */
+  }
+  .sidebar-links .nav-link::before { display: none; }
+  .sidebar-links .nav-link.active {
+    background: color-mix(in srgb, var(--gold) 14%, transparent);
+    color: var(--gold);
+    box-shadow: none;
+  }
+  .sidebar-links .nav-link-icon { display: none; }  /* labels alone, at this width */
+
+  .app { padding: 20px 18px 80px; max-width: none; }
+
+  /* The collapsed rail must not survive into the header. .sidebar.collapsed is
+     two classes and beats .sidebar on specificity, so without this a user who
+     had collapsed the rail on desktop gets a 76px-wide header on their phone —
+     which is how a remembered preference turns into a broken layout. */
+  .sidebar.collapsed {
+    width: auto;
+    padding: 12px 18px 0;
+    align-items: center;
+    flex-direction: row;
+  }
+  .sidebar.collapsed .sidebar-head { flex-direction: row; gap: 12px; }
+  .sidebar.collapsed .sidebar-brand-text { display: block; }
+  .sidebar.collapsed .sidebar-brand-text .nav-subtitle { display: none; }
+  .sidebar.collapsed .nav-link-label { display: inline; }
+  .sidebar.collapsed .sidebar-links .nav-link,
+  .sidebar.collapsed .tg-rail,
+  .sidebar.collapsed .theme-toggle { justify-content: center; }
+  .sidebar.collapsed .sidebar-links .nav-link { justify-content: flex-start; padding: 8px 13px; }
+  .sidebar.collapsed .sidebar-foot-row { flex-direction: row; }
+  .sidebar.collapsed:hover { width: auto; box-shadow: none; }
+}
+
+/* Narrow phones: the wordmark alone, and tighter routes. */
+@media (max-width: 480px) {
+  .sidebar { padding: 10px 14px 0; gap: 10px; }
+  .sidebar-brand .nav-title { font-size: 17px; }
+  .sidebar-links { margin: 0 -14px; padding: 4px 14px 8px; }
+  .sidebar-links .nav-link { padding: 7px 11px; font-size: 12.5px; }
+  .app { padding: 18px 14px 70px; }
+  .page-header { flex-wrap: wrap; gap: 10px; }
+  .account-card, .track-card { padding: 16px 16px; }
+  .account-actions { gap: 16px; }
+}
