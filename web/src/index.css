@@ -1271,12 +1271,7 @@ textarea {
     padding: 7px 12px;
   }
 
-  .toast-stack {
-    right: 14px;
-    left: 14px;
-    bottom: 14px;
-    max-width: none;
-  }
+  .toast-stack { right: 14px; bottom: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2714,12 +2709,25 @@ body {
    Anchoring BOTH sides gives the box a definite containing width it can never
    exceed; margin-left: auto keeps it right-aligned, so desktop is unchanged —
    still 380px, still 24px from the edge. */
+/**
+ * Capped against the VIEWPORT, anchored on one side only.
+ *
+ * My previous attempt anchored both left and right and then used
+ * margin-left: auto to keep it right-aligned. That over-constrains the box:
+ * with left:12 and right:12 there are 366px available, max-width said 380px,
+ * and Chrome resolves the conflict by pushing the box right — measured sitting
+ * from x=302 to x=682 in a 390px viewport, i.e. the fix was itself the
+ * overflow.
+ *
+ * Anchor the right edge only and let max-width do the work, clamped to the
+ * viewport so it can never ask for more room than exists. Desktop is unchanged:
+ * min() picks 380px on anything wider than ~404px.
+ */
 .toast-stack {
-  left: 24px;
+  left: auto;
   right: 24px;
-  max-width: 380px;
   width: auto;
-  margin-left: auto;
+  max-width: min(380px, calc(100vw - 48px));
 }
 .toast {
   min-width: 0;
@@ -2728,5 +2736,5 @@ body {
 .toast > span { min-width: 0; }
 
 @media (max-width: 480px) {
-  .toast-stack { left: 12px; right: 12px; bottom: 12px; }
+  .toast-stack { right: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
 }
