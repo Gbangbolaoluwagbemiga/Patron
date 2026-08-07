@@ -62,6 +62,11 @@ export const cardMotion = {
 const COLLAPSE_KEY = "patron.sidebar.collapsed";
 
 export function Nav({ connected }: { connected: boolean }) {
+  // Appears only for someone who has actually commissioned something. A tracking
+  // page is meaningless to a visitor with nothing to track, and a permanently
+  // empty nav item teaches people to ignore that part of the rail.
+  const { address, account } = useWallet();
+  const hasCommissions = !!address && !!account && Number(account.spent) > 0;
   // Named as sections of a guild's account book rather than as dashboard tabs.
   // Same routes, same data — the voice is what changes.
   //
@@ -74,6 +79,7 @@ export function Nav({ connected }: { connected: boolean }) {
     { to: "/decisions", label: "The Guild Master's Hand", icon: IconBrain },
     { to: "/payments", label: "Account of Monies", icon: IconCoin },
     { to: "/freelancers", label: "Register of Adventurers", icon: IconFlag },
+    ...(hasCommissions ? [{ to: "/my-jobs", label: "Your Commissions", icon: IconCheck }] : []),
     { to: "/work", label: "Get Hired", icon: IconBolt },
   ];
 

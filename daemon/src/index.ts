@@ -94,6 +94,13 @@ const agent = new AgentClient((event) => {
       if (event.escrowId) void notifyUnsuccessfulApplicants(event.escrowId, who);
     }
   }
+  // Nobody cleared the bar. Everyone who applied is owed the same answer they'd
+  // get if someone HAD been hired — this branch was silent, so an applicant who
+  // scored 55 was simply never spoken to again. Silence is the one outcome that
+  // teaches them nothing and reads as the job having vanished.
+  if (event.type === "no_suitable_applicant" && event.escrowId) {
+    void notifyUnsuccessfulApplicants(event.escrowId, null);
+  }
   if (event.type === "work_approved" && event.escrowId) {
     void telegram.notifyWorkerForEscrow(event.escrowId, "✅ Your work was accepted. Payment is on its way to your wallet.");
   }
@@ -160,7 +167,7 @@ const agent = new AgentClient((event) => {
  * itself and links to the actual reasoning is a reason to apply again; a silent
  * one is a reason to leave.
  */
-async function notifyUnsuccessfulApplicants(escrowId: string, winner: string): Promise<void> {
+async function notifyUnsuccessfulApplicants(escrowId: string, winner: string | null): Promise<void> {
   try {
     const result = await graphQuery<{ escrow: { applications: { freelancer: string }[] } | null }>(GET_JOB_APPLICATIONS, {
       escrowId,
@@ -171,17 +178,22 @@ async function notifyUnsuccessfulApplicants(escrowId: string, winner: string): P
       .filter((d: { task_id?: string; type?: string }) => d.task_id === escrowId && d.type === "application_scored");
 
     for (const a of applicants) {
-      if (a.freelancer.toLowerCase() === winner.toLowerCase()) continue;
+      if (winner && a.freelancer.toLowerCase() === winner.toLowerCase()) continue;
       const mine = scores.find((s: { target?: string }) => s.target?.toLowerCase() === a.freelancer.toLowerCase()) as
         | { score?: number; reasoning?: string }
         | undefined;
       await telegram.notifyWorkerByAddress(
         a.freelancer,
         [
-          "This one went to someone else.",
+          winner ? "This one went to someone else." : "Nobody cleared the bar on this one — including you.",
           "",
           mine?.score != null ? `You scored <b>${mine.score}/100</b> — the bar to be hired is 70.` : "",
           mine?.reasoning ? `\n<i>${mine.reasoning}</i>\n` : "",
+          // Where the score actually went is the most useful thing we can hand
+          // back: it turns a rejection into instructions.
+          winner
+            ? ""
+            : "The commission is still open and the money is still locked — new applicants are scored as they arrive.",
           "Every score and the reasoning behind it is public, so you can see exactly how the decision was made:",
           `https://web-plum-one-12.vercel.app/jobs/${escrowId}`,
           "",
@@ -834,6 +846,61 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       return json(res, 500, { error: clientError(err) });
     }
+  }
+
+  /**
+   * Everything one client has commissioned, with where each job has got to.
+   *
+   * The pieces were all public already — the decision log, the payment feed,
+   * the delivered work — but they were scattered across four pages and mixed in
+   * with everyone else's. A client who paid for something had to know which
+   * escrow number was theirs and then go and assemble the story by hand. This
+   * is that story, for their address, in order.
+   */
+  if (req.method === "GET" && url.pathname === "/api/client/jobs") {
+    const address = (url.searchParams.get("address") ?? "").trim().toLowerCase();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return json(res, 400, { error: "a valid address is required" });
+
+    const mine = store.listTasks(300).filter((t) => (t.clientAddress ?? "").toLowerCase() === address && t.escrowId);
+    const decisions = store.listDecisions(500);
+    const payments = store.listPayments(300);
+
+    const jobs = mine.map((t) => {
+      const brief = t.briefJson ? JSON.parse(t.briefJson) : null;
+      const mineDecisions = decisions.filter((d: { task_id?: string }) => d.task_id === t.escrowId);
+      const scored = mineDecisions.filter((d: { type?: string }) => d.type === "application_scored");
+      const hired = mineDecisions.find((d: { type?: string }) => d.type === "applicant_accepted") as { target?: string } | undefined;
+      const paid = payments
+        .filter((p: { escrow_id?: string; direction?: string }) => p.escrow_id === t.escrowId && p.direction === "escrow_release")
+        .reduce((s: number, p: { amount_usdc?: string }) => s + Number(p.amount_usdc || 0), 0);
+
+      const windowMinutes = brief?.applicationWindowMinutes ?? config.applicationWindowMinutes;
+      return {
+        escrowId: t.escrowId,
+        title: brief?.title ?? t.instruction.slice(0, 60),
+        budget: brief?.budget ?? null,
+        status: t.status,
+        createdAt: t.createdAt,
+        closesAt: t.createdAt + windowMinutes * 60_000,
+        milestones: brief?.milestones?.length ?? 1,
+        applicants: scored.length,
+        topScore: scored.reduce((m: number, d: { score?: number }) => Math.max(m, Number(d.score ?? 0)), 0),
+        hiredAddress: hired?.target ?? null,
+        paidOut: paid.toFixed(6),
+        /** The whole story, oldest first — this is the tracking trail. */
+        events: mineDecisions
+          .map((d: { type?: string; reasoning?: string; score?: number; target?: string; timestamp?: number }) => ({
+            type: d.type,
+            reasoning: d.reasoning,
+            score: d.score ?? null,
+            target: d.target ?? null,
+            at: d.timestamp,
+          }))
+          .sort((a: { at?: number }, b: { at?: number }) => Number(a.at ?? 0) - Number(b.at ?? 0)),
+      };
+    });
+
+    return json(res, 200, jobs.sort((a, b) => b.createdAt - a.createdAt));
   }
 
   /** Humans who have joined the guild — the answer to "has anyone actually signed up". */

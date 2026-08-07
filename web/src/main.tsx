@@ -12,6 +12,7 @@ import Decisions from "./pages/Decisions.tsx";
 import Payments from "./pages/Payments.tsx";
 import Freelancers from "./pages/Freelancers.tsx";
 import Work from "./pages/Work.tsx";
+import MyJobs from "./pages/MyJobs.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -27,6 +28,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="payments" element={<Payments />} />
             <Route path="freelancers" element={<Freelancers />} />
           <Route path="work" element={<Work />} />
+          <Route path="my-jobs" element={<MyJobs />} />
           {/* Anything else rendered an empty frame — a blank page reads as a
               broken site, and a mistyped or stale link is the likeliest way a
               judge arrives somewhere that doesn't exist. */}

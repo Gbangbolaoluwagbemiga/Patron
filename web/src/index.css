@@ -2295,3 +2295,91 @@ html, body { background: var(--bg); color: var(--text); }
   font-variant-numeric: tabular-nums; /* so the digits don't jitter each second */
 }
 .judging-note { font-size: 13.5px; line-height: 1.55; color: var(--muted); max-width: 78ch; }
+
+/* ══ Commission tracking ═════════════════════════════════════════════════════
+   A parcel tracker, not a dashboard: one card per commission, and inside it the
+   sequence of what actually happened, in order. */
+.track-card {
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-hi);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 14px;
+}
+.track-open { border-left-color: var(--gold); }
+.track-active { border-left-color: var(--gold); }
+.track-done { border-left-color: var(--green); }
+.track-refunded { border-left-color: var(--faint); }
+.track-warn { border-left-color: var(--red); }
+
+.track-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.track-title { font-family: var(--serif); font-size: 21px; font-weight: 700; color: var(--text); }
+.track-meta { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+
+.track-stage {
+  flex: 0 0 auto;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.track-stage-open { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, transparent); background: var(--gold-dim); }
+.track-stage-active { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, transparent); background: var(--gold-dim); }
+.track-stage-done { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+.track-stage-warn { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+.track-stage-refunded { color: var(--faint); }
+
+.track-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 16px 0 14px;
+}
+.track-figures > div {
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.track-figures span {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 5px;
+}
+.track-figures b { font-family: var(--mono); font-size: 15px; color: var(--text); }
+
+.track-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+
+/* The trail. A left rule with the sequence hanging off it — the shape people
+   already read as "what has happened so far, in order". */
+.trail {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--border);
+}
+.trail-item { display: flex; gap: 13px; padding: 11px 0 11px 16px; }
+.trail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  margin-left: -30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--gold);
+}
+.trail-item b { font-size: 13.5px; color: var(--text); }
+.trail-note { font-size: 13px; line-height: 1.55; color: var(--muted); margin-top: 4px; max-width: 80ch; }
+.trail-who { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+
+.inline-addr { font-family: var(--mono); font-size: 13px; color: var(--gold); }
