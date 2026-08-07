@@ -17,7 +17,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { imageDimensions, readSvgSource, transcribeAudio, isAudio } from "./DeliverableFacts.js";
+import { imageDimensions, readSvgSource, transcribeAudio, isAudio, readWebPage, readGitHubRepo } from "./DeliverableFacts.js";
 
 /** What a vision model will accept. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -166,6 +166,38 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
       available: false,
       note: `The delivered link resolves and is genuinely ${file.mediaType} (${sizeKb}), so the file and its FORMAT are verified, but it could not be transcribed. Judge its contents on the freelancer's description — never treat this as a broken link.`,
       findings: [],
+    };
+  }
+
+  // ── A repository is a document. ────────────────────────────────────────
+  // Checked BEFORE the content-type branches, because github.com serves
+  // text/html and the page itself is mostly navigation chrome. The README is
+  // what the freelancer actually wrote about what they built, and the API
+  // answers "is it licensed" as a fact rather than a claim.
+  const repo = await readGitHubRepo(url);
+  if (repo) {
+    return {
+      available: true,
+      note: "The delivered repository was read — its metadata from the GitHub API, and its README.",
+      description: `A delivered GitHub repository. ${repo.summary}.`,
+      findings: [],
+      sourceExcerpt: repo.text || undefined,
+    };
+  }
+
+  // ── A web page is text. ────────────────────────────────────────────────
+  // This fell through to "contents not readable", so a build-me-a-website
+  // brief — the one kind of job whose deliverable is most obviously
+  // machine-readable — was judged on the freelancer's sentence about it.
+  // Reading a page needs no vision model; it never did.
+  if (file.mediaType.includes("html") || file.mediaType.startsWith("text/") || file.mediaType.includes("json")) {
+    const page = readWebPage(new TextDecoder().decode(file.buf));
+    return {
+      available: true,
+      note: `The delivered link was fetched (${sizeKb}) and ${page.summary}.`,
+      description: `A live page at ${url} (${file.mediaType}, ${sizeKb}). ${page.summary}.`,
+      findings: [],
+      sourceExcerpt: page.text || undefined,
     };
   }
 

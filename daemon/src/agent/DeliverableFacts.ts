@@ -149,3 +149,111 @@ export async function transcribeAudio(buf: Uint8Array, filename: string): Promis
 export function isAudio(mediaType: string): boolean {
   return /^audio\//.test(mediaType) || mediaType === "video/mp4" || mediaType === "video/webm";
 }
+
+/**
+ * Read a delivered WEB PAGE.
+ *
+ * "Patron has no vision credit so it couldn't open your site" was true and
+ * beside the point: a web page is text. The reviewer was told a live URL
+ * "resolves but its contents are not readable" and then judged the freelancer's
+ * sentence about it — for a build-me-a-website brief, which is the one kind of
+ * job where the deliverable is most obviously machine-readable.
+ *
+ * Same extraction as an applicant's portfolio: prefer <main>, fall back to
+ * <article>, drop the chrome. A single-page app that renders client-side still
+ * publishes its description in metadata, which is better than nothing.
+ */
+export function readWebPage(raw: string): { summary: string; text: string } {
+  const region =
+    raw.match(/<main[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+    raw.match(/<article[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+    raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ??
+    raw;
+
+  const text = region
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? "";
+  const meta = (raw.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? "").trim();
+
+  if (text.length < 60) {
+    const fallback = [title, meta].filter(Boolean).join(" — ");
+    return {
+      summary: fallback
+        ? `the page loads but renders its content with JavaScript, so only its published description could be read: "${fallback}"`
+        : "the page loads but serves no readable text (a JavaScript app that cannot be rendered here)",
+      text: fallback,
+    };
+  }
+  return { summary: `the page loads and its text was read${title ? ` — titled "${title}"` : ""}`, text: text.slice(0, 3500) };
+}
+
+/**
+ * Read a delivered GITHUB REPOSITORY.
+ *
+ * "Here is the repo" is how a developer delivers code, and a repo page stripped
+ * of markup is mostly navigation. The API gives the description, language and
+ * size directly, and the README is the document the freelancer actually wrote
+ * to explain what they built — which is precisely what a reviewer needs to
+ * check "properly documented" against.
+ */
+export async function readGitHubRepo(url: string): Promise<{ summary: string; text: string } | null> {
+  const m = url.match(/^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/#?]|$)/i);
+  if (!m) return null;
+  const [, owner, repo] = m;
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "PatronBot/1.0" };
+
+  try {
+    const metaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers, signal: AbortSignal.timeout(10_000) });
+    if (!metaRes.ok) return null;
+    const meta = (await metaRes.json()) as {
+      description?: string;
+      language?: string;
+      stargazers_count?: number;
+      pushed_at?: string;
+      license?: { spdx_id?: string } | null;
+      default_branch?: string;
+    };
+
+    let readme = "";
+    try {
+      const r = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
+        headers: { ...headers, Accept: "application/vnd.github.raw" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (r.ok) readme = (await r.text()).replace(/\s+/g, " ").trim();
+    } catch {
+      /* a repo with no README is a finding in itself, not an error */
+    }
+
+    const facts = [
+      meta.description ? `described as "${meta.description}"` : "no description set",
+      meta.language ? `primary language ${meta.language}` : "",
+      // Licence matters: "include an open source license" is a real acceptance
+      // criterion, and this answers it as a fact rather than a claim.
+      meta.license?.spdx_id && meta.license.spdx_id !== "NOASSERTION"
+        ? `licensed ${meta.license.spdx_id}`
+        : "NO LICENSE FILE detected",
+      meta.pushed_at ? `last pushed ${meta.pushed_at.slice(0, 10)}` : "",
+      readme ? `README present (${readme.length} chars)` : "NO README found",
+    ].filter(Boolean);
+
+    return {
+      summary: `a public GitHub repository — ${facts.join(", ")}`,
+      text: readme.slice(0, 3500),
+    };
+  } catch {
+    return null;
+  }
+}
