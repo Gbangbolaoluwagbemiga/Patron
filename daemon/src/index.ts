@@ -637,6 +637,7 @@ const server = http.createServer(async (req, res) => {
         deposited: account.deposited.toFixed(6),
         withdrawn: account.withdrawn.toFixed(6),
         spent: account.spent.toFixed(6),
+        refunded: account.refunded.toFixed(6),
         claim: account.net.toFixed(6),
         withdrawable: Math.min(account.net, spendable).toFixed(6),
         treasuryOnHand: onHand.toFixed(6),
@@ -1389,7 +1390,15 @@ async function pollOnce() {
   // contain live work once finished jobs pile up in front of it. At 50 a busy
   // week would have pushed a genuinely active job out of the poller's sight and
   // frozen it — nothing would advance it, and nothing would say why.
-  const tasks = store.listTasks(300).filter((t) => t.escrowId && (t.status === "posted" || t.status === "active"));
+  // "disputed" is included on purpose. It used to be terminal: once escalated,
+  // the poller never looked at the job again, so when a human arbiter actually
+  // RESOLVED it nothing noticed. The page kept saying "with a human arbiter"
+  // forever, neither party was told the outcome, and the client's share of the
+  // split never came back to their balance. Escalation is a handover, not an
+  // ending — Patron still owes both sides the result.
+  const tasks = store
+    .listTasks(300)
+    .filter((t) => t.escrowId && (t.status === "posted" || t.status === "active" || t.status === "disputed"));
   let pollFailures = 0;
 
   for (const task of tasks) {
@@ -1435,6 +1444,11 @@ async function pollOnce() {
         const winner = await agent.reviewApplications(escrowId, brief);
         store.setPollerInt(scoredCountKey(task.escrowId), currentCount);
         if (winner) store.updateTaskStatus(task.id, "active", task.escrowId);
+        continue;
+      }
+
+      if (task.status === "disputed") {
+        await settleResolvedDispute(task, brief);
         continue;
       }
 
@@ -1587,3 +1601,96 @@ setInterval(() => void pollOnce(), 15_000);
 // Second door into the worker layer. Dormant without a bot token; the daemon
 // boots and runs identically either way.
 telegram.startTelegramBot();
+
+/** SecureFlow milestone states we care about once an arbiter is involved. */
+const MILESTONE_RESOLVED = 5;
+
+/**
+ * Notice when a human arbiter has ruled, and finish the job properly.
+ *
+ * Escalation was treated as the end of Patron's involvement: the task was
+ * marked "disputed" and dropped out of the poll set forever. So when a dispute
+ * was actually resolved on SecureFlow — money moved, the split was decided —
+ * nothing on this side noticed. The tracking page said "with a human arbiter"
+ * indefinitely, neither the freelancer nor the client was told the outcome, and
+ * the client's returned share never reappeared in their balance even though the
+ * treasury had received it.
+ *
+ * Handing a decision to a human does not end our obligation to report it.
+ */
+async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: { amount: number }[]; budget?: number }): Promise<void> {
+  if (!task.escrowId) return;
+
+  const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
+  const escrow = result.escrow;
+  if (!escrow) return;
+
+  const milestones = escrow.milestones ?? [];
+  const stillDisputed = milestones.some((m) => Number(m.status) === MILESTONE_DISPUTED);
+  const anyResolved = milestones.some((m) => Number(m.status) === MILESTONE_RESOLVED);
+  if (stillDisputed || !anyResolved) return; // the arbiter has not ruled yet
+
+  // What the freelancer actually received, straight from the chain.
+  const paidOut = Number(escrow.paidAmount ?? 0) / 1e6;
+  const budget = Number(brief?.budget ?? 0);
+  const returned = Math.max(0, budget - paidOut);
+
+  store.updateTaskStatus(task.id, "completed", task.escrowId);
+
+  // Give the client back what the arbiter did not award. The money is already
+  // in the treasury — this is the bookkeeping that makes it theirs again.
+  if (task.clientAddress && returned > 0.000001) {
+    store.recordTreasuryEntry({
+      id: randomUUID(),
+      party: task.clientAddress,
+      direction: "refund",
+      amountUsdc: returned.toFixed(6),
+      txHash: `dispute-refund:${task.escrowId}`,
+    });
+  }
+
+  const jobLink = `https://web-plum-one-12.vercel.app/jobs/${task.escrowId}`;
+  const outcome =
+    paidOut <= 0.000001
+      ? "The arbiter awarded nothing from this milestone."
+      : returned <= 0.000001
+        ? `The arbiter awarded the full $${paidOut.toFixed(2)} to the freelancer.`
+        : `The arbiter split it — $${paidOut.toFixed(2)} to the freelancer, $${returned.toFixed(2)} returned.`;
+
+  broadcast({
+    type: "task_completed",
+    message: `Dispute resolved on escrow ${task.escrowId}. ${outcome}`,
+    escrowId: task.escrowId,
+    timestamp: Date.now(),
+  });
+
+  void telegram.notifyWorkerForEscrow(
+    task.escrowId,
+    [
+      "⚖️ <b>The dispute on your job has been resolved.</b>",
+      "",
+      telegram.esc(outcome),
+      paidOut > 0.000001 ? "Your share is in your wallet — /balance to see it." : "",
+      "",
+      jobLink,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  void telegram.notifyClientForEscrow(
+    task.escrowId,
+    [
+      "⚖️ <b>The dispute on your commission has been resolved.</b>",
+      "",
+      telegram.esc(outcome),
+      returned > 0.000001 ? `$${returned.toFixed(2)} is back in your Patron balance to commission or withdraw.` : "",
+      "",
+      jobLink,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  console.log(`[poller] dispute on ${task.escrowId} resolved — paid $${paidOut.toFixed(2)}, returned $${returned.toFixed(2)}`);
+}

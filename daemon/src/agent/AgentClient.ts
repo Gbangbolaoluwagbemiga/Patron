@@ -260,18 +260,46 @@ export class AgentClient {
     // Rejection path — never final, always constructive. Uses the FIXED
     // brief.revisionRounds against the FULL history for this milestone.
     if (shouldEscalateToHuman(history, brief.revisionRounds)) {
+      /**
+       * Say what was wrong with the LAST delivery, not just that we ran out of
+       * rounds.
+       *
+       * This used to escalate with "after N revision rounds, work still does not
+       * meet brief criteria" and throw the review away — the review it had just
+       * computed, with per-criterion results and written feedback sitting in
+       * memory. So a freelancer who fixed everything they were told about was
+       * handed to an arbiter without ever being told what still failed, and the
+       * ARBITER inherited a dispute with no statement of the case. Both of them
+       * are now deciding blind on the one submission that mattered most.
+       */
+      const failed = review.criteriaResults.filter((c) => !c.passed);
       const decision: AgentDecision = {
         id: crypto.randomUUID(),
         taskId: escrowId.toString(),
         type: "escalated",
-        reasoning: `After ${brief.revisionRounds} revision round(s), work still does not meet brief criteria. Escalating to human arbiter via SecureFlow's dispute system.`,
+        reasoning: [
+          `After ${brief.revisionRounds} revision round(s), the work still does not meet the brief. Escalating to a human arbiter via SecureFlow's dispute system.`,
+          "",
+          `Final submission scored ${review.score}/100.`,
+          review.feedback ? `What was still missing: ${review.feedback}` : "",
+          failed.length
+            ? `Criteria not met: ${failed.map((c) => `${c.criterion}${c.note ? ` — ${c.note}` : ""}`).join(" · ")}`
+            : "",
+          review.inspectedArtifact === false && review.inspectionNote ? `Note on inspection: ${review.inspectionNote}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
         timestamp: Date.now(),
       };
       this.decisions.push(decision);
       const txHash = await secureflow.disputeMilestone(
         escrowId,
         milestoneIndex,
-        `Patron AI: ${history.length} revision rounds exhausted, work still fails brief criteria.`,
+        // This string is what the human arbiter sees on SecureFlow. "Revision
+        // rounds exhausted" tells them nothing they can rule on.
+        `Patron AI: ${history.length} revision round(s) exhausted. Final submission scored ${review.score}/100. ${
+          review.feedback || "See the decision log for the full reasoning."
+        }`.slice(0, 500),
       );
       this.emit("escalated_to_human", "Max revisions reached. Escalated to human arbiter.", {
         decision,

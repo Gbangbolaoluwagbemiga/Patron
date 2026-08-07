@@ -20,6 +20,8 @@ export interface TreasuryAccount {
   deposited: string;
   withdrawn: string;
   spent: string;
+  /** Committed money an arbiter or a cancellation sent back. */
+  refunded: string;
   claim: string;
   withdrawable: string;
   treasuryOnHand: string;

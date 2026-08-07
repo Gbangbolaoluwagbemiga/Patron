@@ -52,7 +52,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS treasury_ledger (
     id TEXT PRIMARY KEY,
     party TEXT NOT NULL,               -- the depositor's address, lowercased
-    direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal' | 'spend'
+    direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal' | 'spend' | 'refund'
     amount_usdc TEXT NOT NULL,
     tx_hash TEXT UNIQUE,
     timestamp INTEGER NOT NULL
@@ -553,7 +553,7 @@ export function setPollerInt(key: string, value: number): void {
 export function recordTreasuryEntry(e: {
   id: string;
   party: string;
-  direction: "deposit" | "withdrawal" | "spend";
+  direction: "deposit" | "withdrawal" | "spend" | "refund";
   amountUsdc: string;
   txHash?: string;
 }): boolean {
@@ -581,6 +581,7 @@ export function treasuryAccount(party: string): {
   deposited: number;
   withdrawn: number;
   spent: number;
+  refunded: number;
   net: number;
 } {
   const row = db
@@ -588,14 +589,19 @@ export function treasuryAccount(party: string): {
       `SELECT
          COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS dep,
          COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS wdr,
-         COALESCE(SUM(CASE WHEN direction = 'spend'      THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS spd
+         COALESCE(SUM(CASE WHEN direction = 'spend'      THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS spd,
+         COALESCE(SUM(CASE WHEN direction = 'refund'     THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS ref
        FROM treasury_ledger WHERE party = ?`,
     )
-    .get(party.toLowerCase()) as { dep: number; wdr: number; spd: number };
+    .get(party.toLowerCase()) as { dep: number; wdr: number; spd: number; ref: number };
   const deposited = Number(row?.dep ?? 0);
   const withdrawn = Number(row?.wdr ?? 0);
   const spent = Number(row?.spd ?? 0);
-  return { deposited, withdrawn, spent, net: Math.max(0, deposited - withdrawn - spent) };
+  // Money committed to a job that came back — an arbiter splitting an escrow,
+  // or a commission nobody qualified for. It was spent and then it wasn't, so
+  // it has to return to what this client can commission or withdraw.
+  const refunded = Number(row?.ref ?? 0);
+  return { deposited, withdrawn, spent, refunded, net: Math.max(0, deposited - withdrawn - spent + refunded) };
 }
 
 export function treasuryEntries(party: string, limit = 50): any[] {
