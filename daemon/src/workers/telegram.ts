@@ -117,6 +117,10 @@ const HELP = [
   "/wallet — your address, and how custody actually works",
   "/withdraw — send earnings to any address you control",
   "",
+  "<b>Hiring, rather than working</b>",
+  "/watch 0x… — follow commissions you paid for: applicants, the hire, the delivered file, the payout",
+  "/unwatch — stop following",
+  "",
   "<b>You</b>",
   "/profile — your handle, skills and rating",
   "/skills &lt;text&gt; — tell the guild what you do",
@@ -510,6 +514,43 @@ async function handleText(msg: TgMessage) {
       return;
     }
 
+    // ── The client's side. Everything else in this bot is for the person
+    //    DOING the work; this is for the person who paid for it.
+    if (cmd === "/watch") {
+      const addr = rest.trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+        return void (await send(
+          chatId,
+          [
+            "Send the wallet address you commission with:",
+            "<code>/watch 0xYourAddress</code>",
+            "",
+            "I'll message you when applicants arrive, when someone is hired, when the work lands, and when it's paid — so you don't have to keep a tab open.",
+          ].join("\n"),
+        ));
+      }
+      store.watchClient(addr, "telegram", String(chatId));
+      return void (await send(
+        chatId,
+        [
+          `👁 Following <code>${addr.slice(0, 10)}…${addr.slice(-6)}</code>.`,
+          "",
+          "You'll hear from me when:",
+          "· someone is hired for one of your commissions (and what they scored)",
+          "· nobody clears the bar (your money stays locked)",
+          "· the work is delivered — with the file",
+          "· it's accepted and paid",
+          "",
+          "/unwatch to stop. Everything I'll send you is already public on the ledger.",
+        ].join("\n"),
+      ));
+    }
+
+    if (cmd === "/unwatch") {
+      const n = store.unwatchClient("telegram", String(chatId));
+      return void (await send(chatId, n > 0 ? "Stopped following your commissions." : "You weren't following anything."));
+    }
+
     if (cmd === "/link") {
       const worker = workerFor(tgUserId);
       if (!rest.startsWith("0x")) return void (await send(chatId, "Usage: /link 0xYourAddress"));
@@ -777,4 +818,25 @@ export function startTelegramBot(): void {
 
   void loop();
   console.log("[telegram] bot listening (long-poll)");
+}
+
+/**
+ * Tell the CLIENT what is happening to the job they paid for.
+ *
+ * The freelancer side of this has existed from the start — hired, revision
+ * requested, paid. The client side did not, so the person who put the money in
+ * had to keep a browser tab open to learn anything. Same infrastructure, other
+ * end of the deal.
+ *
+ * Resolves escrow → client address → whoever is following that address.
+ */
+export async function notifyClientForEscrow(escrowId: string, text: string): Promise<void> {
+  if (!config.telegramBotToken) return;
+  const task = store.listTasks(300).find((t) => t.escrowId === escrowId);
+  const address = task?.clientAddress;
+  if (!address) return; // posted before signed commissioning, or by an agent over x402
+
+  for (const w of store.watchersFor(address)) {
+    if (w.channel === "telegram") await send(Number(w.channelRef), text);
+  }
 }

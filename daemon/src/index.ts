@@ -101,6 +101,95 @@ const agent = new AgentClient((event) => {
   if (event.type === "no_suitable_applicant" && event.escrowId) {
     void notifyUnsuccessfulApplicants(event.escrowId, null);
   }
+  // ── The client's side of every one of these ────────────────────────────
+  // Each of these already messaged the freelancer. The person who PAID had to
+  // keep a tab open to learn the same facts about their own money.
+  if (event.escrowId) {
+    const id = event.escrowId;
+    const jobLink = `https://web-plum-one-12.vercel.app/jobs/${id}`;
+
+    if (event.type === "applicant_accepted" && event.decision?.target) {
+      const who = event.decision.target;
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "✅ <b>Someone's been hired for your commission.</b>",
+          "",
+          `<code>${who.slice(0, 10)}…${who.slice(-6)}</code> scored highest against your brief.`,
+          event.decision.reasoning ? `\n<i>${event.decision.reasoning.slice(0, 400)}</i>\n` : "",
+          `Every applicant's score and the reasoning: ${jobLink}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+
+    if (event.type === "no_suitable_applicant") {
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "⏳ <b>Nobody cleared the bar on your commission yet.</b>",
+          "",
+          event.decision?.reasoning ?? "",
+          "",
+          "Your money is still locked in escrow — nobody is paid for work that wasn't good enough, and it comes back to you in full if the deadline passes with no one suitable.",
+          jobLink,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+
+    if (event.type === "work_submitted") {
+      void telegram.notifyClientForEscrow(
+        id,
+        ["📦 <b>Your work has been delivered.</b>", "", "It's being checked against every acceptance criterion now.", jobLink].join("\n"),
+      );
+    }
+
+    if (event.type === "work_rejected") {
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "📝 <b>The delivery didn't pass — a revision was requested.</b>",
+          "",
+          event.decision?.reasoning?.slice(0, 400) ?? "",
+          "",
+          "Your money stays locked either way. The freelancer gets written feedback and another go.",
+          jobLink,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+
+    if (event.type === "work_approved") {
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "🎉 <b>Your work was accepted.</b>",
+          "",
+          "It met every criterion in your brief. Collect the file here:",
+          jobLink,
+        ].join("\n"),
+      );
+    }
+
+    if (event.type === "payment_released" && event.amountUsdc) {
+      void telegram.notifyClientForEscrow(
+        id,
+        `💸 <b>$${event.amountUsdc} released</b> from your escrow to the freelancer. The job is settled.\n\n${jobLink}`,
+      );
+    }
+
+    if (event.type === "escalated_to_human") {
+      void telegram.notifyClientForEscrow(
+        id,
+        `⚖️ <b>Your commission has gone to a human arbiter.</b>\n\nThe guild master couldn't settle it after the revision rounds, so a person decides now. Your money is untouched.\n\n${jobLink}`,
+      );
+    }
+  }
+
   if (event.type === "work_approved" && event.escrowId) {
     void telegram.notifyWorkerForEscrow(event.escrowId, "✅ Your work was accepted. Payment is on its way to your wallet.");
   }

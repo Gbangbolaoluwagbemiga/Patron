@@ -58,6 +58,25 @@ db.exec(`
     timestamp INTEGER NOT NULL
   );
 
+  -- Clients who want their commissions followed in a chat.
+  --
+  -- A client is identified only by a wallet address, so there was nowhere to
+  -- send anything: the freelancer got pushed at every step and the person who
+  -- PAID had to keep refreshing a page. This maps an address to a chat.
+  --
+  -- Deliberately NOT signature-gated. Everything it can tell you — applicants,
+  -- scores, the hire, the delivered file — is already public on /decisions and
+  -- /jobs, so subscribing to an address leaks nothing that isn't. Requiring a
+  -- signature would buy no privacy and cost the one thing this feature is for,
+  -- which is being trivially easy to turn on.
+  CREATE TABLE IF NOT EXISTS client_watchers (
+    address TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    channel_ref TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (address, channel, channel_ref)
+  );
+
   CREATE TABLE IF NOT EXISTS payments (
     id TEXT PRIMARY KEY,
     direction TEXT NOT NULL,      -- 'in' (x402 commission) | 'out' (x402 buy) | 'escrow_lock' | 'escrow_release'
@@ -596,4 +615,30 @@ export function treasuryClaimsTotal(): number {
     )
     .get() as { net: number };
   return Math.max(0, Number(row?.net ?? 0));
+}
+
+// ── Client watchers ─────────────────────────────────────────────────────────
+
+export function watchClient(address: string, channel: string, channelRef: string): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO client_watchers (address, channel, channel_ref, created_at) VALUES (?, ?, ?, ?)`,
+  ).run(address.toLowerCase(), channel, channelRef, Date.now());
+}
+
+export function unwatchClient(channel: string, channelRef: string): number {
+  return db.prepare(`DELETE FROM client_watchers WHERE channel = ? AND channel_ref = ?`).run(channel, channelRef).changes as number;
+}
+
+/** Every chat following this client address. */
+export function watchersFor(address: string): { channel: string; channelRef: string }[] {
+  return (
+    db.prepare(`SELECT channel, channel_ref FROM client_watchers WHERE address = ?`).all(address.toLowerCase()) as any[]
+  ).map((r) => ({ channel: r.channel, channelRef: r.channel_ref }));
+}
+
+/** What one chat is following, so /watching can answer honestly. */
+export function watchedBy(channel: string, channelRef: string): string[] {
+  return (
+    db.prepare(`SELECT address FROM client_watchers WHERE channel = ? AND channel_ref = ?`).all(channel, channelRef) as any[]
+  ).map((r) => r.address);
 }
