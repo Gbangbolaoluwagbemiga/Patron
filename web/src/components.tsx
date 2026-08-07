@@ -361,7 +361,10 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   const [copied, setCopied] = useState(false);
   const [amount, setAmount] = useState("5");
   const [fundedTx, setFundedTx] = useState<string | null>(null);
-  const { address, connecting, funding, error, connect, fund } = useWalletConnect();
+  const { address, balance: walletBalance, connecting, funding, error, connect, fund } = useWalletConnect();
+  // The visitor's own holdings, and whether what they typed exceeds them.
+  const myBalance = walletBalance != null ? parseFloat(walletBalance) : null;
+  const insufficient = myBalance != null && amount !== "" && parseFloat(amount) > myBalance;
   // Polled every 15s, so it moves on its own when a job is posted or paid —
   // ticking rather than snapping makes that visible instead of easy to miss.
   const balance = wallet ? parseFloat(wallet.balance) : 0;
@@ -419,13 +422,29 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
           </button>
         ) : (
           <>
-            <div className="treasury-fund-label">Connected: {shorten(address)}</div>
+            {/* Their own balance, beside the box asking them for a number. It
+                wasn't shown, so the only way to find out you couldn't afford
+                the amount you typed was to have the chain reject it. On Arc the
+                native currency IS USDC, so this is the same unit as the field. */}
+            <div className="treasury-fund-label wallet-line">
+              <span>Connected: {shorten(address)}</span>
+              {myBalance != null && (
+                <span className={`wallet-balance ${insufficient ? "short" : ""}`}>
+                  your balance ${myBalance.toFixed(2)}
+                </span>
+              )}
+            </div>
             <div className="treasury-fund-row">
               <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              <button className="treasury-connect-btn" onClick={handleFund} disabled={funding || !wallet}>
+              <button className="treasury-connect-btn" onClick={handleFund} disabled={funding || !wallet || insufficient}>
                 {funding ? "Sending…" : `Fund $${amount}`}
               </button>
             </div>
+            {insufficient && (
+              <div className="post-quest-msg warn">
+                ⚠ That's more than the ${myBalance?.toFixed(2)} in your wallet — lower the amount.
+              </div>
+            )}
           </>
         )}
         {error && <div className="post-quest-msg error">⚠ {error}</div>}

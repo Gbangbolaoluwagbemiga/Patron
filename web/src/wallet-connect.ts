@@ -5,7 +5,7 @@
 // the VISITOR's own wallet, sending the visitor's own funds, by the visitor's own
 // explicit approval in their wallet's UI. Nothing here can move Patron's funds.
 import { useCallback, useState } from "react";
-import { createWalletClient, custom, parseEther } from "viem";
+import { createWalletClient, custom, formatEther, parseEther } from "viem";
 
 const ARC_TESTNET_CHAIN_ID_HEX = "0x4cef52"; // 5042002
 const ARC_TESTNET_PARAMS = {
@@ -26,6 +26,54 @@ function getInjectedProvider(): Eip1193Provider | null {
   return anyWindow.ethereum ?? null;
 }
 
+/**
+ * Turn whatever a wallet threw into a sentence.
+ *
+ * This was `err instanceof Error ? err.message : String(err)`, which is wrong
+ * for exactly this API: EIP-1193 providers reject with a PLAIN OBJECT —
+ * `{ code: 4001, message: "User rejected the request." }` — not an Error. So
+ * the instanceof check failed, String() fell through to Object.prototype, and
+ * the user got a red box reading "[object Object]" for the single most normal
+ * outcome there is: closing the wallet popup.
+ *
+ * The codes are worth naming individually. "User rejected" is not an error to
+ * apologise for, and "request already pending" is solved by looking at the
+ * extension you already have open — neither is served by a raw dump.
+ */
+export function describeWalletError(err: unknown): string {
+  if (typeof err === "string") return err;
+
+  const e = err as { code?: number | string; message?: string; data?: { message?: string }; shortMessage?: string };
+
+  switch (e?.code) {
+    case 4001:
+    case "ACTION_REJECTED":
+      return "You cancelled the request in your wallet — nothing was sent.";
+    case -32002:
+      return "Your wallet already has a pending request. Open the extension and finish or dismiss it, then try again.";
+    case 4900:
+    case 4901:
+      return "Your wallet isn't connected to a network. Unlock it and try again.";
+    case -32603:
+      return e.data?.message ?? "Your wallet rejected the request internally. Check you're on Arc Testnet with enough balance for gas.";
+  }
+
+  // viem wraps provider errors and puts the useful line in shortMessage.
+  if (e?.shortMessage) return e.shortMessage;
+  if (e?.data?.message) return e.data.message;
+  if (e?.message) return e.message;
+  if (err instanceof Error) return err.message;
+
+  // Last resort — still never "[object Object]".
+  try {
+    const json = JSON.stringify(err);
+    if (json && json !== "{}") return json.slice(0, 200);
+  } catch {
+    /* circular */
+  }
+  return "Your wallet returned an error with no details.";
+}
+
 export function hasInjectedWallet(): boolean {
   return getInjectedProvider() !== null;
 }
@@ -35,6 +83,26 @@ export function useWalletConnect() {
   const [connecting, setConnecting] = useState(false);
   const [funding, setFunding] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * What the VISITOR is holding, in their own wallet.
+   *
+   * We were asking someone to type an amount to send with no indication of what
+   * they had — so the only way to discover you couldn't afford it was to be
+   * rejected by the chain. On Arc the native currency IS USDC, so this is the
+   * same unit as the figure they're about to type.
+   */
+  const [balance, setBalance] = useState<string | null>(null);
+
+  const readBalance = useCallback(async (who: string) => {
+    const provider = getInjectedProvider();
+    if (!provider) return;
+    try {
+      const wei = (await provider.request({ method: "eth_getBalance", params: [who, "latest"] })) as string;
+      setBalance(formatEther(BigInt(wei)));
+    } catch {
+      setBalance(null); // never fatal — it's a convenience, not a gate
+    }
+  }, []);
 
   const connect = useCallback(async () => {
     const provider = getInjectedProvider();
@@ -60,8 +128,9 @@ export function useWalletConnect() {
       }
 
       setAddress(accounts[0]);
+      void readBalance(accounts[0]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeWalletError(err));
     } finally {
       setConnecting(false);
     }
@@ -84,16 +153,17 @@ export function useWalletConnect() {
           value: parseEther(amountUsdc),
           chain: null,
         });
+        void readBalance(address);
         return hash;
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeWalletError(err));
         return null;
       } finally {
         setFunding(false);
       }
     },
-    [address],
+    [address, readBalance],
   );
 
-  return { address, connecting, funding, error, connect, fund };
+  return { address, balance, connecting, funding, error, connect, fund, refreshBalance: () => address && readBalance(address) };
 }
