@@ -259,7 +259,17 @@ export class AgentClient {
 
     // Rejection path — never final, always constructive. Uses the FIXED
     // brief.revisionRounds against the FULL history for this milestone.
-    if (shouldEscalateToHuman(history, brief.revisionRounds)) {
+    /**
+     * A floor of three rounds, whatever the brief says.
+     *
+     * Two was enough to escalate someone who had visibly improved between
+     * submissions — they fixed what they were told about, resubmitted, and were
+     * handed to an arbiter without a third chance. A person who is converging
+     * on the brief should be allowed to finish converging; the escalation is
+     * there for work that is not getting closer, not for work that is.
+     */
+    const maxRounds = Math.max(3, brief.revisionRounds ?? 3);
+    if (shouldEscalateToHuman(history, maxRounds)) {
       /**
        * Say what was wrong with the LAST delivery, not just that we ran out of
        * rounds.
@@ -278,7 +288,7 @@ export class AgentClient {
         taskId: escrowId.toString(),
         type: "escalated",
         reasoning: [
-          `After ${brief.revisionRounds} revision round(s), the work still does not meet the brief. Escalating to a human arbiter via SecureFlow's dispute system.`,
+          `After ${maxRounds} revision round(s), the work still does not meet the brief. Escalating to a human arbiter via SecureFlow's dispute system.`,
           "",
           `Final submission scored ${review.score}/100.`,
           review.feedback ? `What was still missing: ${review.feedback}` : "",
@@ -309,7 +319,7 @@ export class AgentClient {
       return;
     }
 
-    const revisionsRemaining = brief.revisionRounds - history.filter((r) => !r.approved).length;
+    const revisionsRemaining = maxRounds - history.filter((r) => !r.approved).length;
     const feedback = buildRevisionRequest(review, revisionsRemaining);
     const decision: AgentDecision = {
       id: crypto.randomUUID(),

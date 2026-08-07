@@ -1596,6 +1596,29 @@ async function pollOnce() {
   }
 }
 
+/**
+ * One-time repair: #56's refund was written from a guess.
+ *
+ * The settlement code inferred $2.50 from the brief when the contract had
+ * awarded $1.25, so the client's balance carried a figure nobody could verify.
+ * Recomputed from the chain on boot, once, and then never again.
+ */
+void (async () => {
+  try {
+    const task = store.listTasks(300).find((t) => t.escrowId === "56");
+    if (!task?.clientAddress || !task.briefJson) return;
+    const e = (await secureflow.getEscrow(56n)) as { paidAmount?: bigint; platformFee?: bigint };
+    if (e?.paidAmount === undefined) return;
+    const budget = Number(JSON.parse(task.briefJson).budget ?? 0);
+    const correct = Math.max(0, budget - Number(e.paidAmount) / 1e6 - Number(e.platformFee ?? 0n) / 1e6);
+    if (store.correctTreasuryEntry("dispute-refund:56", correct.toFixed(6))) {
+      console.log(`[repair] escrow 56 refund corrected to $${correct.toFixed(2)} from the contract`);
+    }
+  } catch (err) {
+    console.warn("[repair] could not correct escrow 56:", err instanceof Error ? err.message : err);
+  }
+})();
+
 setInterval(() => void pollOnce(), 15_000);
 
 // Second door into the worker layer. Dormant without a bot token; the daemon
@@ -1639,21 +1662,30 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   if (milestones.some((m) => Number(m.status) === MILESTONE_DISPUTED)) return;
 
   /**
-   * What the freelancer actually got.
+   * Money comes from the CONTRACT. Never from the brief, never from the subgraph.
    *
-   * paidAmount is authoritative when the subgraph has caught up, but it lagged
-   * at zero on #56 while a milestone already read approved — and reporting
-   * "the arbiter awarded nothing" when they awarded half would be worse than
-   * saying nothing at all. So take whichever is larger: the chain's figure, or
-   * the sum of the milestones the arbiter actually let through.
+   * The first version of this inferred the split from the brief's milestone
+   * amounts because the subgraph reported paidAmount as zero. It then told both
+   * parties "$2.50 each" — while the contract said the arbiter had awarded
+   * $1.25, which is what the freelancer's wallet actually received. Inventing a
+   * number and presenting it as a settlement is worse than saying nothing, and
+   * it is the exact failure this codebase has spent days removing everywhere
+   * else. The subgraph is fine for knowing THAT something happened; it is not
+   * an authority on how much.
    */
-  const budget = Number(brief?.budget ?? 0);
-  const planned = Array.isArray(brief?.milestones) ? brief.milestones : [];
-  const awardedFromMilestones = milestones
-    .filter((m) => Number(m.status) === MILESTONE_APPROVED || Number(m.status) === MILESTONE_RESOLVED)
-    .reduce((sum, m) => sum + Number(planned[Number(m.milestoneIndex)]?.amount ?? 0), 0);
-  const paidOut = Math.max(Number(escrow.paidAmount ?? 0) / 1e6, awardedFromMilestones);
-  const returned = Math.max(0, budget - paidOut);
+  let onChain: { paidAmount?: bigint; platformFee?: bigint } | undefined;
+  try {
+    onChain = (await secureflow.getEscrow(BigInt(task.escrowId))) as { paidAmount?: bigint; platformFee?: bigint };
+  } catch {
+    return; // no verified figures, no settlement — try again next pass
+  }
+  if (!onChain || onChain.paidAmount === undefined) return;
+
+  const paidOut = Number(onChain.paidAmount) / 1e6;
+  const fee = Number(onChain.platformFee ?? 0n) / 1e6;
+  const committed = Number(brief?.budget ?? 0);
+  // What is no longer the freelancer's and no longer at stake: the client's.
+  const returned = Math.max(0, committed - paidOut - fee);
 
   store.updateTaskStatus(task.id, "completed", task.escrowId);
 

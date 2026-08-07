@@ -30,7 +30,7 @@ const BriefSchema = z.object({
     .array(z.string())
     .describe("5-8 specific, measurable acceptance criteria — not vague quality statements"),
   deliverableFormat: z.string().describe("Exact format description, e.g. 'SVG + PNG, min 1000x1000px'"),
-  revisionRounds: z.number().describe("Max revision rounds before human escalation — default 2"),
+  revisionRounds: z.number().describe("Max revision rounds before human escalation — default 3"),
   applicationWindowMinutes: z
     .number()
     .optional()

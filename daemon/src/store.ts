@@ -623,6 +623,21 @@ export function treasuryClaimsTotal(): number {
   return Math.max(0, Number(row?.net ?? 0));
 }
 
+/**
+ * Correct a treasury entry that was written from an unverified figure.
+ *
+ * Escrow #56 was credited a $2.50 "refund" inferred from the brief's milestone
+ * split, while the contract said the arbiter had awarded $1.25. The client's
+ * balance was wrong by the difference. Rewriting the row rather than posting a
+ * second correcting entry, because a ledger that shows a refund and then a
+ * mysterious adjustment is harder to trust than one that shows the right
+ * number with the reason recorded in the code that fixed it.
+ */
+export function correctTreasuryEntry(txHash: string, amountUsdc: string): boolean {
+  const r = db.prepare(`UPDATE treasury_ledger SET amount_usdc = ? WHERE tx_hash = ?`).run(amountUsdc, txHash);
+  return Number(r.changes) > 0;
+}
+
 // ── Client watchers ─────────────────────────────────────────────────────────
 
 export function watchClient(address: string, channel: string, channelRef: string): void {

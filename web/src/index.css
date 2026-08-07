@@ -2875,3 +2875,30 @@ body {
   .sidebar-links { transition: none; }
   .drawer-scrim { animation: none; }
 }
+
+/* ══ DRAWER: two bugs from the first attempt ═════════════════════════════════
+   1. It opened onto an empty overlay. .sidebar carries z-index: 50, which makes
+      it a STACKING CONTEXT — so the drawer's z-index: 90 was scoped inside it
+      and could never rise above the scrim's 80, which is a sibling of .sidebar
+      rather than a sibling of the drawer. The scrim was painting over the very
+      thing it was supposed to reveal. Ordering the ancestors fixes it: the rail
+      goes above the scrim, and the drawer rides along inside it.
+
+   2. The header kept sliding. An off-canvas panel is position: fixed at
+      right: 0 translated fully right, so it occupies space beyond the viewport
+      — and Chrome counts that toward the document's scrollable width. Clipping
+      the axis is what every drawer implementation does, and it is safe here
+      only because nothing else on these pages overflows any more. */
+@media (max-width: 1080px) {
+  html { overflow-x: clip; }
+
+  .sidebar { z-index: 90; }
+  .sidebar.menu-open { z-index: 110; }
+  .drawer-scrim { z-index: 100; }
+  .sidebar-links { z-index: 1; }
+
+  /* Closed, it must not be reachable by tab or pointer — an invisible menu
+     that still takes focus is worse than no menu. */
+  .sidebar-links { visibility: hidden; pointer-events: none; }
+  .sidebar.menu-open .sidebar-links { visibility: visible; pointer-events: auto; }
+}
