@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 const MotionLink = motion(Link);
 import { ARC_EXPLORER, api, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
@@ -14,6 +14,7 @@ import {
   IconBrain,
   IconChevron,
   IconMap,
+  IconMenu,
   IconMoon,
   IconPanelLeft,
   IconSun,
@@ -112,6 +113,31 @@ export function Nav({ connected }: { connected: boolean }) {
     { to: "/work", label: "Get Hired", icon: IconBolt },
   ];
 
+  /**
+   * Mobile drawer.
+   *
+   * A horizontally scrolling strip of routes is discoverable only if you
+   * already know to swipe it — the labels run off the edge and nothing says
+   * there is more. A hamburger is the one navigation idiom everyone has
+   * already learned.
+   */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  // Any navigation closes it. A drawer that stays open over the page you just
+  // asked for makes you dismiss it every single time.
+  useEffect(() => setMenuOpen(false), [location.pathname]);
+  // And so does Escape, because a drawer with no keyboard exit is a trap.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen]);
+
   // Remembered, because a rail that forgets is worse than one that never
   // collapsed: you set it once and it undoes itself on every navigation.
   const [collapsed, setCollapsed] = useState(() => {
@@ -134,7 +160,11 @@ export function Nav({ connected }: { connected: boolean }) {
   }, [collapsed]);
 
   return (
-    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+    <>
+    {/* Backdrop. Tapping anywhere off the drawer closes it — the second
+        universally-understood half of this pattern. */}
+    {menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""} ${menuOpen ? "menu-open" : ""}`}>
       {/* The collapse control belongs HERE, level with the brand, where every
           other application puts it and where the eye already is. Buried at the
           bottom of the rail it was below the fold on a short window and read as
@@ -155,6 +185,15 @@ export function Nav({ connected }: { connected: boolean }) {
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <IconPanelLeft size={17} />
+        </button>
+        {/* Mobile only — the rail toggle has nothing to collapse at that size. */}
+        <button
+          className="menu-toggle"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={menuOpen}
+        >
+          {menuOpen ? <IconX size={20} /> : <IconMenu size={20} />}
         </button>
       </div>
 
@@ -208,6 +247,7 @@ export function Nav({ connected }: { connected: boolean }) {
         </div>
       </div>
     </aside>
+    </>
   );
 }
 
