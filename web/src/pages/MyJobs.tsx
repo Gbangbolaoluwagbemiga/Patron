@@ -15,9 +15,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useWallet } from "../wallet-context";
-import { JudgingCountdown, shorten, timeAgo } from "../components";
+import { JudgingCountdown, TELEGRAM_BOT_URL, shorten, timeAgo } from "../components";
 import { LedgerSkeleton } from "../motion";
-import { IconBolt, IconCheck, IconCoin, IconScroll, IconSearch, IconShrug, IconSwords } from "../Icon";
+import { IconBolt, IconCheck, IconCoin, IconScroll, IconSearch, IconShrug, IconSwords, IconTelegram } from "../Icon";
 
 interface ClientEvent {
   type: string;
@@ -115,6 +115,19 @@ export default function MyJobs() {
         Everything commissioned by <code className="inline-addr">{shorten(address)}</code>, and exactly where each one
         has got to. Updates on its own — you don't have to keep checking.
       </p>
+
+      {/* One tap. Telegram passes whatever follows ?start= straight to the bot,
+          so the address arrives with the person and nobody has to copy their own
+          wallet into a chat window — which was the honest weak point of asking
+          them to type /watch 0x… themselves. */}
+      <a
+        className="tg-invite-btn watch-cta"
+        href={`${TELEGRAM_BOT_URL}?start=watch_${address}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <IconTelegram size={15} /> Get these updates on Telegram
+      </a>
 
       {jobs === null ? (
         <LedgerSkeleton rows={3} />

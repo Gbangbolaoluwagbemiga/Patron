@@ -330,6 +330,34 @@ async function handleText(msg: TgMessage) {
     const rest = text.slice(cmd?.length ?? 0).trim();
 
     if (cmd === "/start") {
+      /**
+       * Deep-link payload. Telegram passes whatever followed ?start= in the
+       * link as the argument to /start, which is how a website hands context
+       * to a chat without asking anyone to type it.
+       *
+       * This is what turns "copy your own wallet address into a chat window"
+       * — a genuinely bad first instruction — into one tap from the job page.
+       */
+      const deepLink = rest.trim();
+      if (deepLink.startsWith("watch_")) {
+        const addr = deepLink.slice("watch_".length);
+        if (/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+          store.watchClient(addr, "telegram", String(chatId));
+          return void (await send(
+            chatId,
+            [
+              `👁 <b>You'll get updates here.</b>`,
+              "",
+              `Following commissions paid for by <code>${addr.slice(0, 10)}…${addr.slice(-6)}</code>.`,
+              "",
+              "I'll message you when someone is hired, when the work is delivered, when it's accepted, and when the money moves — so you don't have to keep a tab open.",
+              "",
+              "/unwatch to stop.",
+            ].join("\n"),
+          ));
+        }
+      }
+
       const existing = workerFor(tgUserId);
       if (existing) {
         await send(chatId, `Welcome back, ${existing.handle}. /jobs to see what's open.`);
