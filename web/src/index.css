@@ -2578,3 +2578,71 @@ html, body { background: var(--bg); color: var(--text); }
   .account-card, .track-card { padding: 16px 16px; }
   .account-actions { gap: 16px; }
 }
+
+/* ══ NOTHING MAY BE WIDER THAN THE SCREEN ════════════════════════════════════
+   The mobile layout was not the problem — the page was scrolled sideways, so
+   every fixed element looked misplaced. The cause: this app renders 42-char
+   wallet addresses inside the guild master's reasoning and a 66-char brief
+   hash, and the entire stylesheet contained exactly one wrapping rule. A
+   66-character monospace token is roughly 500px wide and cannot break at a
+   space because it contains none, so it pushed the document wider than the
+   viewport and took the header with it.
+
+   `anywhere` rather than `break-word` deliberately: it also affects min-content
+   sizing, so flex and grid children are actually allowed to shrink around these
+   strings instead of being floored at the token's width. */
+.card-reasoning,
+.trail-note,
+.trail-who,
+.track-meta,
+.track-title,
+.page-sub,
+.brief-field,
+.brief-field div,
+.milestone-desc,
+.criteria-list li,
+.depositor-note,
+.judging-note,
+.post-quest-msg,
+.notice-body,
+.empty,
+.keycard,
+.footer {
+  overflow-wrap: anywhere;
+}
+
+/* Hashes and addresses shown as code: break them rather than let one token set
+   the width of its container. */
+code,
+.treasury-address,
+.inline-addr,
+.card-address,
+.entry-no {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  max-width: 100%;
+}
+
+/* The address field in the treasury row is monospace and full-length. */
+.treasury-address-row { flex-wrap: wrap; }
+
+/* Belt and braces. `clip` rather than `hidden` because hidden makes the element
+   a scroll container, which breaks position: sticky on the header above it. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+/* Grid and flex children default to min-width:auto, which refuses to shrink
+   below their content — the other half of why one long string can widen a
+   whole page. */
+.app-shell,
+.app,
+.page,
+.job-grid,
+.panel,
+.panel-body,
+.card,
+.track-card,
+.account-card { min-width: 0; }
