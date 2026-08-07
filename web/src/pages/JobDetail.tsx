@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useDaemon } from "../daemon-context";
-import { DecisionCard, MilestoneList, PaymentCard, SECUREFLOW_JOBS_URL, timeAgo } from "../components";
-import { parseBrief } from "../types";
+import { DecisionCard, JudgingCountdown, MilestoneList, PaymentCard, SECUREFLOW_JOBS_URL, timeAgo } from "../components";
+import { judgingAt, parseBrief } from "../types";
 import { DAEMON_URL } from "../api";
 import { IconBrain, IconCheck, IconCoin, IconScroll, IconSplit } from "../Icon";
 
@@ -79,6 +79,16 @@ export default function JobDetail() {
         <span>escrow #{task.escrowId}</span>
         <span>{timeAgo(task.createdAt)}</span>
       </div>
+
+      {/* Only while it is still taking applicants — once someone is hired the
+          question stops being "when is it judged" and starts being "where is
+          my work", which the panels below answer. */}
+      {brief && task.status === "posted" && (
+        <JudgingCountdown
+          closesAt={judgingAt(task, brief)}
+          applicants={jobDecisions.filter((d) => d.type === "application_scored").length}
+        />
+      )}
 
       {!brief ? (
         <div className="empty">Brief still generating…</div>

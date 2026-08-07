@@ -79,6 +79,20 @@ export interface TaskBrief {
   revisionRounds: number;
   milestones: BriefMilestone[];
   briefHash: string;
+  /**
+   * How long applications stay open before the guild master judges them
+   * together. Absent on jobs posted before the form asked for it — those used
+   * the daemon's default, which is what DEFAULT_WINDOW_MINUTES mirrors.
+   */
+  applicationWindowMinutes?: number;
+}
+
+/** Matches config.applicationWindowMinutes on the daemon. */
+export const DEFAULT_WINDOW_MINUTES = 3;
+
+/** When applications close for a job, in epoch ms. */
+export function judgingAt(task: TaskRow, brief: TaskBrief | null): number {
+  return task.createdAt + (brief?.applicationWindowMinutes ?? DEFAULT_WINDOW_MINUTES) * 60_000;
 }
 
 /** task.briefJson is a raw string from SQLite — null until BriefGenerator has run. */

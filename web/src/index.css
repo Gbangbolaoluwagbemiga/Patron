@@ -2256,3 +2256,42 @@ html, body { background: var(--bg); color: var(--text); }
    destroys the only thing the three-sentence version is for. */
 .hero-beats { max-width: none; }
 .hero-beats span { display: block; }
+
+/* ── Judging countdown ───────────────────────────────────────────────────────
+   The freelancer board always showed when a job would be judged. The client —
+   who paid for it, and is the one actually waiting — was shown nothing, so
+   silence was indistinguishable from something being broken. */
+.judging {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 18px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.judging.open { border-color: color-mix(in srgb, var(--gold) 34%, transparent); background: var(--gold-dim); }
+
+.judging-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.judging.open .judging-head { color: var(--gold); }
+
+.judging-clock {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums; /* so the digits don't jitter each second */
+}
+.judging-note { font-size: 13.5px; line-height: 1.55; color: var(--muted); max-width: 78ch; }

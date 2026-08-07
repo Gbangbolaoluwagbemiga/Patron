@@ -598,6 +598,14 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
   // staged payments had no way to ask for it: the form collected a description,
   // a budget and a duration, and nothing else reached the brief.
   const [stages, setStages] = useState<"auto" | "1" | "2" | "3">("auto");
+  // How long applications stay open before they're judged together.
+  //
+  // The daemon's default is 3 minutes, which is right for an automated test and
+  // far too short for a person: by the time a freelancer sees the job, reads the
+  // brief and writes a cover letter, the window has closed and they are scored
+  // alone — the exact first-come race the window exists to prevent. Job #55 was
+  // posted with no window and closed before anyone could apply.
+  const [window_, setWindow] = useState<"5" | "30" | "120" | "1440">("30");
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "done">("idle");
   const [result, setResult] = useState<{ taskId: string; escrowId: string } | null>(null);
   const [error, setError] = useState("");
@@ -630,7 +638,13 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
         : stages === "1"
           ? " Deliver this as a single milestone paid on completion."
           : ` Split this into ${stages} milestones that are each reviewed and paid separately.`;
-    const instruction = `${title.trim() ? title.trim() + " — " : ""}${description.trim()}. Budget $${budget}, ${days} day(s).${staging}`;
+    const WINDOW_PHRASE: Record<string, string> = {
+      "5": " Give people 5 minutes to apply before choosing.",
+      "30": " Give people 30 minutes to apply before choosing.",
+      "120": " Give people 2 hours to apply before choosing.",
+      "1440": " Leave applications open for 24 hours before choosing.",
+    };
+    const instruction = `${title.trim() ? title.trim() + " — " : ""}${description.trim()}. Budget $${budget}, ${days} day(s).${staging}${WINDOW_PHRASE[window_] ?? ""}`;
     try {
       // Signed when a depositor is spending their own deposit — the server
       // verifies it and refuses anything above their remaining claim. Without a
@@ -658,6 +672,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
       setBudget("");
       setDays("3");
       setStages("auto");
+      setWindow("30");
       onPosted();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -732,6 +747,15 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
           <input type="number" min="1" step="1" value={days} onChange={(e) => setDays(e.target.value)} />
         </label>
         <label className="post-quest-field">
+          <span>Applications open</span>
+          <select value={window_} onChange={(e) => setWindow(e.target.value as typeof window_)}>
+            <option value="5">5 minutes (demo)</option>
+            <option value="30">30 minutes</option>
+            <option value="120">2 hours</option>
+            <option value="1440">24 hours</option>
+          </select>
+        </label>
+        <label className="post-quest-field">
           <span>Pay in stages</span>
           <select value={stages} onChange={(e) => setStages(e.target.value as typeof stages)}>
             <option value="auto">Let Patron decide</option>
@@ -752,6 +776,10 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
         </div>
       )}
 
+      <div className="post-quest-hint">
+        Applications stay open for the window you choose, then the guild master reads every applicant{" "}
+        <b>together</b> and ranks them against each other — so the job doesn't go to whoever refreshed fastest.
+      </div>
       <div className="post-quest-hint">
         Commissioned against your own deposit — <b>${myClaim.toFixed(2)}</b> available. Whatever you don't spend stays
         withdrawable, and a job nobody suitable applies for is refunded in full.
@@ -1044,5 +1072,62 @@ export function PageCount({ page, size, total }: { page: number; size: number; t
     <span className="page-count">
       {page * size + 1}–{Math.min((page + 1) * size, total)} of {total}
     </span>
+  );
+}
+
+/**
+ * How long applications stay open, counting down.
+ *
+ * The freelancer board always showed this; the client — the person who paid,
+ * and the one actually waiting on a decision — was shown nothing at all. They
+ * had no way to know whether the silence meant "still collecting applicants" or
+ * "something is broken", which are very different feelings about your money.
+ *
+ * Ticks every second rather than on render, because a countdown that only moves
+ * when something else happens to change is worse than no countdown.
+ */
+export function JudgingCountdown({ closesAt, applicants }: { closesAt: number; applicants: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const ms = closesAt - now;
+  const open = ms > 0;
+
+  const left = (() => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+    if (m > 0) return `${m}m ${String(sec).padStart(2, "0")}s`;
+    return `${sec}s`;
+  })();
+
+  return (
+    <div className={`judging ${open ? "open" : "closed"}`}>
+      <div className="judging-head">
+        <IconSearch size={15} />
+        {open ? "Applications close in" : "Applications closed"}
+      </div>
+      {open ? (
+        <>
+          <div className="judging-clock">{left}</div>
+          <div className="judging-note">
+            {applicants === 0
+              ? "No applicants yet. When the window closes the guild master reads everyone together and ranks them against each other — so nothing is decided first-come."
+              : `${applicants} applicant${applicants === 1 ? "" : "s"} so far. They're judged together when the window closes, not as they arrive.`}
+          </div>
+        </>
+      ) : (
+        <div className="judging-note">
+          {applicants === 0
+            ? "The window has passed with nobody applying, so the next person to apply is scored on their own. If none reach the bar by the deadline, the budget is refunded in full."
+            : "Judged. Every score and the reasoning behind it is on the guild master's page."}
+        </div>
+      )}
+    </div>
   );
 }
