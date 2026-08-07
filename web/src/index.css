@@ -2793,13 +2793,24 @@ body {
   .nav-title { white-space: nowrap; }
 }
 
-/* ══ MOBILE: HAMBURGER + DRAWER ══════════════════════════════════════════════
-   The scrolling strip of routes was discoverable only if you already knew to
-   swipe it — labels ran off the edge with nothing indicating there was more.
-   A hamburger is the one navigation idiom every user has already learned. */
+
+
+/* ══ MOBILE DRAWER — one authoritative block ═════════════════════════════════
+   Rewritten rather than patched. The previous attempts left twelve separate
+   .sidebar-links rules across five media queries overriding one another, which
+   is why each fix looked right and changed nothing: top/bottom stopped
+   applying so the panel was 102px tall, and the scrim painted over a drawer
+   that was genuinely open, visible and populated.
+
+   The scrim now lives INSIDE the rail, so both are children of one stacking
+   context and plain sibling z-index decides what covers what. */
 .menu-toggle { display: none; }
 
 @media (max-width: 1080px) {
+  /* An off-canvas panel sits beyond the viewport by design; without this it
+     counts toward the document's scrollable width and the page slides. */
+  html { overflow-x: clip; }
+
   .menu-toggle {
     display: inline-flex;
     align-items: center;
@@ -2813,38 +2824,39 @@ body {
     border: 1px solid var(--border);
     border-radius: 11px;
     cursor: pointer;
-    transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
   }
   .menu-toggle:hover { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
 
-  .sidebar { padding: 12px 18px; gap: 12px; }
-  .sidebar-head { order: 1; flex: 1 1 auto; }
-  .sidebar-foot { order: 2; }
+  .sidebar { z-index: 90; }
 
-  /* The routes leave the header entirely and become a drawer. */
+  /* ── The panel ── */
   .sidebar-links {
     position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 90;
+    inset: 0 0 0 auto;          /* top/right/bottom pinned, left free */
+    z-index: 2;                 /* above the scrim, same parent */
     width: min(300px, 84vw);
+    height: 100dvh;             /* explicit, so mobile browser chrome can't shrink it */
     flex-direction: column;
+    align-items: stretch;
     gap: 4px;
     margin: 0;
-    padding: 78px 16px 24px;
+    padding: 74px 14px 24px;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--bg-deep);
     border-left: 1px solid var(--border);
-    box-shadow: -26px 0 60px rgba(0, 0, 0, 0.5);
-    /* Off-canvas until asked for. translate rather than display so it slides. */
+    box-shadow: -26px 0 60px rgba(0, 0, 0, 0.55);
     transform: translateX(100%);
-    transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1), visibility 0.26s;
   }
-  .sidebar.menu-open .sidebar-links { transform: translateX(0); }
+  .sidebar.menu-open .sidebar-links {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
 
-  /* Full-width rows in the drawer — a tap target, not a chip. */
   .sidebar-links .nav-link {
     width: 100%;
     justify-content: flex-start;
@@ -2854,18 +2866,16 @@ body {
     border-radius: 11px;
     animation: none;
   }
-  /* Icons come back here: in a vertical list they aid scanning rather than
-     stealing width from the label, which is why they were dropped from the
-     horizontal strip. */
   .sidebar-links .nav-link-icon { display: inline-flex; }
+  .sidebar-links .nav-link-label { display: inline; }
   .sidebar-links .nav-link::before { display: none; }
 
+  /* ── The backdrop ── */
   .drawer-scrim {
     position: fixed;
     inset: 0;
-    z-index: 80;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(2px);
+    z-index: 1;                 /* below the panel, above everything else */
+    background: rgba(0, 0, 0, 0.6);
     animation: scrim-in 0.2s ease both;
   }
   @keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
@@ -2874,31 +2884,4 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .sidebar-links { transition: none; }
   .drawer-scrim { animation: none; }
-}
-
-/* ══ DRAWER: two bugs from the first attempt ═════════════════════════════════
-   1. It opened onto an empty overlay. .sidebar carries z-index: 50, which makes
-      it a STACKING CONTEXT — so the drawer's z-index: 90 was scoped inside it
-      and could never rise above the scrim's 80, which is a sibling of .sidebar
-      rather than a sibling of the drawer. The scrim was painting over the very
-      thing it was supposed to reveal. Ordering the ancestors fixes it: the rail
-      goes above the scrim, and the drawer rides along inside it.
-
-   2. The header kept sliding. An off-canvas panel is position: fixed at
-      right: 0 translated fully right, so it occupies space beyond the viewport
-      — and Chrome counts that toward the document's scrollable width. Clipping
-      the axis is what every drawer implementation does, and it is safe here
-      only because nothing else on these pages overflows any more. */
-@media (max-width: 1080px) {
-  html { overflow-x: clip; }
-
-  .sidebar { z-index: 90; }
-  .sidebar.menu-open { z-index: 110; }
-  .drawer-scrim { z-index: 100; }
-  .sidebar-links { z-index: 1; }
-
-  /* Closed, it must not be reachable by tab or pointer — an invisible menu
-     that still takes focus is worse than no menu. */
-  .sidebar-links { visibility: hidden; pointer-events: none; }
-  .sidebar.menu-open .sidebar-links { visibility: visible; pointer-events: auto; }
 }

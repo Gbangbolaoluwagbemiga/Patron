@@ -160,11 +160,14 @@ export function Nav({ connected }: { connected: boolean }) {
   }, [collapsed]);
 
   return (
-    <>
-    {/* Backdrop. Tapping anywhere off the drawer closes it — the second
-        universally-understood half of this pattern. */}
-    {menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
     <aside className={`sidebar ${collapsed ? "collapsed" : ""} ${menuOpen ? "menu-open" : ""}`}>
+      {/* Backdrop, rendered INSIDE the rail on purpose.
+          As a sibling of <aside> it sat in a different stacking context, so the
+          drawer — nested inside a rail that carries its own z-index — could
+          never paint above it however high its z-index went. Measured: the
+          drawer was open, visible, and populated, with the scrim on top of it.
+          Same parent, plain sibling order, no ancestor games. */}
+      {menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
       {/* The collapse control belongs HERE, level with the brand, where every
           other application puts it and where the eye already is. Buried at the
           bottom of the rail it was below the fold on a short window and read as
@@ -247,7 +250,6 @@ export function Nav({ connected }: { connected: boolean }) {
         </div>
       </div>
     </aside>
-    </>
   );
 }
 
