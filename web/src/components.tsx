@@ -62,20 +62,6 @@ export const cardMotion = {
 const COLLAPSE_KEY = "patron.sidebar.collapsed";
 
 export function Nav({ connected }: { connected: boolean }) {
-  const { address } = useWallet();
-  /**
-   * Shown to anyone with a wallet connected.
-   *
-   * This used to also require spent > 0, which was too clever by half: you
-   * could not find the tracking page until you had already commissioned
-   * something, and you could not learn what it was for until you found it. With
-   * no signed commission anywhere in the system yet, that condition was false
-   * for every single visitor and the link never appeared at all.
-   *
-   * Connected is the right gate. The page's own empty state explains what will
-   * appear here, which is more use than hiding it.
-   */
-  const hasWallet = !!address;
   // Named as sections of a guild's account book rather than as dashboard tabs.
   // Same routes, same data — the voice is what changes.
   //
@@ -88,7 +74,13 @@ export function Nav({ connected }: { connected: boolean }) {
     { to: "/decisions", label: "The Guild Master's Hand", icon: IconBrain },
     { to: "/payments", label: "Account of Monies", icon: IconCoin },
     { to: "/freelancers", label: "Register of Adventurers", icon: IconFlag },
-    ...(hasWallet ? [{ to: "/my-jobs", label: "Your Commissions", icon: IconCheck }] : []),
+    // Always here. This was gated twice — first on having spent something,
+    // then on having a wallet connected — and both times the effect was a page
+    // nobody could find. The page itself already answers every case: connect a
+    // wallet, nothing commissioned yet, or the actual tracker. A nav item that
+    // conditionally vanishes is harder to learn than one that is simply always
+    // in the same place.
+    { to: "/my-jobs", label: "Your Commissions", icon: IconCheck },
     { to: "/work", label: "Get Hired", icon: IconBolt },
   ];
 
