@@ -225,3 +225,21 @@ export function IconPanelLeft(p: IconProps) {
     </svg>
   );
 }
+
+/** Disclosure chevron. Points down when open (add .flip). */
+export function IconChevron(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** Dismiss. */
+export function IconX(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}

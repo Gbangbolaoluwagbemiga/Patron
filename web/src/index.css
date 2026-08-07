@@ -2386,3 +2386,55 @@ html, body { background: var(--bg); color: var(--text); }
 
 /* One tap from the tracking page into the bot, with the address already on it. */
 .watch-cta { display: inline-flex; margin-bottom: 22px; }
+
+/* ── Account card: collapse ──────────────────────────────────────────────── */
+.account-head { position: relative; }
+.account-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--faint);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.account-toggle:hover { color: var(--gold); background: var(--surface-hi); border-color: var(--border); }
+.account-toggle svg { transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1); }
+.account-toggle svg.flip { transform: rotate(180deg); }
+
+/* Collapsed, the card keeps the one figure worth seeing. */
+.account-collapsed-figure { font-family: var(--mono); color: var(--gold); font-size: 14px; }
+
+/* ── Dismissible notices ─────────────────────────────────────────────────── */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.notice-body { flex: 1 1 auto; min-width: 0; }
+.notice-x {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  color: currentColor;
+  opacity: 0.55;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.notice-x:hover { opacity: 1; background: rgba(255, 255, 255, 0.08); }
+:root[data-theme="light"] .notice-x:hover { background: rgba(40, 30, 10, 0.09); }

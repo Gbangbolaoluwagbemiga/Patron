@@ -12,6 +12,7 @@ import {
   IconAlert,
   IconBolt,
   IconBrain,
+  IconChevron,
   IconMap,
   IconMoon,
   IconPanelLeft,
@@ -28,6 +29,7 @@ import {
   IconSearch,
   IconShrug,
   IconSwords,
+  IconX,
   type IconComponent,
 } from "./Icon";
 
@@ -57,6 +59,32 @@ export const cardMotion = {
   animate: { opacity: 1, y: 0 },
   transition: inkTransition,
 };
+
+/**
+ * A message you can put away.
+ *
+ * These used to sit there until some other action happened to replace them, so
+ * a card carried "✓ Deposited — tx 0x759a…" long after it had been read, and
+ * an error stayed on screen after you'd fixed the thing it was about.
+ */
+export function Notice({
+  tone,
+  onDismiss,
+  children,
+}: {
+  tone: "ok" | "error" | "warn";
+  onDismiss: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`post-quest-msg ${tone} notice`}>
+      <span className="notice-body">{children}</span>
+      <button className="notice-x" onClick={onDismiss} aria-label="Dismiss" title="Dismiss">
+        <IconX size={13} />
+      </button>
+    </div>
+  );
+}
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 const COLLAPSE_KEY = "patron.sidebar.collapsed";
@@ -372,6 +400,23 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawAmt, setWithdrawAmt] = useState("");
   const [withdrewTx, setWithdrewTx] = useState<string | null>(null);
+  // Remembered. This card is reference material once you know your numbers, and
+  // a panel that re-opens itself on every navigation is one you end up closing
+  // over and over.
+  const [accountOpen, setAccountOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem("patron.account.collapsed") !== "1";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("patron.account.collapsed", accountOpen ? "0" : "1");
+    } catch {
+      /* private mode */
+    }
+  }, [accountOpen]);
 
   // ONE shared connection — see wallet-context.tsx. Calling useWalletConnect()
   // here directly is what let a commission post itself anonymously.
@@ -504,10 +549,29 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
         <div className="account-card">
           <div className="account-head">
             <h3>Your account</h3>
-            <span className="account-sub">
-              money you put in, what you've committed, and what you can take back
-            </span>
+            {accountOpen ? (
+              <span className="account-sub">money you put in, what you've committed, and what you can take back</span>
+            ) : (
+              // Collapsed, the one number worth keeping on screen is what you can
+              // still spend or withdraw — hiding that would make the card feel
+              // closed rather than tidied.
+              <span className="account-sub">
+                <b className="account-collapsed-figure">${account ? parseFloat(account.claim).toFixed(2) : "0.00"}</b>{" "}
+                available
+              </span>
+            )}
+            <button
+              className="account-toggle"
+              onClick={() => setAccountOpen((v) => !v)}
+              aria-expanded={accountOpen}
+              title={accountOpen ? "Collapse" : "Expand"}
+            >
+              <IconChevron size={16} className={accountOpen ? "flip" : ""} />
+            </button>
           </div>
+
+          {accountOpen && (
+          <>
 
           <div className="account-grid">
             <div className="account-figure">
@@ -579,9 +643,29 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
             </div>
           )}
 
-          {error && <div className="post-quest-msg error">⚠ {error}</div>}
-          {fundedTx && <div className="post-quest-msg ok">✓ Deposited — tx {shorten(fundedTx)}</div>}
-          {withdrewTx && <div className="post-quest-msg ok">✓ Withdrawn — tx {shorten(withdrewTx)}</div>}
+          </>
+          )}
+
+          {/* Receipts stay until dismissed rather than until something else
+              happens to replace them — but they have to be dismissible, or the
+              card carries a stale "✓ Deposited" long after you've read it. */}
+          {error && <Notice tone="error" onDismiss={() => setError("")}>⚠ {error}</Notice>}
+          {fundedTx && (
+            <Notice tone="ok" onDismiss={() => setFundedTx(null)}>
+              ✓ Deposited —{" "}
+              <a className="tx-link" href={`${ARC_EXPLORER}/tx/${fundedTx}`} target="_blank" rel="noreferrer">
+                tx {shorten(fundedTx)} ↗
+              </a>
+            </Notice>
+          )}
+          {withdrewTx && (
+            <Notice tone="ok" onDismiss={() => setWithdrewTx(null)}>
+              ✓ Withdrawn —{" "}
+              <a className="tx-link" href={`${ARC_EXPLORER}/tx/${withdrewTx}`} target="_blank" rel="noreferrer">
+                tx {shorten(withdrewTx)} ↗
+              </a>
+            </Notice>
+          )}
         </div>
       )}
     </>
