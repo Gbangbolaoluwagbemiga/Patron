@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink } from "react-router-dom";
 
 const MotionLink = motion(Link);
 import { ARC_EXPLORER, api, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
-import { hasInjectedWallet, useWalletConnect } from "./wallet-connect";
+import { hasInjectedWallet } from "./wallet-connect";
+import { useWallet } from "./wallet-context";
 import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
 import { inkTransition, useCountUp, useFlashOnChange } from "./motion";
 import {
@@ -29,16 +30,6 @@ import {
   IconSwords,
   type IconComponent,
 } from "./Icon";
-
-/** A depositor's position in the pooled treasury. */
-interface TreasuryAccount {
-  address: string;
-  deposited: string;
-  withdrawn: string;
-  claim: string;
-  withdrawable: string;
-  treasuryOnHand: string;
-}
 
 const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
 /** The second door. Exported because more than one page needs to point at it. */
@@ -371,19 +362,33 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   const [copied, setCopied] = useState(false);
   const [amount, setAmount] = useState("5");
   const [fundedTx, setFundedTx] = useState<string | null>(null);
-  const { address, balance: walletBalance, connecting, funding, error, connect, fund, signMessage, setError } = useWalletConnect();
-  const [account, setAccount] = useState<TreasuryAccount | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawAmt, setWithdrawAmt] = useState("");
   const [withdrewTx, setWithdrewTx] = useState<string | null>(null);
-  // The visitor's own holdings, and whether what they typed exceeds them.
-  const myBalance = walletBalance != null ? parseFloat(walletBalance) : null;
-  const insufficient = myBalance != null && amount !== "" && parseFloat(amount) > myBalance;
-  // Polled every 15s, so it moves on its own when a job is posted or paid —
-  // ticking rather than snapping makes that visible instead of easy to miss.
+
+  // ONE shared connection — see wallet-context.tsx. Calling useWalletConnect()
+  // here directly is what let a commission post itself anonymously.
+  const {
+    address,
+    balance: walletBalance,
+    connecting,
+    funding,
+    error,
+    connect,
+    fund,
+    setError,
+    account,
+    refreshAccount,
+    signMessage,
+  } = useWallet();
+
   const balance = wallet ? parseFloat(wallet.balance) : 0;
   const animatedBalance = useCountUp(balance);
   const balanceFlash = useFlashOnChange(wallet ? wallet.balance : null);
+
+  const myWalletBalance = walletBalance != null ? parseFloat(walletBalance) : null;
+  const insufficient = myWalletBalance != null && amount !== "" && parseFloat(amount) > myWalletBalance;
+  const withdrawable = account ? parseFloat(account.withdrawable) : 0;
 
   function copy() {
     if (!wallet) return;
@@ -392,46 +397,30 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     setTimeout(() => setCopied(false), 1500);
   }
 
-  // Their position in the pooled treasury, refreshed whenever it could change.
-  const loadAccount = useCallback(async (who: string) => {
-    try {
-      setAccount(await api<TreasuryAccount>(`/api/treasury/account?address=${who}`));
-    } catch {
-      /* a missing account view must not break funding */
-    }
-  }, []);
-
-  useEffect(() => {
-    if (address) void loadAccount(address);
-  }, [address, loadAccount]);
-
   async function handleFund() {
     if (!wallet) return;
     setFundedTx(null);
     const hash = await fund(wallet.address, amount);
-    if (hash) {
-      setFundedTx(hash);
-      onFunded();
-      // Claim it against this address. The daemon re-reads the transaction on
-      // chain before crediting anything, so this is a pointer, not a promise.
-      if (address) {
-        try {
-          await api(`/api/treasury/deposit`, { method: "POST", body: JSON.stringify({ txHash: hash, from: address }) });
-        } catch {
-          /* the deposit still landed; it just isn't attributed yet */
-        }
-        void loadAccount(address);
+    if (!hash) return;
+    setFundedTx(hash);
+    onFunded();
+    if (address) {
+      try {
+        // Credited only after the daemon re-reads this transaction on Arc.
+        await api(`/api/treasury/deposit`, { method: "POST", body: JSON.stringify({ txHash: hash, from: address }) });
+      } catch {
+        /* the funds landed; attribution can be retried */
       }
+      await refreshAccount();
     }
   }
 
   async function handleWithdraw() {
     if (!address || !account) return;
     const amt = Number(withdrawAmt);
-    const cap = Number(account.withdrawable);
     if (!(amt > 0)) return;
-    if (amt > cap) {
-      setError(`You can withdraw at most $${cap.toFixed(2)} right now.`);
+    if (amt > withdrawable) {
+      setError(`You can withdraw at most $${withdrawable.toFixed(2)} right now.`);
       return;
     }
     setWithdrawing(true);
@@ -448,7 +437,7 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
       setWithdrewTx(r.txHash);
       setWithdrawAmt("");
       onFunded();
-      void loadAccount(address);
+      await refreshAccount();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -457,135 +446,149 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   }
 
   return (
-    <div className="treasury">
-      <div className="treasury-main">
-        <div className="treasury-label">Patron's Treasury</div>
-        <div className={`treasury-balance ${balanceFlash ? "stat-value-flash" : ""}`}>
-          {wallet ? `$${animatedBalance.toFixed(2)}` : "—"}
+    <>
+      {/* Patron's own position. Global, read-only, and nothing to do with who
+          is looking at it — so it stays its own row. */}
+      <div className="treasury">
+        <div className="treasury-main">
+          <div className="treasury-label">Patron's Treasury</div>
+          <div className={`treasury-balance ${balanceFlash ? "stat-value-flash" : ""}`}>
+            {wallet ? `$${animatedBalance.toFixed(2)}` : "—"}
+          </div>
+          <div className="treasury-sub">available to fund new jobs</div>
         </div>
-        <div className="treasury-sub">available to fund new jobs</div>
+
+        <div className="treasury-fund">
+          <div className="treasury-fund-label">Fund it</div>
+          <div className="treasury-address-row">
+            <code className="treasury-address">{wallet ? wallet.address : "…"}</code>
+            <button className="treasury-copy" onClick={copy} disabled={!wallet}>
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+          {wallet && (
+            <a className="tx-link" href={wallet.explorerUrl} target="_blank" rel="noreferrer">
+              view balance &amp; history on Arcscan ↗
+            </a>
+          )}
+        </div>
+
+        <div className="treasury-connect">
+          {!hasInjectedWallet() ? (
+            <div className="treasury-fund-label">No browser wallet detected — send funds to the address instead.</div>
+          ) : !address ? (
+            <button className="treasury-connect-btn" onClick={connect} disabled={connecting}>
+              {connecting ? "Connecting…" : "Connect Wallet"}
+            </button>
+          ) : (
+            <div className="wallet-chip">
+              <span className="dot live" />
+              <code>{shorten(address)}</code>
+              {myWalletBalance != null && <span className="wallet-chip-bal">${myWalletBalance.toFixed(2)}</span>}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="treasury-fund">
-        <div className="treasury-fund-label">Fund it</div>
-        <div className="treasury-address-row">
-          <code className="treasury-address">{wallet ? wallet.address : "…"}</code>
-          <button className="treasury-copy" onClick={copy} disabled={!wallet}>
-            {copied ? "Copied ✓" : "Copy"}
-          </button>
-        </div>
-        {wallet && (
-          <a className="tx-link" href={wallet.explorerUrl} target="_blank" rel="noreferrer">
-            view balance & history on Arcscan ↗
-          </a>
-        )}
-      </div>
+      {/* The visitor's OWN account. A separate card, because it is a different
+          subject entirely — cramming it into the treasury row made one panel
+          answer two unrelated questions and read as clutter. */}
+      {address && (
+        <div className="account-card">
+          <div className="account-head">
+            <h3>Your account</h3>
+            <span className="account-sub">
+              money you put in, what you've committed, and what you can take back
+            </span>
+          </div>
 
-      <div className="treasury-connect">
-        {!hasInjectedWallet() ? (
-          <div className="treasury-fund-label">No browser wallet detected — send funds to the address instead.</div>
-        ) : !address ? (
-          <button className="treasury-connect-btn" onClick={connect} disabled={connecting}>
-            {connecting ? "Connecting…" : "Connect Wallet"}
-          </button>
-        ) : (
-          <>
-            {/* Their own balance, beside the box asking them for a number. It
-                wasn't shown, so the only way to find out you couldn't afford
-                the amount you typed was to have the chain reject it. On Arc the
-                native currency IS USDC, so this is the same unit as the field. */}
-            <div className="treasury-fund-label wallet-line">
-              <span>Connected: {shorten(address)}</span>
-              {myBalance != null && (
-                <span className={`wallet-balance ${insufficient ? "short" : ""}`}>
-                  your balance ${myBalance.toFixed(2)}
-                </span>
+          <div className="account-grid">
+            <div className="account-figure">
+              <span className="account-figure-label">Deposited</span>
+              <b>${account ? parseFloat(account.deposited).toFixed(2) : "0.00"}</b>
+            </div>
+            <div className="account-figure">
+              <span className="account-figure-label">Committed to jobs</span>
+              <b>${account ? parseFloat(account.spent).toFixed(2) : "0.00"}</b>
+            </div>
+            <div className="account-figure">
+              <span className="account-figure-label">Withdrawn</span>
+              <b>${account ? parseFloat(account.withdrawn).toFixed(2) : "0.00"}</b>
+            </div>
+            <div className="account-figure primary">
+              <span className="account-figure-label">Available</span>
+              <b>${account ? parseFloat(account.claim).toFixed(2) : "0.00"}</b>
+            </div>
+          </div>
+
+          <div className="account-actions">
+            <div className="account-action">
+              <label>Deposit</label>
+              <div className="treasury-fund-row">
+                <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                <button className="treasury-connect-btn" onClick={handleFund} disabled={funding || !wallet || insufficient}>
+                  {funding ? "Sending…" : "Deposit"}
+                </button>
+              </div>
+              {myWalletBalance != null && (
+                <div className={`account-hint ${insufficient ? "short" : ""}`}>
+                  {insufficient
+                    ? `More than the $${myWalletBalance.toFixed(2)} in your wallet`
+                    : `$${myWalletBalance.toFixed(2)} in your wallet`}
+                </div>
               )}
             </div>
-            <div className="treasury-fund-row">
-              <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              <button className="treasury-connect-btn" onClick={handleFund} disabled={funding || !wallet || insufficient}>
-                {funding ? "Sending…" : `Fund $${amount}`}
-              </button>
+
+            <div className="account-action">
+              <label>Withdraw</label>
+              <div className="treasury-fund-row">
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder={withdrawable.toFixed(2)}
+                  value={withdrawAmt}
+                  onChange={(e) => setWithdrawAmt(e.target.value)}
+                  disabled={withdrawable <= 0}
+                />
+                <button
+                  className="treasury-connect-btn"
+                  onClick={handleWithdraw}
+                  disabled={withdrawing || !withdrawAmt || withdrawable <= 0}
+                >
+                  {withdrawing ? "Signing…" : "Withdraw"}
+                </button>
+              </div>
+              <div className="account-hint">
+                {withdrawable > 0 ? `$${withdrawable.toFixed(2)} available now` : "Nothing to withdraw yet"}
+              </div>
             </div>
-            {insufficient && (
-              <div className="post-quest-msg warn">
-                ⚠ That's more than the ${myBalance?.toFixed(2)} in your wallet — lower the amount.
-              </div>
-            )}
+          </div>
 
-            {/* What THIS depositor put in, and what they can take back.
-                Deliberately two different numbers: the treasury is a pooled
-                wallet Patron spends from, and money sitting in an escrow has
-                genuinely left it. Showing only "your deposit" would imply a
-                personal balance that is always available, which it isn't. */}
-            {account && Number(account.deposited) > 0 && (
-              <div className="depositor">
-                <div className="depositor-row">
-                  <span>You've deposited</span>
-                  <b>${Number(account.deposited).toFixed(2)}</b>
-                </div>
-                {Number(account.withdrawn) > 0 && (
-                  <div className="depositor-row">
-                    <span>Withdrawn</span>
-                    <b>${Number(account.withdrawn).toFixed(2)}</b>
-                  </div>
-                )}
-                <div className="depositor-row strong">
-                  <span>Withdrawable now</span>
-                  <b>${Number(account.withdrawable).toFixed(2)}</b>
-                </div>
+          {account && parseFloat(account.withdrawable) < parseFloat(account.claim) && (
+            <div className="depositor-note">
+              ${parseFloat(account.claim).toFixed(2)} is yours, but only ${parseFloat(account.withdrawable).toFixed(2)} is in
+              the treasury right now — the rest is locked in escrow against live commissions, and frees up as they settle.
+            </div>
+          )}
 
-                {Number(account.withdrawable) < Number(account.claim) && (
-                  <div className="depositor-note">
-                    ${Number(account.claim).toFixed(2)} is yours, but only ${Number(account.withdrawable).toFixed(2)} is in the
-                    treasury right now — the rest is locked in escrow against live commissions. It frees up as they settle.
-                  </div>
-                )}
-
-                {Number(account.withdrawable) > 0 && (
-                  <div className="treasury-fund-row" style={{ marginTop: 10 }}>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder={Number(account.withdrawable).toFixed(2)}
-                      value={withdrawAmt}
-                      onChange={(e) => setWithdrawAmt(e.target.value)}
-                    />
-                    <button className="treasury-connect-btn" onClick={handleWithdraw} disabled={withdrawing || !withdrawAmt}>
-                      {withdrawing ? "Signing…" : "Withdraw"}
-                    </button>
-                  </div>
-                )}
-                {withdrewTx && <div className="post-quest-msg ok">✓ Withdrawn — tx {shorten(withdrewTx)}</div>}
-              </div>
-            )}
-          </>
-        )}
-        {error && <div className="post-quest-msg error">⚠ {error}</div>}
-        {fundedTx && <div className="post-quest-msg ok">✓ Sent — tx {shorten(fundedTx)}</div>}
-      </div>
-    </div>
+          {error && <div className="post-quest-msg error">⚠ {error}</div>}
+          {fundedTx && <div className="post-quest-msg ok">✓ Deposited — tx {shorten(fundedTx)}</div>}
+          {withdrewTx && <div className="post-quest-msg ok">✓ Withdrawn — tx {shorten(withdrewTx)}</div>}
+        </div>
+      )}
+    </>
   );
 }
 
-// ── Post a quest ─────────────────────────────────────────────────────────────
-export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: WalletInfo | null }) {
-  const { address, signMessage } = useWalletConnect();
-  const [account, setAccount] = useState<TreasuryAccount | null>(null);
 
-  // A connected depositor commissions against their OWN deposit, so the ceiling
-  // is what they have left — not what the shared treasury happens to hold.
-  useEffect(() => {
-    if (!address) {
-      setAccount(null);
-      return;
-    }
-    void api<TreasuryAccount>(`/api/treasury/account?address=${address}`)
-      .then(setAccount)
-      .catch(() => setAccount(null));
-  }, [address]);
+// ── Post a quest ─────────────────────────────────────────────────────────────
+export function PostQuest({ onPosted }: { onPosted: () => void }) {
+  // The SHARED connection. Reading it from its own useWalletConnect() is what
+  // let a $5 depositor commission out of the pooled treasury: this component
+  // held a second, never-connected copy, so it sent no signature and the
+  // server's cap was never consulted.
+  const { address, signMessage, connecting, connect, account, refreshAccount } = useWallet();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
@@ -599,13 +602,18 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
   const [result, setResult] = useState<{ taskId: string; escrowId: string } | null>(null);
   const [error, setError] = useState("");
 
-  // Two different ceilings. A depositor is bounded by their own deposit; an
-  // anonymous visitor posting on the demo path is bounded by the shared pot.
-  const myClaim = account ? parseFloat(account.claim) : null;
-  const available = myClaim != null ? myClaim : wallet ? parseFloat(wallet.balance) : null;
-  const overBudget = available != null && budget !== "" && parseFloat(budget) > available;
+  // One ceiling now: your own deposit. Commissioning is no longer possible
+  // without a wallet, so there is no second, looser path to fall through to.
+  const myClaim = account ? parseFloat(account.claim) : 0;
+  const overBudget = budget !== "" && parseFloat(budget) > myClaim;
   const canSubmit =
-    description.trim() !== "" && budget !== "" && parseFloat(budget) > 0 && days !== "" && status !== "loading" && !overBudget;
+    description.trim() !== "" &&
+    budget !== "" &&
+    parseFloat(budget) > 0 &&
+    days !== "" &&
+    status !== "loading" &&
+    !overBudget &&
+    !!address;
 
   async function submit() {
     if (!canSubmit) return;
@@ -627,18 +635,22 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
       // Signed when a depositor is spending their own deposit — the server
       // verifies it and refuses anything above their remaining claim. Without a
       // wallet this is the anonymous demo path and stays as it was.
-      let auth: { clientAddress: string; signature: string; message: string } | undefined;
-      if (address && myClaim != null) {
-        const amountUsdc = Number(budget).toFixed(6);
-        const message = `Patron commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
-        const signature = await signMessage(message);
-        if (!signature) {
-          setStatus("idle");
-          return;
-        }
-        auth = { clientAddress: address, signature, message };
+      if (!address) {
+        setError("Connect your wallet to commission work.");
+        setStatus("error");
+        return;
       }
-      const res = await postInstruction(instruction, auth);
+      // Signed, always. The server verifies it and refuses anything above this
+      // address's remaining deposit.
+      const amountUsdc = Number(budget).toFixed(6);
+      const message = `Patron commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
+      const signature = await signMessage(message);
+      if (!signature) {
+        setStatus("idle");
+        return;
+      }
+      const res = await postInstruction(instruction, { clientAddress: address, signature, message });
+      void refreshAccount();
       setResult(res);
       setStatus("done");
       setTitle("");
@@ -653,9 +665,42 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
     }
   }
 
+  // Not connected: don't render a form that cannot succeed. Commissioning
+  // spends real money from a real account, so the first step is having one.
+  if (!address) {
+    return (
+      <div className="post-quest">
+        <div className="post-quest-label">Commission work</div>
+        <p className="post-quest-gate">
+          Connect a wallet to hire through Patron. You deposit what you want to spend, commission against it, and
+          withdraw whatever you don't use — no job can ever exceed your own balance.
+        </p>
+        <div className="post-quest-fields" style={{ marginTop: 16 }}>
+          <button onClick={connect} disabled={connecting}>
+            {connecting ? "Connecting…" : "Connect wallet →"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Connected but nothing deposited yet.
+  if (myClaim <= 0) {
+    return (
+      <div className="post-quest">
+        <div className="post-quest-label">Commission work</div>
+        <p className="post-quest-gate">
+          You're connected as <code>{shorten(address)}</code>, with nothing deposited yet. Add funds in{" "}
+          <b>Your account</b> above and you can commission immediately — anything you don't spend is withdrawable at any
+          time.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="post-quest">
-      <div className="post-quest-label">Try it yourself — hire Patron right now</div>
+      <div className="post-quest-label">Commission work</div>
 
       <input
         className="post-quest-title"
@@ -707,18 +752,13 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
         </div>
       )}
 
-      {myClaim != null && (
-        <div className="post-quest-hint">
-          You've deposited <b>${(account ? parseFloat(account.deposited) : 0).toFixed(2)}</b> and have{" "}
-          <b>${myClaim.toFixed(2)}</b> left to commission with. A job can't be bigger than that — whatever you don't
-          spend stays withdrawable.
-        </div>
-      )}
+      <div className="post-quest-hint">
+        Commissioned against your own deposit — <b>${myClaim.toFixed(2)}</b> available. Whatever you don't spend stays
+        withdrawable, and a job nobody suitable applies for is refunded in full.
+      </div>
       {overBudget && (
         <div className="post-quest-msg warn">
-          {myClaim != null
-            ? `⚠ That's more than the $${myClaim.toFixed(2)} you have left to commission with. Lower the budget, or deposit more.`
-            : `⚠ Patron only has $${available?.toFixed(2)} available — this will likely fail. Fund the treasury below first, or lower the budget.`}
+          ⚠ That's more than the ${myClaim.toFixed(2)} you have left. Lower the budget, or deposit more above.
         </div>
       )}
       {status === "error" && <div className="post-quest-msg error">⚠ {error}</div>}

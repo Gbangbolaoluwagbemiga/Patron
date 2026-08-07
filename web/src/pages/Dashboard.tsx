@@ -31,7 +31,6 @@ export default function Dashboard() {
       </div>
 
       <PostQuest
-        wallet={wallet}
         onPosted={() => {
           void refresh();
           void refreshWallet();

@@ -361,7 +361,17 @@ const server = http.createServer(async (req, res) => {
        * demo path — and stays bounded by MAX_JOB_BUDGET_USDC as before.
        */
       let payer: string | null = null;
-      if (body.clientAddress) {
+      {
+        // Required, not optional. Leaving an anonymous path open meant the UI
+        // could demand a wallet while the endpoint underneath happily accepted
+        // a bare POST and spent the shared treasury — a cap enforced in a form
+        // is a suggestion. Agents come through /api/hire and pay via x402;
+        // humans come through here and commission against their own deposit.
+        if (!body.clientAddress) {
+          return json(res, 401, {
+            error: "Connect a wallet and deposit before commissioning. Every job is funded from its client's own balance.",
+          });
+        }
         if (!/^0x[a-fA-F0-9]{40}$/.test(body.clientAddress)) return json(res, 400, { error: "That is not a valid address." });
         const stated = extractStatedBudget(body.instruction);
         if (stated == null) return json(res, 400, { error: "State a budget in the instruction, e.g. \"Budget $5\"." });

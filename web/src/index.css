@@ -2164,3 +2164,89 @@ html, body { background: var(--bg); color: var(--text); }
   padding-left: 10px;
   border-left: 2px solid color-mix(in srgb, var(--gold) 35%, transparent);
 }
+
+/* ══ Your account ════════════════════════════════════════════════════════════
+   A card of its own. Wedged into the treasury row it made one panel answer two
+   unrelated questions — what Patron holds, and what YOU hold — which is what
+   made it read as clutter. */
+.account-card {
+  margin-top: 18px;
+  padding: 22px 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.account-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.account-head h3 {
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+.account-sub { font-size: 13px; color: var(--faint); }
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.account-figure {
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.account-figure-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 7px;
+}
+.account-figure b { font-family: var(--serif); font-size: 24px; font-weight: 700; color: var(--text); }
+.account-figure.primary { border-color: color-mix(in srgb, var(--gold) 40%, transparent); background: var(--gold-dim); }
+.account-figure.primary b { color: var(--gold); }
+
+.account-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+.account-action label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 8px;
+}
+.account-hint { margin-top: 7px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+.account-hint.short { color: var(--red); }
+
+/* Connected identity, compact — the address and its balance, nothing else. */
+.wallet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.wallet-chip code { font-family: var(--mono); font-size: 12px; color: var(--text); }
+.wallet-chip-bal { font-family: var(--mono); font-size: 12px; color: var(--gold); }
+
+.post-quest-gate {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 62ch;
+}
+.post-quest-gate code { font-family: var(--mono); font-size: 13px; color: var(--gold); }

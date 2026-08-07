@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./index.css";
 import App from "./App.tsx";
 import { DaemonProvider } from "./daemon-context.tsx";
+import { WalletProvider } from "./wallet-context.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import Jobs from "./pages/Jobs.tsx";
 import JobDetail from "./pages/JobDetail.tsx";
@@ -16,6 +17,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <DaemonProvider>
+        <WalletProvider>
         <Routes>
           <Route path="/" element={<App />}>
             <Route index element={<Dashboard />} />
@@ -54,6 +56,7 @@ createRoot(document.getElementById("root")!).render(
           />
           </Route>
         </Routes>
+        </WalletProvider>
       </DaemonProvider>
     </BrowserRouter>
   </StrictMode>,
