@@ -2700,3 +2700,33 @@ body {
   .stats { padding: 20px 16px; }
   .treasury { padding: 16px; }
 }
+
+/* ══ THE ACTUAL OVERFLOW ══════════════════════════════════════════════════════
+   Measured with a headless browser rather than reasoned about, after three
+   wrong guesses: the live-event toasts. .toast-stack is position: fixed and had
+   only `right` set, so its width was shrink-to-fit around its content — and the
+   content is agent event messages carrying 42-character wallet addresses, which
+   cannot break at a space. It rendered 666px wide inside a 390px viewport, and
+   because it is FIXED it never appeared in any layout I inspected. That is why
+   every previous fix missed: I was looking at the document flow, and this
+   element is not in it.
+
+   Anchoring BOTH sides gives the box a definite containing width it can never
+   exceed; margin-left: auto keeps it right-aligned, so desktop is unchanged —
+   still 380px, still 24px from the edge. */
+.toast-stack {
+  left: 24px;
+  right: 24px;
+  max-width: 380px;
+  width: auto;
+  margin-left: auto;
+}
+.toast {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast > span { min-width: 0; }
+
+@media (max-width: 480px) {
+  .toast-stack { left: 12px; right: 12px; bottom: 12px; }
+}
