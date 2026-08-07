@@ -27,11 +27,15 @@ async function getJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function postInstruction(instruction: string): Promise<{ taskId: string; escrowId: string }> {
+export async function postInstruction(
+  instruction: string,
+  /** Present when a depositor is commissioning against their OWN deposit. */
+  auth?: { clientAddress: string; signature: string; message: string },
+): Promise<{ taskId: string; escrowId: string }> {
   const res = await fetch(`${DAEMON_URL}/api/instruct`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ instruction }),
+    body: JSON.stringify({ instruction, ...auth }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error ?? `${res.status}`);

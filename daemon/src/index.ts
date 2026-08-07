@@ -24,6 +24,7 @@ import * as store from "./store.js";
 import * as workers from "./workers/service.js";
 import * as telegram from "./workers/telegram.js";
 import { setLlmPausedUntil } from "./llm-status.js";
+import { extractStatedBudget } from "./agent/BriefGenerator.js";
 
 const PORT = config.port;
 
@@ -43,6 +44,11 @@ const TREASURY_GAS_FLOOR = Number(process.env.TREASURY_GAS_FLOOR_USDC ?? 0.5);
  */
 function withdrawalMessage(address: string, amountUsdc: string): string {
   return `Patron treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
+}
+
+/** The sentence a depositor signs to spend their own deposit on a commission. */
+function commissionMessage(address: string, amountUsdc: string): string {
+  return `Patron commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
 }
 
 // ── SSE broadcast ──────────────────────────────────────────────────────────
@@ -333,9 +339,68 @@ const server = http.createServer(async (req, res) => {
   // ── Unguarded: the human front door (same pipeline, no x402 fee) ──
   if (req.method === "POST" && url.pathname === "/api/instruct") {
     try {
-      const body = JSON.parse(await readBody(req)) as { instruction?: string };
+      const body = JSON.parse(await readBody(req)) as {
+        instruction?: string;
+        clientAddress?: string;
+        signature?: string;
+        message?: string;
+      };
       if (!body.instruction) return json(res, 400, { error: "instruction is required" });
-      const result = await runHireFlow(body.instruction, "human");
+
+      /**
+       * A depositor may only commission what they have actually put in.
+       *
+       * Enforced HERE and not only in the browser, because the browser is not a
+       * security boundary — this endpoint is public, and a cap that lives in a
+       * form is a suggestion. When a client identifies themselves they sign for
+       * it, exactly like a withdrawal: the treasury is a shared pot, and
+       * spending against someone else's deposit by typing their address would
+       * be the same theft as withdrawing it.
+       *
+       * Posting anonymously is still allowed — that is the "try it yourself"
+       * demo path — and stays bounded by MAX_JOB_BUDGET_USDC as before.
+       */
+      let payer: string | null = null;
+      if (body.clientAddress) {
+        if (!/^0x[a-fA-F0-9]{40}$/.test(body.clientAddress)) return json(res, 400, { error: "That is not a valid address." });
+        const stated = extractStatedBudget(body.instruction);
+        if (stated == null) return json(res, 400, { error: "State a budget in the instruction, e.g. \"Budget $5\"." });
+
+        const expected = commissionMessage(body.clientAddress, stated.toFixed(6));
+        if (body.message !== expected) return json(res, 400, { error: "That signature does not match this commission." });
+        const valid = await verifyMessage({
+          address: body.clientAddress as `0x${string}`,
+          message: body.message,
+          signature: (body.signature ?? "0x") as `0x${string}`,
+        }).catch(() => false);
+        if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise the commission." });
+
+        const account = store.treasuryAccount(body.clientAddress);
+        if (stated > account.net + 1e-9) {
+          return json(res, 400, {
+            error:
+              account.net <= 0
+                ? "You haven't deposited anything to commission with yet. Fund the treasury first — you can withdraw whatever you don't spend."
+                : `That's more than your deposit. You have $${account.net.toFixed(2)} left to commission with.`,
+          });
+        }
+        payer = body.clientAddress;
+      }
+
+      const result = await runHireFlow(body.instruction, "human", payer ?? undefined);
+
+      // Debit the real brief amount, not the stated one — the guild master
+      // rescales a budget that doesn't add up, and the ledger has to record
+      // what was actually locked in escrow.
+      if (payer) {
+        store.recordTreasuryEntry({
+          id: randomUUID(),
+          party: payer,
+          direction: "spend",
+          amountUsdc: Number(result.brief.budget).toFixed(6),
+          txHash: `commission:${result.escrowId}`,
+        });
+      }
       json(res, 200, result);
     } catch (err) {
       json(res, 500, { error: clientError(err) });
@@ -435,6 +500,7 @@ const server = http.createServer(async (req, res) => {
         address,
         deposited: account.deposited.toFixed(6),
         withdrawn: account.withdrawn.toFixed(6),
+        spent: account.spent.toFixed(6),
         claim: account.net.toFixed(6),
         withdrawable: Math.min(account.net, spendable).toFixed(6),
         treasuryOnHand: onHand.toFixed(6),

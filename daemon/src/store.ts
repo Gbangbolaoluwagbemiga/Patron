@@ -52,7 +52,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS treasury_ledger (
     id TEXT PRIMARY KEY,
     party TEXT NOT NULL,               -- the depositor's address, lowercased
-    direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal'
+    direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal' | 'spend'
     amount_usdc TEXT NOT NULL,
     tx_hash TEXT UNIQUE,
     timestamp INTEGER NOT NULL
@@ -534,7 +534,7 @@ export function setPollerInt(key: string, value: number): void {
 export function recordTreasuryEntry(e: {
   id: string;
   party: string;
-  direction: "deposit" | "withdrawal";
+  direction: "deposit" | "withdrawal" | "spend";
   amountUsdc: string;
   txHash?: string;
 }): boolean {
@@ -550,19 +550,33 @@ export function recordTreasuryEntry(e: {
   }
 }
 
-/** What one party has put in and taken out. */
-export function treasuryAccount(party: string): { deposited: number; withdrawn: number; net: number } {
+/**
+ * What one party has put in, taken back out, and COMMITTED to commissions.
+ *
+ * Spends matter as much as withdrawals. A depositor who commissions $3 of work
+ * has spent $3 of their own deposit — it is on its way to a freelancer. Leaving
+ * it in their claim would let the same $3 be posted as a job and then also
+ * withdrawn, which is the pot paying twice for one deposit.
+ */
+export function treasuryAccount(party: string): {
+  deposited: number;
+  withdrawn: number;
+  spent: number;
+  net: number;
+} {
   const row = db
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS dep,
-         COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS wdr
+         COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS wdr,
+         COALESCE(SUM(CASE WHEN direction = 'spend'      THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS spd
        FROM treasury_ledger WHERE party = ?`,
     )
-    .get(party.toLowerCase()) as { dep: number; wdr: number };
+    .get(party.toLowerCase()) as { dep: number; wdr: number; spd: number };
   const deposited = Number(row?.dep ?? 0);
   const withdrawn = Number(row?.wdr ?? 0);
-  return { deposited, withdrawn, net: Math.max(0, deposited - withdrawn) };
+  const spent = Number(row?.spd ?? 0);
+  return { deposited, withdrawn, spent, net: Math.max(0, deposited - withdrawn - spent) };
 }
 
 export function treasuryEntries(party: string, limit = 50): any[] {

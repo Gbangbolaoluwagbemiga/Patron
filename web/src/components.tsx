@@ -572,6 +572,20 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
 
 // ── Post a quest ─────────────────────────────────────────────────────────────
 export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: WalletInfo | null }) {
+  const { address, signMessage } = useWalletConnect();
+  const [account, setAccount] = useState<TreasuryAccount | null>(null);
+
+  // A connected depositor commissions against their OWN deposit, so the ceiling
+  // is what they have left — not what the shared treasury happens to hold.
+  useEffect(() => {
+    if (!address) {
+      setAccount(null);
+      return;
+    }
+    void api<TreasuryAccount>(`/api/treasury/account?address=${address}`)
+      .then(setAccount)
+      .catch(() => setAccount(null));
+  }, [address]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
@@ -585,9 +599,13 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
   const [result, setResult] = useState<{ taskId: string; escrowId: string } | null>(null);
   const [error, setError] = useState("");
 
-  const available = wallet ? parseFloat(wallet.balance) : null;
+  // Two different ceilings. A depositor is bounded by their own deposit; an
+  // anonymous visitor posting on the demo path is bounded by the shared pot.
+  const myClaim = account ? parseFloat(account.claim) : null;
+  const available = myClaim != null ? myClaim : wallet ? parseFloat(wallet.balance) : null;
   const overBudget = available != null && budget !== "" && parseFloat(budget) > available;
-  const canSubmit = description.trim() !== "" && budget !== "" && parseFloat(budget) > 0 && days !== "" && status !== "loading";
+  const canSubmit =
+    description.trim() !== "" && budget !== "" && parseFloat(budget) > 0 && days !== "" && status !== "loading" && !overBudget;
 
   async function submit() {
     if (!canSubmit) return;
@@ -606,7 +624,21 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
           : ` Split this into ${stages} milestones that are each reviewed and paid separately.`;
     const instruction = `${title.trim() ? title.trim() + " — " : ""}${description.trim()}. Budget $${budget}, ${days} day(s).${staging}`;
     try {
-      const res = await postInstruction(instruction);
+      // Signed when a depositor is spending their own deposit — the server
+      // verifies it and refuses anything above their remaining claim. Without a
+      // wallet this is the anonymous demo path and stays as it was.
+      let auth: { clientAddress: string; signature: string; message: string } | undefined;
+      if (address && myClaim != null) {
+        const amountUsdc = Number(budget).toFixed(6);
+        const message = `Patron commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
+        const signature = await signMessage(message);
+        if (!signature) {
+          setStatus("idle");
+          return;
+        }
+        auth = { clientAddress: address, signature, message };
+      }
+      const res = await postInstruction(instruction, auth);
       setResult(res);
       setStatus("done");
       setTitle("");
@@ -675,9 +707,18 @@ export function PostQuest({ onPosted, wallet }: { onPosted: () => void; wallet: 
         </div>
       )}
 
+      {myClaim != null && (
+        <div className="post-quest-hint">
+          You've deposited <b>${(account ? parseFloat(account.deposited) : 0).toFixed(2)}</b> and have{" "}
+          <b>${myClaim.toFixed(2)}</b> left to commission with. A job can't be bigger than that — whatever you don't
+          spend stays withdrawable.
+        </div>
+      )}
       {overBudget && (
         <div className="post-quest-msg warn">
-          ⚠ Patron only has ${available?.toFixed(2)} available — this will likely fail. Fund the treasury below first, or lower the budget.
+          {myClaim != null
+            ? `⚠ That's more than the $${myClaim.toFixed(2)} you have left to commission with. Lower the budget, or deposit more.`
+            : `⚠ Patron only has $${available?.toFixed(2)} available — this will likely fail. Fund the treasury below first, or lower the budget.`}
         </div>
       )}
       {status === "error" && <div className="post-quest-msg error">⚠ {error}</div>}
