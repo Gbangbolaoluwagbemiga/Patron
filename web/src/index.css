@@ -2547,7 +2547,15 @@ html, body { background: var(--bg); color: var(--text); }
   }
   .sidebar-links .nav-link-icon { display: none; }  /* labels alone, at this width */
 
-  .app { padding: 20px 18px 80px; max-width: none; }
+  /* width + margin 0, NOT max-width: none.
+     .app carries margin: 0 auto for desktop centring, and auto margins on a
+     grid item disable justify-self: stretch — the item becomes shrink-to-fit,
+     which resolves to its MIN-CONTENT. Its min-content is 694px because the
+     commission diagram inside it is 624px wide, so it sized itself to 694 in a
+     390px track and max-width: none removed the only thing that could have
+     capped it. Stretching it to the track instead lets .flow's own overflow-x
+     finally have a width small enough to scroll against. */
+  .app { padding: 20px 18px 80px; width: 100%; max-width: 100%; margin: 0; }
 
   /* The collapsed rail must not survive into the header. .sidebar.collapsed is
      two classes and beats .sidebar on specificity, so without this a user who
