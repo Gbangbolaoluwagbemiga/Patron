@@ -2630,7 +2630,6 @@ code,
    a scroll container, which breaks position: sticky on the header above it. */
 html,
 body {
-  overflow-x: clip;
   max-width: 100%;
 }
 
@@ -2646,3 +2645,58 @@ body {
 .card,
 .track-card,
 .account-card { min-width: 0; }
+
+/* ══ MULTI-COLUMN LAYOUTS ON ONE COLUMN ══════════════════════════════════════
+   Clipping the overflow last time hid content nobody could then scroll to,
+   which is worse than the overflow. These are the things actually wider than a
+   phone, each fixed at its own cause.
+
+   .grid-2 was hard-coded 1fr 1fr with no mobile rule at all — the brief and its
+   milestones sat side by side at 390px. .stats and .treasury are the same shape
+   of problem: multi-column grids written for a desktop rail.
+
+   .flow is different and stays scrollable. It is six stages at a 104px minimum
+   — 624px before it starts — and squashing a process diagram into a phone
+   makes it unreadable. A diagram you swipe is fine; a diagram compressed to
+   nothing is not. It only needed its parent to stop propagating its width. */
+@media (max-width: 1080px) {
+  .grid-2 { grid-template-columns: 1fr; gap: 16px; }
+
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 24px 20px;
+  }
+  .stat-rest { gap: 10px; }
+  .stat-rest .stat { flex: 1 1 calc(50% - 5px); min-width: 0; }
+
+  .treasury {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 20px;
+  }
+  .treasury-address-row { flex-wrap: nowrap; }
+  .treasury-address { flex: 1 1 auto; min-width: 0; font-size: 11px; }
+
+  /* Let the diagram scroll inside its own panel rather than widening the page. */
+  .flow-panel, .panel, .panel-body { min-width: 0; }
+  .flow { margin: 0 -20px; padding-left: 20px; padding-right: 20px; }
+
+  .account-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .track-figures { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .account-actions { grid-template-columns: 1fr; }
+  .post-quest-fields { gap: 10px; }
+  .post-quest-field { max-width: none; flex: 1 1 140px; }
+
+  /* Wide tables scroll in their own container, never the page. */
+  .rep-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .rep-table { min-width: 560px; }
+}
+
+@media (max-width: 480px) {
+  .stat-rest .stat { flex: 1 1 100%; }
+  .account-grid { grid-template-columns: 1fr 1fr; }
+  .track-figures { grid-template-columns: 1fr 1fr; }
+  .stats { padding: 20px 16px; }
+  .treasury { padding: 16px; }
+}
