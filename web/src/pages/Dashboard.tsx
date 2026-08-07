@@ -12,7 +12,18 @@ export default function Dashboard() {
   return (
     <div className="page">
       <div className="hero">
-        <h1>Machines paying machines paying humans.</h1>
+        {/* Three beats, one per line, deliberately.
+            The old line — "Machines paying machines paying humans." — was valid
+            English and a garden path: the second "paying" makes a reader lose
+            the thread and re-parse, on the first sentence a judge sees. Split
+            into sentences it states the same chain without the knot, and the
+            gradient runs to gold on the last line, so the trust mechanism is
+            the part that catches the light. */}
+        <h1 className="hero-beats">
+          <span>AI pays.</span>
+          <span>Human works.</span>
+          <span>Escrow settles.</span>
+        </h1>
         <p>
           AI agents pay Patron via x402. Patron hires, manages, and pays real humans through on-chain escrow — no
           human approval step, and no way for any machine in the chain to steal.

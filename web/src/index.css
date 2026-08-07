@@ -2250,3 +2250,9 @@ html, body { background: var(--bg); color: var(--text); }
   max-width: 62ch;
 }
 .post-quest-gate code { font-family: var(--mono); font-size: 13px; color: var(--gold); }
+
+/* Three beats, one per line. max-width in ch was sized for a long flowing
+   sentence and would break these mid-beat ("AI pays. Human / works.") — which
+   destroys the only thing the three-sentence version is for. */
+.hero-beats { max-width: none; }
+.hero-beats span { display: block; }
