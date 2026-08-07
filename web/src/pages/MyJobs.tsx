@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useWallet } from "../wallet-context";
-import { JudgingCountdown, TELEGRAM_BOT_URL, shorten, timeAgo } from "../components";
+import { JudgingCountdown, Notice, TELEGRAM_BOT_URL, shorten, timeAgo } from "../components";
 import { LedgerSkeleton } from "../motion";
 import { IconBolt, IconCheck, IconCoin, IconRefresh, IconScroll, IconSearch, IconShrug, IconSwords, IconTelegram } from "../Icon";
 
@@ -64,7 +64,9 @@ function stageOf(j: ClientJob): { label: string; tone: string } {
 }
 
 export default function MyJobs() {
-  const { address, connect, connecting } = useWallet();
+  const { address, connect, connecting, signMessage } = useWallet();
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string>("");
   const [jobs, setJobs] = useState<ClientJob[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -94,6 +96,35 @@ export default function MyJobs() {
     // Deliberately visible for a beat. An instant flicker reads as nothing
     // having happened, which is the opposite of what the button is for.
     window.setTimeout(() => setRefreshing(false), 400);
+  }
+
+  /**
+   * Call off a commission nobody has been hired for.
+   *
+   * Signed, because the endpoint underneath would otherwise take an escrow
+   * number from anybody — and those are printed on every card. Only ever
+   * offered while a job is still at "posted": the moment someone is hired their
+   * claim on the escrow is the entire point of the product.
+   */
+  async function cancelJob(escrowId: string) {
+    if (!address) return;
+    setCancelling(escrowId);
+    setNotice("");
+    try {
+      const message = `Patron cancel commission\nAddress: ${address.toLowerCase()}\nEscrow: ${escrowId}`;
+      const signature = await signMessage(message);
+      if (!signature) return;
+      const r = await api<{ recovered: string }>(`/api/jobs/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ escrowId, address, signature, message }),
+      });
+      setNotice(`Cancelled — $${Number(r.recovered).toFixed(2)} returned. SecureFlow deducts a small penalty when applicants have already applied.`);
+      await load();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancelling(null);
+    }
   }
 
   useEffect(() => {
@@ -160,6 +191,8 @@ export default function MyJobs() {
         <IconTelegram size={15} /> Get these updates on Telegram
       </a>
 
+      {notice && <Notice tone={notice.startsWith("Cancelled") ? "ok" : "error"} onDismiss={() => setNotice("")}>{notice}</Notice>}
+
       {jobs === null ? (
         <LedgerSkeleton rows={3} />
       ) : jobs.length === 0 ? (
@@ -216,9 +249,22 @@ export default function MyJobs() {
                   <button className="linklike" onClick={() => setOpen(expanded ? null : j.escrowId)}>
                     {expanded ? "Hide the trail" : `Show the trail (${j.events.length})`}
                   </button>
-                  <Link className="tx-link" to={`/jobs/${j.escrowId}`}>
-                    Full brief &amp; delivered work →
-                  </Link>
+                  <div className="track-actions-right">
+                    {/* Only while nobody has been hired. Once someone has a
+                        claim on the escrow, that claim is the product. */}
+                    {j.status === "posted" && !j.hiredAddress && (
+                      <button
+                        className="cancel-btn"
+                        onClick={() => void cancelJob(j.escrowId)}
+                        disabled={cancelling === j.escrowId}
+                      >
+                        {cancelling === j.escrowId ? "Signing…" : "Cancel & refund"}
+                      </button>
+                    )}
+                    <Link className="tx-link" to={`/jobs/${j.escrowId}`}>
+                      Full brief &amp; delivered work →
+                    </Link>
+                  </div>
                 </div>
 
                 {expanded && (

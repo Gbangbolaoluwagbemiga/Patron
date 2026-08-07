@@ -31,11 +31,13 @@ export async function postInstruction(
   instruction: string,
   /** Present when a depositor is commissioning against their OWN deposit. */
   auth?: { clientAddress: string; signature: string; message: string },
+  /** The client's own name for the job — kept verbatim rather than rewritten. */
+  title?: string,
 ): Promise<{ taskId: string; escrowId: string }> {
   const res = await fetch(`${DAEMON_URL}/api/instruct`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ instruction, ...auth }),
+    body: JSON.stringify({ instruction, title, ...auth }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error ?? `${res.status}`);

@@ -754,7 +754,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
         setStatus("idle");
         return;
       }
-      const res = await postInstruction(instruction, { clientAddress: address, signature, message });
+      const res = await postInstruction(instruction, { clientAddress: address, signature, message }, title.trim() || undefined);
       void refreshAccount();
       setResult(res);
       setStatus("done");
@@ -812,7 +812,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
         className="post-quest-title"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Job title (optional) — e.g. Coffee shop logo"
+        placeholder="Job title — e.g. Coffee shop logo (kept exactly as you write it)"
       />
       <textarea
         value={description}

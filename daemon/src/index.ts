@@ -46,6 +46,11 @@ function withdrawalMessage(address: string, amountUsdc: string): string {
   return `Patron treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
 }
 
+/** The sentence a client signs to cancel their own unfilled commission. */
+function cancelMessage(address: string, escrowId: string): string {
+  return `Patron cancel commission\nAddress: ${address.toLowerCase()}\nEscrow: ${escrowId}`;
+}
+
 /** The sentence a depositor signs to spend their own deposit on a commission. */
 function commissionMessage(address: string, amountUsdc: string): string {
   return `Patron commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
@@ -342,15 +347,33 @@ function json(res: http.ServerResponse, status: number, data: unknown) {
 }
 
 /** Shared by both the x402 (agent) and unguarded (human) entrypoints. */
-async function runHireFlow(instruction: string, clientType: "agent" | "human", clientAddress?: string) {
+async function runHireFlow(
+  instruction: string,
+  clientType: "agent" | "human",
+  clientAddress?: string,
+  /**
+   * The client's own title, kept VERBATIM when they gave one.
+   *
+   * The brief generator writes its own, and it was overwriting theirs every
+   * time: someone typed "Grantfox" and the ledger called their commission
+   * "Robust Open Source Platform Development". A project has a name, the person
+   * paying for it chose that name, and a generated restatement of the
+   * description is not an improvement on it.
+   *
+   * Applied after generation rather than asked for in the prompt, because a
+   * client's title should not depend on a model choosing to comply.
+   */
+  clientTitle?: string,
+) {
   const taskId = randomUUID();
   store.insertTask({ id: taskId, escrowId: null, instruction, clientType, status: "briefing", briefJson: null, clientAddress });
 
   try {
     const { brief, escrowId } = await agent.processInstruction(instruction);
-    store.updateTaskBrief(taskId, JSON.stringify(brief));
+    const titled = clientTitle?.trim() ? { ...brief, title: clientTitle.trim().slice(0, 90) } : brief;
+    store.updateTaskBrief(taskId, JSON.stringify(titled));
     store.updateTaskStatus(taskId, "posted", escrowId.toString());
-    return { taskId, escrowId: escrowId.toString(), brief };
+    return { taskId, escrowId: escrowId.toString(), brief: titled };
   } catch (err) {
     // Without this the row stays "briefing" forever — the LLM call or the
     // createEscrow write failed (insufficient treasury, RPC hiccup, bad
@@ -442,6 +465,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req)) as {
         instruction?: string;
+        /** The client's own words for what this job is called. */
+        title?: string;
         clientAddress?: string;
         signature?: string;
         message?: string;
@@ -498,7 +523,7 @@ const server = http.createServer(async (req, res) => {
         payer = body.clientAddress;
       }
 
-      const result = await runHireFlow(body.instruction, "human", payer ?? undefined);
+      const result = await runHireFlow(body.instruction, "human", payer ?? undefined, body.title);
 
       // Debit the real brief amount, not the stated one — the guild master
       // rescales a budget that doesn't add up, and the ledger has to record
@@ -814,11 +839,48 @@ const server = http.createServer(async (req, res) => {
    */
   if (req.method === "POST" && url.pathname === "/api/jobs/cancel") {
     try {
-      const b = JSON.parse(await readBody(req)) as { escrowId?: string };
+      const b = JSON.parse(await readBody(req)) as { escrowId?: string; address?: string; signature?: string; message?: string };
       if (!b.escrowId) return json(res, 400, { error: "escrowId is required" });
 
-      const task = store.listTasks(100).find((t) => t.escrowId === b.escrowId);
+      const task = store.listTasks(300).find((t) => t.escrowId === b.escrowId);
       if (!task) return json(res, 404, { error: "No such commission." });
+
+      /**
+       * Only the client who paid for it may cancel it.
+       *
+       * This endpoint took an escrow id and nothing else. Anyone who could read
+       * a job number — they are printed on every card — could cancel any open
+       * commission in the system. The refund goes to the recorded client, so
+       * there was nothing to steal, but griefing every open job on the board is
+       * not much better, and it destroys an applicant's pending application.
+       *
+       * Signed, like withdrawals and commissions: the sentence names the escrow,
+       * so a signature for one cancellation cannot cancel a different job.
+       */
+      if (!task.clientAddress) {
+        // No recorded client means nobody can be verified as its owner, so
+        // there is no safe way to let anyone cancel it by hand. These are jobs
+        // posted before commissions were signed; the expiry sweep still returns
+        // their budget automatically once the client's own deadline passes, so
+        // the money is not stuck — it just isn't cancellable on demand.
+        return json(res, 403, {
+          error:
+            "This commission has no recorded client, so it can't be cancelled by hand. Its budget returns automatically when the deadline passes.",
+        });
+      }
+      {
+        const expected = cancelMessage(task.clientAddress, b.escrowId);
+        if (!b.address || b.address.toLowerCase() !== task.clientAddress.toLowerCase()) {
+          return json(res, 403, { error: "Only the client who commissioned this job can cancel it." });
+        }
+        if (b.message !== expected) return json(res, 400, { error: "That signature does not match this cancellation." });
+        const valid = await verifyMessage({
+          address: task.clientAddress as `0x${string}`,
+          message: expected,
+          signature: (b.signature ?? "0x") as `0x${string}`,
+        }).catch(() => false);
+        if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise the cancellation." });
+      }
       if (task.status !== "posted") {
         return json(res, 400, {
           error:
