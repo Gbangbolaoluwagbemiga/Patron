@@ -2738,3 +2738,40 @@ body {
 @media (max-width: 480px) {
   .toast-stack { right: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
 }
+
+/* ══ THE ROOT CAUSE ══════════════════════════════════════════════════════════
+   Measured, finally, to the actual element: the nav routes, sitting at x=562 in
+   a 390px viewport.
+
+   .sidebar-links already had overflow-x: auto and should have scrolled inside
+   itself. It could not, because .sidebar is a GRID ITEM of .app-shell, and grid
+   items default to min-width: auto — they refuse to shrink below their content.
+   So the routes set the sidebar's width, the sidebar set the grid column's
+   width, and the column set the document's. The scroll container was never
+   given a width small enough to need scrolling.
+
+   I added min-width: 0 to the page containers earlier and never to the rail,
+   which is why every fix downstream of it looked correct and changed nothing.
+   The toast was a red herring throughout: it is fixed-position and was simply
+   anchoring itself to the right edge of an already-too-wide document. */
+.sidebar,
+.sidebar-links,
+.sidebar-head,
+.sidebar-brand,
+.sidebar-foot {
+  min-width: 0;
+}
+
+/* And the scroll container needs a definite basis, not one derived from the
+   labels inside it. */
+@media (max-width: 1080px) {
+  .sidebar-links {
+    flex: 1 1 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .sidebar-brand-text { min-width: 0; overflow: hidden; }
+  .nav-title { white-space: nowrap; }
+}
