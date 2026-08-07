@@ -2455,7 +2455,16 @@ html, body { background: var(--bg); color: var(--text); }
    The shape it wants is obvious once the blocks are merged: identity and
    controls on one row, routes on their own row underneath, scrolling. */
 @media (max-width: 1080px) {
-  .app-shell { grid-template-columns: 1fr; }
+  /* minmax(0, 1fr), NOT 1fr. `1fr` is shorthand for minmax(auto, 1fr), and
+     that auto minimum is the item's MIN-CONTENT — so the track grows to fit
+     the widest thing inside it. The commission diagram has a 624px min-content
+     (six stages at 104px), so the column sized itself to 664px inside a 390px
+     viewport and pushed the whole document out with it.
+
+     The desktop rule already used minmax(0, 1fr); this override dropped it,
+     which is why the rail's own min-width: 0 fixed nothing — the constraint was
+     never reaching the content column at all. */
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
 
   .sidebar {
     position: sticky;      /* still pinned — a nav you have to scroll up to reach is worse than none */
@@ -2675,7 +2684,7 @@ body {
 
   /* Let the diagram scroll inside its own panel rather than widening the page. */
   .flow-panel, .panel, .panel-body { min-width: 0; }
-  .flow { margin: 0 -20px; padding-left: 20px; padding-right: 20px; }
+  .flow { margin: 0; }
 
   .account-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
   .track-figures { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
