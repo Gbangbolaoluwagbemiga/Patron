@@ -1626,13 +1626,33 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   if (!escrow) return;
 
   const milestones = escrow.milestones ?? [];
-  const stillDisputed = milestones.some((m) => Number(m.status) === MILESTONE_DISPUTED);
-  const anyResolved = milestones.some((m) => Number(m.status) === MILESTONE_RESOLVED);
-  if (stillDisputed || !anyResolved) return; // the arbiter has not ruled yet
 
-  // What the freelancer actually received, straight from the chain.
-  const paidOut = Number(escrow.paidAmount ?? 0) / 1e6;
+  /**
+   * A dispute is over when the milestone STOPS being disputed — not when it
+   * reaches a "resolved" state.
+   *
+   * Checked against the real contract rather than the enum: resolving #56 on
+   * SecureFlow moved its milestone to APPROVED (2), never to RESOLVED (5). A
+   * check for status 5 would have waited forever, which is the same bug as
+   * before wearing a different hat.
+   */
+  if (milestones.some((m) => Number(m.status) === MILESTONE_DISPUTED)) return;
+
+  /**
+   * What the freelancer actually got.
+   *
+   * paidAmount is authoritative when the subgraph has caught up, but it lagged
+   * at zero on #56 while a milestone already read approved — and reporting
+   * "the arbiter awarded nothing" when they awarded half would be worse than
+   * saying nothing at all. So take whichever is larger: the chain's figure, or
+   * the sum of the milestones the arbiter actually let through.
+   */
   const budget = Number(brief?.budget ?? 0);
+  const planned = Array.isArray(brief?.milestones) ? brief.milestones : [];
+  const awardedFromMilestones = milestones
+    .filter((m) => Number(m.status) === MILESTONE_APPROVED || Number(m.status) === MILESTONE_RESOLVED)
+    .reduce((sum, m) => sum + Number(planned[Number(m.milestoneIndex)]?.amount ?? 0), 0);
+  const paidOut = Math.max(Number(escrow.paidAmount ?? 0) / 1e6, awardedFromMilestones);
   const returned = Math.max(0, budget - paidOut);
 
   store.updateTaskStatus(task.id, "completed", task.escrowId);
