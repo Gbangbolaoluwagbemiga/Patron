@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useDaemon } from "./daemon-context";
 import { Nav, NotificationCenter } from "./components";
 import { pageVariants } from "./motion";
@@ -14,15 +14,23 @@ function App() {
       <Nav connected={connected} />
       <div className="app">
 
-      {/* Keyed on pathname so each route genuinely enters and leaves — a page
-          being turned rather than content swapped in place. mode="wait" so the
-          two never overlap, which on a light background reads as a flicker
-          rather than a transition. */}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={location.pathname} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <Outlet />
-        </motion.div>
-      </AnimatePresence>
+      {/* Keyed on pathname so each route genuinely enters rather than having its
+          content swapped in place.
+
+          This used to be wrapped in <AnimatePresence mode="wait">. That mode
+          holds the INCOMING page at its initial state — opacity 0 — until the
+          outgoing one reports that it has finished exiting. Every list page
+          contains its own <AnimatePresence> full of cards animating `layout`,
+          and when one of those exits stalls, the promise never resolves: the
+          new page is mounted, laid out, and completely invisible. Navigating to
+          the ledger and back left an empty screen with a working sidebar, which
+          reads as a page that takes forever to load.
+
+          A keyed entrance needs no coordination between the two pages, so there
+          is nothing left to hang on. */}
+      <motion.div key={location.pathname} variants={pageVariants} initial="initial" animate="animate">
+        <Outlet />
+      </motion.div>
 
       {/* /work is the one page where a person acts rather than watches, so the
           read-only note would be plainly false there. */}

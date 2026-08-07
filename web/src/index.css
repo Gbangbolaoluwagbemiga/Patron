@@ -107,9 +107,9 @@ body::after {
 }
 
 .app {
-  max-width: 1180px;
+  max-width: 1560px;
   margin: 0 auto;
-  padding: 26px 40px 110px;
+  padding: 30px 56px 110px;
   position: relative;
   min-width: 0; /* grid children must be allowed to shrink, or wide tables push the rail */
 }
@@ -1313,7 +1313,7 @@ textarea {
   align-items: center;
   gap: 6px;
   padding: 5px 11px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--muted);
   text-decoration: none;
@@ -1337,12 +1337,12 @@ textarea {
   flex-wrap: wrap;
   margin-top: 18px;
   padding: 16px 18px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 14px;
   background: color-mix(in srgb, var(--gold) 4%, transparent);
 }
 .tg-invite-text { font-size: 13.5px; color: var(--muted); line-height: 1.55; }
-.tg-invite-text b { color: var(--ink); font-weight: 600; }
+.tg-invite-text b { color: var(--text); font-weight: 600; }
 .tg-invite-btn {
   display: inline-flex;
   align-items: center;
@@ -1372,9 +1372,9 @@ textarea {
 .post-quest-field select {
   font-family: var(--sans);
   font-size: 14px;
-  color: var(--ink);
+  color: var(--text);
   background: var(--field-bg, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 11px 32px 11px 12px;
   cursor: pointer;
@@ -1392,7 +1392,7 @@ textarea {
 }
 .post-quest-field select option {
   background: #12131a;
-  color: var(--ink);
+  color: var(--text);
 }
 .post-quest-field:has(select) { max-width: 190px; }
 
@@ -1430,7 +1430,7 @@ textarea {
   font-weight: 600;
   color: var(--muted);
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 999px;
   padding: 9px 16px;
   cursor: pointer;
@@ -1458,7 +1458,7 @@ textarea {
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
-.pager-num:hover:not(:disabled):not(.current) { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.pager-num:hover:not(:disabled):not(.current) { color: var(--text); background: rgba(255, 255, 255, 0.04); }
 .pager-num.current {
   color: var(--gold);
   border-color: color-mix(in srgb, var(--gold) 50%, transparent);
@@ -1550,7 +1550,7 @@ textarea {
    whether the stream is live, and that a Telegram door exists. */
 .app-shell {
   display: grid;
-  grid-template-columns: var(--rail-w, 258px) minmax(0, 1fr);
+  grid-template-columns: var(--rail-w, 272px) minmax(0, 1fr);
   align-items: start;
   min-height: 100vh;
   transition: grid-template-columns 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -1809,7 +1809,7 @@ textarea {
   border-radius: 8px;
   background: #171821;
   border: 1px solid var(--border);
-  color: var(--ink);
+  color: var(--text);
   font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
@@ -1838,3 +1838,158 @@ textarea {
   .sidebar-brand { margin-bottom: 0; }
   .sidebar-foot { margin-top: 0; padding-top: 0; }
 }
+
+/* ══ RAIL v2 ═════════════════════════════════════════════════════════════════ */
+.sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 30px;
+}
+.sidebar-brand { margin-bottom: 0; flex: 1 1 auto; min-width: 0; }
+
+/* Collapse control: top of the rail, level with the brand. */
+.rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  margin-top: 3px;
+  padding: 0;
+  color: var(--faint);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.rail-toggle:hover {
+  color: var(--gold);
+  background: var(--surface-hi);
+  border-color: var(--border);
+}
+
+/* Breathing room between routes — the rail had six tight rows and a acre of
+   empty space beneath them. */
+.sidebar-links { gap: 7px; }
+.sidebar-links .nav-link { padding: 11px 13px; }
+
+/* The active row is gold; hovering it was laying a translucent white film over
+   that gold and visibly DIMMING the item under the cursor — the one thing
+   hover must never do. Hover styling now applies only to inactive rows. */
+.sidebar-links .nav-link:hover { background: none; }
+.sidebar-links .nav-link:not(.active):hover { background: var(--surface-hi); }
+.sidebar-links .nav-link.active:hover { filter: brightness(1.06); }
+
+/* ── Telegram: a door, not a footnote ── */
+.tg-rail {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--gold);
+  text-decoration: none;
+  background: var(--gold-dim);
+  border: 1px solid color-mix(in srgb, var(--gold) 34%, transparent);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.tg-rail:hover {
+  background: color-mix(in srgb, var(--gold) 22%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 60%, transparent);
+  transform: translateY(-1px);
+}
+.tg-rail .nav-link-icon { color: var(--gold); width: 20px; }
+
+.sidebar-foot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.sidebar-foot .status { padding: 8px 4px; }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--faint);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.theme-toggle:hover { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, transparent); background: var(--gold-dim); }
+
+.sidebar.collapsed .sidebar-head { justify-content: center; }
+.sidebar.collapsed .rail-toggle { margin-top: 10px; }
+.sidebar.collapsed .sidebar-head { flex-direction: column; align-items: center; gap: 4px; }
+.sidebar.collapsed .tg-rail,
+.sidebar.collapsed .theme-toggle { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.sidebar.collapsed .sidebar-foot-row { flex-direction: column; gap: 6px; }
+.sidebar.collapsed .theme-toggle { width: 38px; height: 34px; }
+
+@media (max-width: 1080px) {
+  .sidebar-head { margin-bottom: 0; flex: 0 0 auto; }
+  .app { padding: 22px 24px 90px; }
+}
+
+/* ══ LIGHT THEME — parchment, not white ═════════════════════════════════════
+   This is a ledger, so the light side is warm paper and the gold darkens to
+   hold its contrast against it. Not an inversion: the same design, lit
+   differently. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f7f3e9;
+  --bg-deep: #efe9db;
+  --surface: rgba(40, 30, 10, 0.035);
+  --surface-hi: rgba(40, 30, 10, 0.065);
+  --border: rgba(40, 30, 10, 0.13);
+  --border-hi: rgba(40, 30, 10, 0.22);
+
+  /* Bright amber on parchment is illegible — this is the same hue carried down
+     until it passes contrast against paper. */
+  --gold: #9a6f14;
+  --gold-deep: #7d5a0e;
+  --gold-dim: rgba(154, 111, 20, 0.13);
+  --gold-glow: rgba(154, 111, 20, 0.2);
+
+  --text: #211d15;
+  --muted: #5d564a;
+  --faint: #8a8274;
+
+  --red: #b3392c;
+  --green: #1f7a4d;
+  --agent: #5b41c4;
+}
+
+/* The wordmark and hero are painted with a white-to-grey gradient clipped to
+   the text — on parchment that is white text on white paper. */
+:root[data-theme="light"] .nav-title,
+:root[data-theme="light"] .hero h1 {
+  background: linear-gradient(180deg, #2a2419 0%, #4a4133 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Surfaces built from white films go invisible on paper; they need dark ones. */
+:root[data-theme="light"] .sidebar { background: rgba(255, 253, 247, 0.72); }
+:root[data-theme="light"] .sidebar-links .nav-link:not(.active):hover,
+:root[data-theme="light"] .rail-toggle:hover,
+:root[data-theme="light"] .pager-num:hover:not(:disabled):not(.current) { background: rgba(40, 30, 10, 0.06); }
+:root[data-theme="light"] .nav-tip { background: #2a2419; color: #f7f3e9; border-color: rgba(0, 0, 0, 0.3); }
+:root[data-theme="light"] .post-quest-field select option { background: #f7f3e9; color: var(--text); }
+
+html, body { background: var(--bg); color: var(--text); }

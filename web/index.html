@@ -44,7 +44,13 @@
          collapsed it sees it snap shut on every single page load. -->
     <script>
       try {
-        document.documentElement.dataset.rail = localStorage.getItem("patron.sidebar.collapsed") === "1" ? "collapsed" : "open";
+        var r = document.documentElement;
+        r.dataset.rail = localStorage.getItem("patron.sidebar.collapsed") === "1" ? "collapsed" : "open";
+        var t = localStorage.getItem("patron.theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        r.dataset.theme = t;
       } catch (e) {}
     </script>
     <div id="root"></div>

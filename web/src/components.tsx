@@ -11,8 +11,10 @@ import {
   IconAlert,
   IconBolt,
   IconBrain,
-  IconChevronLeft,
   IconMap,
+  IconMoon,
+  IconPanelLeft,
+  IconSun,
   IconTelegram,
   IconCheck,
   IconCoin,
@@ -97,13 +99,28 @@ export function Nav({ connected }: { connected: boolean }) {
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
-      <NavLink to="/" className="sidebar-brand" title="Patron">
-        <img src="/patron-logo.svg" alt="" className="logo" />
-        <div className="sidebar-brand-text">
-          <div className="nav-title">PATRON</div>
-          <div className="nav-subtitle">the human-labor endpoint of the agent economy</div>
-        </div>
-      </NavLink>
+      {/* The collapse control belongs HERE, level with the brand, where every
+          other application puts it and where the eye already is. Buried at the
+          bottom of the rail it was below the fold on a short window and read as
+          a footer link rather than a control. */}
+      <div className="sidebar-head">
+        <NavLink to="/" className="sidebar-brand" title="Patron">
+          <img src="/patron-logo.svg" alt="" className="logo" />
+          <div className="sidebar-brand-text">
+            <div className="nav-title">PATRON</div>
+            <div className="nav-subtitle">the human-labor endpoint of the agent economy</div>
+          </div>
+        </NavLink>
+        <button
+          className="rail-toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <IconPanelLeft size={17} />
+        </button>
+      </div>
 
       <nav className="sidebar-links">
         {ledger.map((l, i) => (
@@ -130,35 +147,78 @@ export function Nav({ connected }: { connected: boolean }) {
           door are both persistent facts about the app rather than places to go,
           so they sit apart from the routes. */}
       <div className="sidebar-foot">
+        {/* The bot is a real second door into the product, not a footnote — it
+            gets the brand colour and a border so it reads as somewhere to go. */}
         <a
-          className="nav-tg"
+          className="tg-rail"
           href={TELEGRAM_BOT_URL}
           target="_blank"
           rel="noreferrer"
           title={collapsed ? "Patron on Telegram" : undefined}
         >
-          <IconTelegram size={14} />
+          <span className="nav-link-icon">
+            <IconTelegram size={16} />
+          </span>
           <span className="nav-link-label">Telegram bot</span>
           {collapsed && <span className="nav-tip">Telegram bot</span>}
         </a>
 
-        <div className="status" title={connected ? "Live" : "Disconnected"}>
-          <span className={`dot ${connected ? "live" : ""}`} />
-          <span className="nav-link-label">{connected ? "Live" : "Disconnected"}</span>
+        <div className="sidebar-foot-row">
+          <div className="status" title={connected ? "Live" : "Disconnected"}>
+            <span className={`dot ${connected ? "live" : ""}`} />
+            <span className="nav-link-label">{connected ? "Live" : "Disconnected"}</span>
+          </div>
+          <ThemeToggle collapsed={collapsed} />
         </div>
-
-        <button
-          className="rail-toggle"
-          onClick={() => setCollapsed((c) => !c)}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!collapsed}
-          title={collapsed ? "Expand" : "Collapse"}
-        >
-          <IconChevronLeft size={15} />
-          <span className="nav-link-label">Collapse</span>
-        </button>
       </div>
     </aside>
+  );
+}
+
+/**
+ * Light and dark.
+ *
+ * The dark side is the product's own voice — gold on near-black. The light side
+ * is deliberately NOT white: this thing is a ledger, so it goes to parchment,
+ * and the gold darkens to keep its contrast against it. Both are the same
+ * design rather than one design and its inversion.
+ *
+ * The chosen theme is written to the root element and read back by an inline
+ * script before React mounts, so a reload never flashes the other one.
+ */
+const THEME_KEY = "patron.theme";
+
+function ThemeToggle({ collapsed }: { collapsed: boolean }) {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      const saved = window.localStorage.getItem(THEME_KEY);
+      if (saved === "light" || saved === "dark") return saved;
+      return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* private mode */
+    }
+  }, [theme]);
+
+  const next = theme === "dark" ? "light" : "dark";
+  return (
+    <button
+      className="theme-toggle"
+      onClick={() => setTheme(next)}
+      aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
+    >
+      {theme === "dark" ? <IconSun size={15} /> : <IconMoon size={15} />}
+      {!collapsed && <span className="nav-link-label">{theme === "dark" ? "Light" : "Dark"}</span>}
+    </button>
   );
 }
 
