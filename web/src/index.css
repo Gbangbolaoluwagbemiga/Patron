@@ -2039,3 +2039,82 @@ html, body { background: var(--bg); color: var(--text); }
   /* The tooltips are what the labels replace — showing both is a stutter. */
   .sidebar.collapsed:hover .nav-tip { display: none; }
 }
+
+/* ══ LIGHT THEME — the rest of it ═════════════════════════════════════════════
+   The first pass only re-lit the two headings I happened to look at. Five
+   elements paint their text with a white-to-grey gradient clipped to the glyphs,
+   and three of them were left painting white text onto white paper — including
+   .page-header h1, which is the first thing on every page in the app. */
+:root[data-theme="light"] .page-header h1 {
+  background: linear-gradient(180deg, #241f16 0%, #443c2d 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+:root[data-theme="light"] .stat-hero .stat-value {
+  background: linear-gradient(150deg, #8a6414 0%, var(--gold) 45%, #6d4f0c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: none; /* the dark-mode glow smears into a haze on paper */
+}
+:root[data-theme="light"] .treasury-balance {
+  background: linear-gradient(180deg, #8a6414 0%, #6d4f0c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* The guild master's reasoning was a hardcoded near-white — the single most
+   important text in the product, invisible on its own light theme. */
+:root[data-theme="light"] .card-reasoning { color: #2b261c; }
+
+/* Inputs were filled with a DARK film, which on parchment is the solid grey
+   slab you get instead of a text field. */
+:root[data-theme="light"] input,
+:root[data-theme="light"] textarea {
+  background: #fffdf7;
+  border-color: rgba(40, 30, 10, 0.18);
+}
+:root[data-theme="light"] input:focus,
+:root[data-theme="light"] textarea:focus {
+  background: #fff;
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+  box-shadow: 0 0 0 3px var(--gold-dim);
+}
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder { color: #9a9284; }
+
+/* Every raised surface is a white film over black. On paper it has to be paper
+   that is slightly lighter than its page, with a real edge to separate it. */
+:root[data-theme="light"] .panel,
+:root[data-theme="light"] .card,
+:root[data-theme="light"] .stats,
+:root[data-theme="light"] .post-quest,
+:root[data-theme="light"] .milestone,
+:root[data-theme="light"] .stat-rest .stat {
+  background: #fffdf7;
+  border-color: rgba(40, 30, 10, 0.12);
+}
+:root[data-theme="light"] .badge,
+:root[data-theme="light"] .pager-num,
+:root[data-theme="light"] .rep-table td {
+  background: rgba(40, 30, 10, 0.045);
+  border-color: rgba(40, 30, 10, 0.12);
+}
+:root[data-theme="light"] .skeleton-row,
+:root[data-theme="light"] .skeleton-line { background: rgba(40, 30, 10, 0.07); }
+
+/* Gold discs carrying dark glyphs already work on paper; the outer glow does
+   not — it reads as a smudge rather than a light source. */
+:root[data-theme="light"] .flow-node.lit { box-shadow: 0 4px 16px rgba(154, 111, 20, 0.28); }
+
+:root[data-theme="light"] .footer { border-top-color: rgba(40, 30, 10, 0.12); }
+:root[data-theme="light"] .toast { background: #fffdf7; border-color: rgba(40, 30, 10, 0.14); }
+
+/* The active row carries near-black text, which is right on bright amber and
+   wrong on the darker gold this theme uses — dark on dark, the muddy pill in
+   the screenshot. Paper flips it: light text on the deep gold. */
+:root[data-theme="light"] .nav-link.active,
+:root[data-theme="light"] .sidebar-links .nav-link.active:hover {
+  color: #fffaf0;
+  background: linear-gradient(180deg, #a5781a 0%, #82600f 100%);
+}
+:root[data-theme="light"] .nav-link.active .nav-link-icon { color: #fffaf0; }
