@@ -76,14 +76,46 @@ async function call<T = unknown>(method: string, body: Record<string, unknown>):
   }
 }
 
-function send(chatId: number, text: string, keyboard?: { text: string; callback_data: string }[][]) {
-  return call("sendMessage", {
+/**
+ * Make text safe to drop inside an HTML-parsed message.
+ *
+ * Every message this bot sends is parse_mode: HTML, and nothing was escaped.
+ * Most of what gets interpolated is written by an LLM or by a user — scoring
+ * reasoning, cover letters, handles, job titles — so a single "<" or "&"
+ * anywhere in it makes Telegram reject the ENTIRE message as malformed
+ * entities. Not truncate: reject. The person is simply never told they were
+ * rejected, or hired, or paid.
+ */
+export function esc(text: unknown): string {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Send, and fall back to plain text if the markup is the problem.
+ *
+ * The escaping above is the fix; this is the guarantee. A notification that
+ * silently evaporates because some model wrote "under <3s" in its reasoning is
+ * unacceptable when the message is "you weren't hired" or "your work was
+ * rejected" — those are the ones people are waiting on. If Telegram refuses to
+ * parse it, the message still goes, just without formatting.
+ */
+async function send(chatId: number, text: string, keyboard?: { text: string; callback_data: string }[][]) {
+  const body = {
     chat_id: chatId,
     text,
-    parse_mode: "HTML",
     disable_web_page_preview: true,
     ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
-  });
+  };
+  const sent = await call("sendMessage", { ...body, parse_mode: "HTML" });
+  if (sent !== null) return sent;
+
+  // Strip the tags rather than showing someone raw <b> markup.
+  const plain = text.replace(/<\/?[a-z][^>]*>/gi, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  console.warn(`[telegram] HTML send to ${chatId} failed — retrying as plain text`);
+  return call("sendMessage", { ...body, text: plain });
 }
 
 function workerFor(tgUserId: number) {
@@ -178,7 +210,7 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
     return send(
       chatId,
       [
-        `Nothing matches “${filter}”.`,
+        `Nothing matches “${esc(filter)}”.`,
         "",
         `Looking for one job in particular? Use its number: <code>/job ${all[0]?.escrowId ?? 38}</code>`,
         `Filtering by word: <code>/jobs logo</code> · by budget: <code>/jobs 5</code>`,
@@ -193,7 +225,7 @@ async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0)
   const worker = workerFor(tgUserId);
 
   const header = filter
-    ? `<b>${quests.length}</b> of ${all.length} commissions match “${filter}”`
+    ? `<b>${quests.length}</b> of ${all.length} commissions match “${esc(filter)}”`
     : `<b>${all.length}</b> open commission${all.length !== 1 ? "s" : ""}, all funded up front`;
 
   const body = slice.map((q) => {
@@ -360,7 +392,7 @@ async function handleText(msg: TgMessage) {
 
       const existing = workerFor(tgUserId);
       if (existing) {
-        await send(chatId, `Welcome back, ${existing.handle}. /jobs to see what's open.`);
+        await send(chatId, `Welcome back, ${esc(existing.handle)}. /jobs to see what's open.`);
         return;
       }
       pending.set(chatId, { kind: "handle" });
@@ -468,10 +500,10 @@ async function handleText(msg: TgMessage) {
       return void (await send(
         chatId,
         [
-          `<b>${worker.handle}</b>`,
+          `<b>${esc(worker.handle)}</b>`,
           `Joined ${joined} · ${worker.mode === "managed" ? "wallet managed for you" : "your own wallet"}`,
           "",
-          `<b>What you do:</b> ${worker.skills || "not set — /skills to tell the guild"}`,
+          `<b>What you do:</b> ${esc(worker.skills) || "not set — /skills to tell the guild"}`,
           `<b>On-chain rating:</b> ${rating}`,
           "",
           "Your rating is written to the contract when a job completes, so it's verifiable by anyone and not something we can quietly change.",
@@ -484,7 +516,7 @@ async function handleText(msg: TgMessage) {
       if (!worker) return void (await send(chatId, "You're not in the guild yet — send /start."));
       if (!rest) return void (await send(chatId, "Tell me what you do, like: <code>/skills logo design, brand identity</code>"));
       store.setWorkerSkills(worker.id, rest.slice(0, 200));
-      return void (await send(chatId, `Noted — <b>${rest.slice(0, 200)}</b>. /profile to see it.`));
+      return void (await send(chatId, `Noted — <b>${esc(rest.slice(0, 200))}</b>. /profile to see it.`));
     }
 
     if (cmd === "/mine") {
@@ -504,7 +536,7 @@ async function handleText(msg: TgMessage) {
           // web users onto a page with no command line to type it into.
           ...mine.map(
             (m) =>
-              `${m.icon} <b>${m.title}</b> — $${m.budget}\n   ${m.status}` +
+              `${m.icon} <b>${esc(m.title)}</b> — $${m.budget}\n   ${m.status}` +
               (m.state === "hired" ? ` — <code>/submit ${m.escrowId}</code>` : ""),
           ),
         ].join("\n"),
@@ -616,7 +648,7 @@ async function handleText(msg: TgMessage) {
       await send(
         chatId,
         [
-          `You're in, <b>${worker.handle}</b>. 🏰`,
+          `You're in, <b>${esc(worker.handle)}</b>. 🏰`,
           "",
           "I set up a wallet for you in the background. You don't have to do anything with it, nobody can take what's in it, and anything you earn lands there directly.",
           "",
@@ -770,7 +802,7 @@ export async function broadcastNewQuest(title: string, budget: number, escrowId:
   for (const w of recipients) {
     await send(
       Number(w.channelRef),
-      [`🔔 <b>New quest:</b> ${title}`, `💰 $${budget} USDC — already locked in escrow.`].join("\n"),
+      [`🔔 <b>New quest:</b> ${esc(title)}`, `💰 $${budget} USDC — already locked in escrow.`].join("\n"),
       [[{ text: "Apply", callback_data: `apply:${escrowId}` }]],
     );
   }

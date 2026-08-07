@@ -2438,3 +2438,40 @@ html, body { background: var(--bg); color: var(--text); }
 }
 .notice-x:hover { opacity: 1; background: rgba(255, 255, 255, 0.08); }
 :root[data-theme="light"] .notice-x:hover { background: rgba(40, 30, 10, 0.09); }
+
+/* ── Refresh ─────────────────────────────────────────────────────────────── */
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.refresh-btn:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+  background: var(--gold-dim);
+}
+.refresh-btn:disabled { opacity: 0.6; cursor: default; }
+.refresh-btn svg.spin { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .refresh-btn svg.spin { animation: none; } }
+
+/* ── Account card: breathing room, open and closed ───────────────────────────
+   Collapsed, the card was a title jammed against its own edges — the padding
+   was tuned for a full panel and the header alone had nothing to sit in. */
+.account-card { padding: 24px 28px; }
+.account-head { align-items: center; gap: 16px; margin-bottom: 22px; }
+.account-card:has(.account-toggle[aria-expanded="false"]) { padding: 18px 28px; }
+.account-card:has(.account-toggle[aria-expanded="false"]) .account-head { margin-bottom: 0; }
+.account-head h3 { line-height: 1.2; }
+.account-grid { margin-bottom: 22px; }
+.account-actions { gap: 22px; }

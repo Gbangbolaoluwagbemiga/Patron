@@ -11,13 +11,13 @@
 // in order, in plain language — posted, applicants arriving, who was hired and
 // why, work delivered, money released.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useWallet } from "../wallet-context";
 import { JudgingCountdown, TELEGRAM_BOT_URL, shorten, timeAgo } from "../components";
 import { LedgerSkeleton } from "../motion";
-import { IconBolt, IconCheck, IconCoin, IconScroll, IconSearch, IconShrug, IconSwords, IconTelegram } from "../Icon";
+import { IconBolt, IconCheck, IconCoin, IconRefresh, IconScroll, IconSearch, IconShrug, IconSwords, IconTelegram } from "../Icon";
 
 interface ClientEvent {
   type: string;
@@ -67,22 +67,46 @@ export default function MyJobs() {
   const { address, connect, connecting } = useWallet();
   const [jobs, setJobs] = useState<ClientJob[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastAt, setLastAt] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    if (!address) return;
+    try {
+      setJobs(await api<ClientJob[]>(`/api/client/jobs?address=${address}`));
+      setLastAt(Date.now());
+    } catch {
+      setJobs((j) => j ?? []);
+    }
+  }, [address]);
+
+  /**
+   * Manual refresh, alongside the poll.
+   *
+   * The page reloads itself every 15 seconds, which is fine except at exactly
+   * the moment you care — you have just submitted something, or the guild
+   * master is mid-decision, and waiting out a timer you cannot see feels like
+   * the page is stuck. A button costs nothing and answers "is it just me?".
+   */
+  async function refreshNow() {
+    setRefreshing(true);
+    await load();
+    // Deliberately visible for a beat. An instant flicker reads as nothing
+    // having happened, which is the opposite of what the button is for.
+    window.setTimeout(() => setRefreshing(false), 400);
+  }
 
   useEffect(() => {
     if (!address) {
       setJobs(null);
       return;
     }
-    const load = () =>
-      api<ClientJob[]>(`/api/client/jobs?address=${address}`)
-        .then(setJobs)
-        .catch(() => setJobs([]));
     void load();
     // These move on their own — an applicant arrives, the guild master decides,
     // money is released — so the page has to move without being told to.
-    const t = window.setInterval(load, 15_000);
+    const t = window.setInterval(() => void load(), 15_000);
     return () => window.clearInterval(t);
-  }, [address]);
+  }, [address, load]);
 
   if (!address) {
     return (
@@ -109,11 +133,18 @@ export default function MyJobs() {
     <div className="page">
       <div className="page-header">
         <h1>Your Commissions</h1>
-        {jobs && jobs.length > 0 && <span className="page-count">{jobs.length}</span>}
+        <div className="page-header-right">
+          {jobs && jobs.length > 0 && <span className="page-count">{jobs.length}</span>}
+          <button className="refresh-btn" onClick={() => void refreshNow()} disabled={refreshing} title="Check for updates now">
+            <IconRefresh size={14} className={refreshing ? "spin" : ""} />
+            {refreshing ? "Checking…" : "Refresh"}
+          </button>
+        </div>
       </div>
       <p className="page-sub">
         Everything commissioned by <code className="inline-addr">{shorten(address)}</code>, and exactly where each one
-        has got to. Updates on its own — you don't have to keep checking.
+        has got to. Updates on its own every 15 seconds
+        {lastAt ? ` — last checked ${new Date(lastAt).toLocaleTimeString()}` : ""}.
       </p>
 
       {/* One tap. Telegram passes whatever follows ?start= straight to the bot,

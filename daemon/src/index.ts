@@ -116,7 +116,7 @@ const agent = new AgentClient((event) => {
           "✅ <b>Someone's been hired for your commission.</b>",
           "",
           `<code>${who.slice(0, 10)}…${who.slice(-6)}</code> scored highest against your brief.`,
-          event.decision.reasoning ? `\n<i>${event.decision.reasoning.slice(0, 400)}</i>\n` : "",
+          event.decision.reasoning ? `\n<i>${telegram.esc(event.decision.reasoning.slice(0, 400))}</i>\n` : "",
           `Every applicant's score and the reasoning: ${jobLink}`,
         ]
           .filter(Boolean)
@@ -130,7 +130,7 @@ const agent = new AgentClient((event) => {
         [
           "⏳ <b>Nobody cleared the bar on your commission yet.</b>",
           "",
-          event.decision?.reasoning ?? "",
+          telegram.esc(event.decision?.reasoning ?? ""),
           "",
           "Your money is still locked in escrow — nobody is paid for work that wasn't good enough, and it comes back to you in full if the deadline passes with no one suitable.",
           jobLink,
@@ -153,7 +153,7 @@ const agent = new AgentClient((event) => {
         [
           "📝 <b>The delivery didn't pass — a revision was requested.</b>",
           "",
-          event.decision?.reasoning?.slice(0, 400) ?? "",
+          telegram.esc(event.decision?.reasoning?.slice(0, 400) ?? ""),
           "",
           "Your money stays locked either way. The freelancer gets written feedback and another go.",
           jobLink,
@@ -196,7 +196,7 @@ const agent = new AgentClient((event) => {
   if (event.type === "work_rejected" && event.escrowId) {
     void telegram.notifyWorkerForEscrow(
       event.escrowId,
-      `📝 Revision requested:\n\n${event.decision?.reasoning ?? "See the ledger for details."}\n\nSend an updated version when you're ready — the money stays locked in escrow either way.`,
+      `📝 Revision requested:\n\n${telegram.esc(event.decision?.reasoning ?? "See the ledger for details.")}\n\nSend an updated version when you're ready — the money stays locked in escrow either way.`,
     );
   }
   if (event.type === "payment_released" && event.escrowId) {
@@ -277,7 +277,7 @@ async function notifyUnsuccessfulApplicants(escrowId: string, winner: string | n
           winner ? "This one went to someone else." : "Nobody cleared the bar on this one — including you.",
           "",
           mine?.score != null ? `You scored <b>${mine.score}/100</b> — the bar to be hired is 70.` : "",
-          mine?.reasoning ? `\n<i>${mine.reasoning}</i>\n` : "",
+          mine?.reasoning ? `\n<i>${telegram.esc(mine.reasoning)}</i>\n` : "",
           // Where the score actually went is the most useful thing we can hand
           // back: it turns a rejection into instructions.
           winner
