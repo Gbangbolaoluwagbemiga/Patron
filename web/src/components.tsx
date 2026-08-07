@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink } from "react-router-dom";
 
 const MotionLink = motion(Link);
-import { ARC_EXPLORER, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
+import { ARC_EXPLORER, api, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
 import { hasInjectedWallet, useWalletConnect } from "./wallet-connect";
 import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
 import { inkTransition, useCountUp, useFlashOnChange } from "./motion";
@@ -29,6 +29,16 @@ import {
   IconSwords,
   type IconComponent,
 } from "./Icon";
+
+/** A depositor's position in the pooled treasury. */
+interface TreasuryAccount {
+  address: string;
+  deposited: string;
+  withdrawn: string;
+  claim: string;
+  withdrawable: string;
+  treasuryOnHand: string;
+}
 
 const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
 /** The second door. Exported because more than one page needs to point at it. */
@@ -361,7 +371,11 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   const [copied, setCopied] = useState(false);
   const [amount, setAmount] = useState("5");
   const [fundedTx, setFundedTx] = useState<string | null>(null);
-  const { address, balance: walletBalance, connecting, funding, error, connect, fund } = useWalletConnect();
+  const { address, balance: walletBalance, connecting, funding, error, connect, fund, signMessage, setError } = useWalletConnect();
+  const [account, setAccount] = useState<TreasuryAccount | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawAmt, setWithdrawAmt] = useState("");
+  const [withdrewTx, setWithdrewTx] = useState<string | null>(null);
   // The visitor's own holdings, and whether what they typed exceeds them.
   const myBalance = walletBalance != null ? parseFloat(walletBalance) : null;
   const insufficient = myBalance != null && amount !== "" && parseFloat(amount) > myBalance;
@@ -378,6 +392,19 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     setTimeout(() => setCopied(false), 1500);
   }
 
+  // Their position in the pooled treasury, refreshed whenever it could change.
+  const loadAccount = useCallback(async (who: string) => {
+    try {
+      setAccount(await api<TreasuryAccount>(`/api/treasury/account?address=${who}`));
+    } catch {
+      /* a missing account view must not break funding */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (address) void loadAccount(address);
+  }, [address, loadAccount]);
+
   async function handleFund() {
     if (!wallet) return;
     setFundedTx(null);
@@ -385,6 +412,47 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     if (hash) {
       setFundedTx(hash);
       onFunded();
+      // Claim it against this address. The daemon re-reads the transaction on
+      // chain before crediting anything, so this is a pointer, not a promise.
+      if (address) {
+        try {
+          await api(`/api/treasury/deposit`, { method: "POST", body: JSON.stringify({ txHash: hash, from: address }) });
+        } catch {
+          /* the deposit still landed; it just isn't attributed yet */
+        }
+        void loadAccount(address);
+      }
+    }
+  }
+
+  async function handleWithdraw() {
+    if (!address || !account) return;
+    const amt = Number(withdrawAmt);
+    const cap = Number(account.withdrawable);
+    if (!(amt > 0)) return;
+    if (amt > cap) {
+      setError(`You can withdraw at most $${cap.toFixed(2)} right now.`);
+      return;
+    }
+    setWithdrawing(true);
+    setWithdrewTx(null);
+    try {
+      const amountUsdc = amt.toFixed(6);
+      const message = `Patron treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
+      const signature = await signMessage(message);
+      if (!signature) return;
+      const r = await api<{ txHash: string }>(`/api/treasury/withdraw`, {
+        method: "POST",
+        body: JSON.stringify({ address, amountUsdc, signature, message }),
+      });
+      setWithdrewTx(r.txHash);
+      setWithdrawAmt("");
+      onFunded();
+      void loadAccount(address);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWithdrawing(false);
     }
   }
 
@@ -443,6 +511,54 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
             {insufficient && (
               <div className="post-quest-msg warn">
                 ⚠ That's more than the ${myBalance?.toFixed(2)} in your wallet — lower the amount.
+              </div>
+            )}
+
+            {/* What THIS depositor put in, and what they can take back.
+                Deliberately two different numbers: the treasury is a pooled
+                wallet Patron spends from, and money sitting in an escrow has
+                genuinely left it. Showing only "your deposit" would imply a
+                personal balance that is always available, which it isn't. */}
+            {account && Number(account.deposited) > 0 && (
+              <div className="depositor">
+                <div className="depositor-row">
+                  <span>You've deposited</span>
+                  <b>${Number(account.deposited).toFixed(2)}</b>
+                </div>
+                {Number(account.withdrawn) > 0 && (
+                  <div className="depositor-row">
+                    <span>Withdrawn</span>
+                    <b>${Number(account.withdrawn).toFixed(2)}</b>
+                  </div>
+                )}
+                <div className="depositor-row strong">
+                  <span>Withdrawable now</span>
+                  <b>${Number(account.withdrawable).toFixed(2)}</b>
+                </div>
+
+                {Number(account.withdrawable) < Number(account.claim) && (
+                  <div className="depositor-note">
+                    ${Number(account.claim).toFixed(2)} is yours, but only ${Number(account.withdrawable).toFixed(2)} is in the
+                    treasury right now — the rest is locked in escrow against live commissions. It frees up as they settle.
+                  </div>
+                )}
+
+                {Number(account.withdrawable) > 0 && (
+                  <div className="treasury-fund-row" style={{ marginTop: 10 }}>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder={Number(account.withdrawable).toFixed(2)}
+                      value={withdrawAmt}
+                      onChange={(e) => setWithdrawAmt(e.target.value)}
+                    />
+                    <button className="treasury-connect-btn" onClick={handleWithdraw} disabled={withdrawing || !withdrawAmt}>
+                      {withdrawing ? "Signing…" : "Withdraw"}
+                    </button>
+                  </div>
+                )}
+                {withdrewTx && <div className="post-quest-msg ok">✓ Withdrawn — tx {shorten(withdrewTx)}</div>}
               </div>
             )}
           </>

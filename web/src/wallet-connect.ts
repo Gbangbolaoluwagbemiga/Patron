@@ -165,5 +165,42 @@ export function useWalletConnect() {
     [address, readBalance],
   );
 
-  return { address, balance, connecting, funding, error, connect, fund, refreshBalance: () => address && readBalance(address) };
+  /**
+   * Sign the sentence that authorises a withdrawal.
+   *
+   * The treasury is Patron's own wallet, so "pay this address" cannot be taken
+   * on trust — without a signature anyone could withdraw anyone else's deposit
+   * by typing their address. personal_sign is the cheapest proof that the
+   * caller actually holds the key to the address they're claiming.
+   */
+  const signMessage = useCallback(
+    async (message: string): Promise<string | null> => {
+      const provider = getInjectedProvider();
+      if (!provider || !address) {
+        setError("Connect your wallet first.");
+        return null;
+      }
+      setError("");
+      try {
+        return (await provider.request({ method: "personal_sign", params: [message, address] })) as string;
+      } catch (err) {
+        setError(describeWalletError(err));
+        return null;
+      }
+    },
+    [address],
+  );
+
+  return {
+    address,
+    balance,
+    connecting,
+    funding,
+    error,
+    connect,
+    fund,
+    signMessage,
+    setError,
+    refreshBalance: () => address && readBalance(address),
+  };
 }

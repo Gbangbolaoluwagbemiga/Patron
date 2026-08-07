@@ -12,7 +12,7 @@
 
 import http from "node:http";
 import { randomUUID } from "node:crypto";
-import { createPublicClient, http as viemHttp, formatEther } from "viem";
+import { createPublicClient, http as viemHttp, formatEther, verifyMessage } from "viem";
 import { config, arcTestnet, rpcUrl } from "./config.js";
 import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
 import { createPatronGateway } from "./circle/gateway.js";
@@ -26,6 +26,24 @@ import * as telegram from "./workers/telegram.js";
 import { setLlmPausedUntil } from "./llm-status.js";
 
 const PORT = config.port;
+
+/**
+ * Held back from every withdrawal so Patron can still sign.
+ *
+ * A treasury drained to exactly zero cannot pay the gas to do anything at all —
+ * including paying the next freelancer whose work was already approved.
+ */
+const TREASURY_GAS_FLOOR = Number(process.env.TREASURY_GAS_FLOOR_USDC ?? 0.5);
+
+/**
+ * The exact sentence a depositor signs to authorise a withdrawal.
+ *
+ * It names the address AND the amount, so a signature captured for one
+ * withdrawal cannot be replayed to authorise a bigger one.
+ */
+function withdrawalMessage(address: string, amountUsdc: string): string {
+  return `Patron treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
+}
 
 // ── SSE broadcast ──────────────────────────────────────────────────────────
 const sseClients = new Set<http.ServerResponse>();
@@ -389,6 +407,155 @@ const server = http.createServer(async (req, res) => {
       });
     } catch (err) {
       return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /**
+   * A depositor's own position in the pooled treasury.
+   *
+   * `withdrawable` is deliberately NOT just what they put in. The treasury is a
+   * single pooled wallet that Patron spends from to fund escrows, and money in
+   * an escrow has genuinely left it — so if someone deposits $5 and Patron
+   * commissions $5 of work, there is nothing to give back until that work
+   * settles. Paying the first person to ask, out of a pot that is backing other
+   * people's live commissions, is a bank run with extra steps.
+   *
+   * So the cap is the LESSER of what they are owed and what is actually here.
+   */
+  if (req.method === "GET" && url.pathname === "/api/treasury/account") {
+    const address = (url.searchParams.get("address") ?? "").trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return json(res, 400, { error: "a valid address is required" });
+    try {
+      const account = store.treasuryAccount(address);
+      const onHand = await treasuryBalance();
+      // Keep a little back so Patron can still sign; a treasury that cannot pay
+      // gas cannot pay anyone.
+      const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
+      return json(res, 200, {
+        address,
+        deposited: account.deposited.toFixed(6),
+        withdrawn: account.withdrawn.toFixed(6),
+        claim: account.net.toFixed(6),
+        withdrawable: Math.min(account.net, spendable).toFixed(6),
+        treasuryOnHand: onHand.toFixed(6),
+        entries: store.treasuryEntries(address, 20),
+      });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Claim a deposit.
+   *
+   * VERIFIED ON-CHAIN before it is credited — the client reports a transaction
+   * hash and we go and read it: it must exist, be mined, be addressed to this
+   * treasury, and come from the address claiming it. Trusting the browser here
+   * would let anyone type a number and withdraw it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/treasury/deposit") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { txHash?: string; from?: string };
+      if (!b.txHash || !b.from) return json(res, 400, { error: "txHash and from are required" });
+
+      const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+      const tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
+      if (!tx) return json(res, 404, { error: "That transaction could not be found on Arc yet. Give it a moment and try again." });
+
+      const receipt = await pub.getTransactionReceipt({ hash: b.txHash as `0x${string}` }).catch(() => null);
+      if (!receipt || receipt.status !== "success") return json(res, 400, { error: "That transaction has not succeeded." });
+
+      const treasury = config.circleWalletAddress.toLowerCase();
+      if ((tx.to ?? "").toLowerCase() !== treasury) return json(res, 400, { error: "That transaction did not pay Patron's treasury." });
+      if (tx.from.toLowerCase() !== b.from.toLowerCase()) return json(res, 400, { error: "That transaction was not sent from this address." });
+      if (tx.value <= 0n) return json(res, 400, { error: "That transaction moved no funds." });
+
+      const amount = Number(formatEther(tx.value)).toFixed(6);
+      const credited = store.recordTreasuryEntry({
+        id: randomUUID(),
+        party: b.from,
+        direction: "deposit",
+        amountUsdc: amount,
+        txHash: b.txHash,
+      });
+      // Not an error: the UI reports the deposit and the user may refresh.
+      return json(res, 200, { credited, amount, account: store.treasuryAccount(b.from) });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Withdraw a deposit.
+   *
+   * Authorised by a SIGNATURE from the depositing address, not by asking. The
+   * treasury is Patron's wallet, so an endpoint that pays out to whatever
+   * address the caller names would let anyone drain everyone else's deposits by
+   * typing their address — the signature is what proves the caller controls it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/treasury/withdraw") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { address?: string; amountUsdc?: string; signature?: string; message?: string };
+      if (!b.address || !b.amountUsdc || !b.signature || !b.message) {
+        return json(res, 400, { error: "address, amountUsdc, signature and message are required" });
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(b.address)) return json(res, 400, { error: "That is not a valid address." });
+
+      const amount = Number(b.amountUsdc);
+      if (!(amount > 0)) return json(res, 400, { error: "The amount has to be a positive number." });
+
+      // The signed message must name THIS withdrawal, so a signature captured
+      // for one amount cannot be replayed for a larger one.
+      const expected = withdrawalMessage(b.address, b.amountUsdc);
+      if (b.message !== expected) return json(res, 400, { error: "That signature does not match this withdrawal." });
+
+      const valid = await verifyMessage({
+        address: b.address as `0x${string}`,
+        message: b.message,
+        signature: b.signature as `0x${string}`,
+      }).catch(() => false);
+      if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise the withdrawal." });
+
+      const account = store.treasuryAccount(b.address);
+      const onHand = await treasuryBalance();
+      const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
+      const cap = Math.min(account.net, spendable);
+      if (amount > cap + 1e-9) {
+        return json(res, 400, {
+          error:
+            account.net < amount
+              ? `You can withdraw at most $${account.net.toFixed(2)} — that's what you've deposited and not yet taken back.`
+              : `Only $${spendable.toFixed(2)} is currently in the treasury; the rest is locked in escrow against live commissions. It becomes withdrawable as those settle.`,
+        });
+      }
+
+      const gateway = getGateway();
+      const sent = await gateway.transferUsdc(b.address as `0x${string}`, amount.toFixed(6));
+      store.recordTreasuryEntry({
+        id: randomUUID(),
+        party: b.address,
+        direction: "withdrawal",
+        amountUsdc: amount.toFixed(6),
+        txHash: sent.hash,
+      });
+      store.recordPayment({
+        id: randomUUID(),
+        direction: "out",
+        amountUsdc: amount.toFixed(6),
+        counterparty: b.address,
+        txHash: sent.hash,
+        reason: "depositor_withdrawal",
+      });
+      broadcast({
+        type: "task_completed",
+        message: `Depositor withdrawal — $${amount.toFixed(2)} returned to ${b.address.slice(0, 10)}…`,
+        txHash: sent.hash,
+        amountUsdc: amount.toFixed(6),
+        timestamp: Date.now(),
+      });
+      return json(res, 200, { txHash: sent.hash, amountUsdc: amount.toFixed(6), account: store.treasuryAccount(b.address) });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
     }
   }
 

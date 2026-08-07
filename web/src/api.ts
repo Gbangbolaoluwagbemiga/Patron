@@ -4,6 +4,23 @@ import type { AgentEvent, DecisionRow, PaymentRow, TaskRow } from "./types";
 export const DAEMON_URL = import.meta.env.VITE_DAEMON_URL ?? "http://localhost:8787";
 export const ARC_EXPLORER = "https://testnet.arcscan.app";
 
+/**
+ * One request helper, surfacing the daemon's own error text.
+ *
+ * The daemon answers failures with { error: "a sentence written for a human" },
+ * and a helper that throws "500" instead of that sentence discards the single
+ * most useful thing in the response.
+ */
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${DAEMON_URL}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((body as { error?: string })?.error ?? `${path} → ${res.status}`);
+  return body as T;
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${DAEMON_URL}${path}`);
   if (!res.ok) throw new Error(`${path} → ${res.status}`);

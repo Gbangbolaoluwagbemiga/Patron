@@ -2135,3 +2135,32 @@ html, body { background: var(--bg); color: var(--text); }
   text-transform: none;
 }
 .wallet-balance.short { color: var(--red); }
+
+/* A depositor's own position in the pooled treasury. */
+.depositor {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.depositor-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 3px 0;
+}
+.depositor-row b { font-family: var(--mono); font-size: 13px; color: var(--text); }
+.depositor-row.strong { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 8px; }
+.depositor-row.strong b { color: var(--gold); font-size: 15px; }
+.depositor-note {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--faint);
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--gold) 35%, transparent);
+}

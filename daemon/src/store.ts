@@ -39,6 +39,25 @@ db.exec(`
     timestamp INTEGER NOT NULL
   );
 
+  -- Who put money INTO the treasury, and who has taken any back out.
+  --
+  -- The treasury is one pooled wallet: anyone can send to it and Patron spends
+  -- from it to fund escrows. Without this table a depositor's contribution is
+  -- indistinguishable from anyone else's the moment it lands, so there is
+  -- nothing to show them and nothing to bound a withdrawal by.
+  --
+  -- tx_hash is UNIQUE on purpose. A deposit is claimed by reporting a
+  -- transaction, and without that constraint the same transaction could be
+  -- reported ten times and credited ten times over.
+  CREATE TABLE IF NOT EXISTS treasury_ledger (
+    id TEXT PRIMARY KEY,
+    party TEXT NOT NULL,               -- the depositor's address, lowercased
+    direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal'
+    amount_usdc TEXT NOT NULL,
+    tx_hash TEXT UNIQUE,
+    timestamp INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS payments (
     id TEXT PRIMARY KEY,
     direction TEXT NOT NULL,      -- 'in' (x402 commission) | 'out' (x402 buy) | 'escrow_lock' | 'escrow_release'
@@ -507,4 +526,60 @@ export function setPollerInt(key: string, value: number): void {
     `INSERT INTO poller_state (key, value, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   ).run(key, String(value), Date.now());
+}
+
+// ── Treasury ledger ─────────────────────────────────────────────────────────
+
+/** Record a verified deposit or a completed withdrawal. Returns false if the tx was already recorded. */
+export function recordTreasuryEntry(e: {
+  id: string;
+  party: string;
+  direction: "deposit" | "withdrawal";
+  amountUsdc: string;
+  txHash?: string;
+}): boolean {
+  try {
+    db.prepare(
+      `INSERT INTO treasury_ledger (id, party, direction, amount_usdc, tx_hash, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(e.id, e.party.toLowerCase(), e.direction, e.amountUsdc, e.txHash ?? null, Date.now());
+    return true;
+  } catch {
+    // UNIQUE(tx_hash) — this transaction has already been credited.
+    return false;
+  }
+}
+
+/** What one party has put in and taken out. */
+export function treasuryAccount(party: string): { deposited: number; withdrawn: number; net: number } {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS dep,
+         COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS wdr
+       FROM treasury_ledger WHERE party = ?`,
+    )
+    .get(party.toLowerCase()) as { dep: number; wdr: number };
+  const deposited = Number(row?.dep ?? 0);
+  const withdrawn = Number(row?.wdr ?? 0);
+  return { deposited, withdrawn, net: Math.max(0, deposited - withdrawn) };
+}
+
+export function treasuryEntries(party: string, limit = 50): any[] {
+  return db
+    .prepare(`SELECT * FROM treasury_ledger WHERE party = ? ORDER BY timestamp DESC LIMIT ?`)
+    .all(party.toLowerCase(), limit);
+}
+
+/** Everything every depositor still has a claim on, pooled. */
+export function treasuryClaimsTotal(): number {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) -
+         COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS net
+       FROM treasury_ledger`,
+    )
+    .get() as { net: number };
+  return Math.max(0, Number(row?.net ?? 0));
 }
