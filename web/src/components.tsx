@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink, useLocation } from "react-router-dom";
@@ -999,20 +999,49 @@ const EVENT_ICON: Record<string, IconComponent> = {
   task_completed: IconFlag,
 };
 
+/** Anything older than this was not caused by what you are doing right now. */
+const TOAST_MAX_AGE_MS = 45_000;
+
 export function NotificationCenter({ liveEvents }: { liveEvents: AgentEvent[] }) {
   const [visible, setVisible] = useState<(AgentEvent & { key: string })[]>([]);
   const seen = useRef(new Set<string>());
+  const timers = useRef(new Map<string, number>());
+
+  const dismiss = useCallback((key: string) => {
+    const t = timers.current.get(key);
+    if (t) window.clearTimeout(t);
+    timers.current.delete(key);
+    setVisible((prev) => prev.filter((e) => e.key !== key));
+  }, []);
 
   useEffect(() => {
     const fresh = liveEvents[0];
     if (!fresh) return;
     const key = `${fresh.type}-${fresh.timestamp}`;
     if (seen.current.has(key)) return;
+    // A reload replays the recent feed, and every one of those events would
+    // otherwise pop as though it had just happened.
+    if (fresh.timestamp && Date.now() - fresh.timestamp > TOAST_MAX_AGE_MS) {
+      seen.current.add(key);
+      return;
+    }
     seen.current.add(key);
     setVisible((prev) => [{ ...fresh, key }, ...prev].slice(0, 4));
-    const t = setTimeout(() => setVisible((prev) => prev.filter((e) => e.key !== key)), 6000);
-    return () => clearTimeout(t);
-  }, [liveEvents[0]]);
+
+    /**
+     * The timer is owned by the toast, NOT by this effect.
+     *
+     * It used to be `return () => clearTimeout(t)` — and this effect re-runs on
+     * every new event, so a second event arriving inside the six-second window
+     * ran the previous cleanup and cancelled the previous toast's dismissal.
+     * Submit three times quickly and you get three toasts that never leave,
+     * which is exactly what happened.
+     */
+    timers.current.set(key, window.setTimeout(() => dismiss(key), 6000));
+  }, [liveEvents[0], dismiss]);
+
+  // Only on unmount — never on re-render.
+  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
 
   const isInjection = (e: AgentEvent) => e.decision?.reasoning?.includes("[PROMPT INJECTION DETECTED]");
 
@@ -1039,6 +1068,10 @@ export function NotificationCenter({ liveEvents }: { liveEvents: AgentEvent[] })
                   e.message
                 )}
               </span>
+              {/* A notification you cannot close is not a notification. */}
+              <button className="toast-dismiss" onClick={() => dismiss(e.key)} aria-label="Dismiss">
+                <IconX size={13} />
+              </button>
             </motion.div>
           );
         })}
@@ -1086,20 +1119,48 @@ export function TaskCard({ task, linkToDetail = true }: { task: TaskRow; linkToD
   );
 }
 
+/**
+ * Plain English for the public feed.
+ *
+ * It rendered the raw enum, so the verdict on someone's work read "work
+ * rejected" — the internal name — while the same event is called "Revision
+ * requested" everywhere else. The badge is the first thing anyone reads.
+ */
+const DECISION_LABEL: Record<string, string> = {
+  application_scored: "Applicant scored",
+  portfolio_verified: "Portfolio checked",
+  applicant_accepted: "Freelancer hired",
+  no_suitable_applicant: "Nobody cleared the bar",
+  work_approved: "Work accepted",
+  work_rejected: "Revision requested",
+  revision_requested: "Revision requested",
+  escalated: "Escalated to a human arbiter",
+  escalated_to_human: "Escalated to a human arbiter",
+  dispute_resolved: "Arbiter ruled",
+  payment_released: "Payment released",
+  task_completed: "Commission closed",
+};
+
 export function DecisionCard({ decision }: { decision: DecisionRow }) {
   const isInjection = decision.reasoning.includes("[PROMPT INJECTION DETECTED]");
   return (
     <motion.div className={`card ${isInjection ? "card-alert" : ""}`} {...cardMotion}>
       <div className="card-row">
-        <span className="badge">{decision.type.replace(/_/g, " ")}</span>
+        <span className="badge">{DECISION_LABEL[decision.type] ?? decision.type.replace(/_/g, " ")}</span>
         {decision.score != null && <span className="amount">{decision.score}/100</span>}
       </div>
       <div className={`card-reasoning ${isInjection ? "injection" : ""}`}>{decision.reasoning}</div>
-      {decision.target && (
-        <div className="card-row" style={{ marginTop: 6, marginBottom: 0 }}>
-          {shorten(decision.target)}
-        </div>
-      )}
+      <div className="card-row" style={{ marginTop: 6, marginBottom: 0 }}>
+        {decision.target ? <span>{shorten(decision.target)}</span> : <span />}
+        {/* Which job this verdict belongs to. The feed showed every decision the
+            agent has ever made and never said what any of them was about, so a
+            rejection was public and untraceable at the same time. */}
+        {decision.task_id && (
+          <Link className="tx-link" to={`/jobs/${decision.task_id}`}>
+            commission #{decision.task_id} →
+          </Link>
+        )}
+      </div>
     </motion.div>
   );
 }

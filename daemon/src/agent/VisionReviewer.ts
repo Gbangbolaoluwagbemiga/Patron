@@ -17,7 +17,16 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { imageDimensions, readSvgSource, transcribeAudio, isAudio, readWebPage, readGitHubRepo } from "./DeliverableFacts.js";
+import {
+  imageDimensions,
+  readSvgSource,
+  transcribeAudio,
+  isAudio,
+  readWebPage,
+  readGitHubRepo,
+  isReaderBlockedHost,
+  readerBlockedNote,
+} from "./DeliverableFacts.js";
 
 /** What a vision model will accept. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -61,6 +70,12 @@ export interface VisionReview {
   description?: string;
   /** Verbatim file contents when the file is genuinely text (SVG source). */
   sourceExcerpt?: string;
+  /**
+   * The HOST refused to serve a reader — not the freelancer failing to deliver.
+   * The reviewer must not fail criteria on this basis; it asks for a readable
+   * copy instead.
+   */
+  inspectionBlockedByHost?: boolean;
 }
 
 /**
@@ -124,6 +139,22 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
   const url = extractImageUrl(submissionText);
   if (!url) {
     return { available: false, note: "No file link was included in the submission, so only the written description could be assessed.", findings: [] };
+  }
+
+  /**
+   * Some hosts will never answer a server, and that is not the freelancer's
+   * fault. Say so BEFORE fetching, because the fetch succeeds — x.com returns
+   * a perfectly healthy 200 with an empty JavaScript shell — and the emptiness
+   * then reads as "they delivered nothing".
+   */
+  const blockedHost = isReaderBlockedHost(url);
+  if (blockedHost) {
+    return {
+      available: false,
+      inspectionBlockedByHost: true,
+      note: readerBlockedNote(blockedHost),
+      findings: [],
+    };
   }
 
   // Fetch FIRST. The old order bailed out here whenever no vision model was
@@ -192,12 +223,39 @@ export async function inspectDeliverable(submissionText: string, criteria: strin
   // Reading a page needs no vision model; it never did.
   if (file.mediaType.includes("html") || file.mediaType.startsWith("text/") || file.mediaType.includes("json")) {
     const page = readWebPage(new TextDecoder().decode(file.buf));
+
+    /**
+     * Reading NOTHING is not an inspection.
+     *
+     * A page that renders entirely client-side fetches fine and yields no text.
+     * Reporting that as `available: true` sent the reviewer down the branch that
+     * says "TRUST THE INSPECTION" — so an empty read became positive evidence
+     * of an empty deliverable, every criterion was marked not-met, and the work
+     * scored 0/100 through all three revision rounds. The freelancer had
+     * delivered something real.
+     *
+     * With nothing to show, this is an inspection FAILURE, and the no-inspection
+     * branch already knows not to fail a criterion it could not check.
+     */
+    if (!page.text || page.text.length < 40) {
+      return {
+        available: false,
+        inspectionBlockedByHost: true,
+        note:
+          `The link at ${url} resolves and returns a page, but it renders its content with JavaScript and served ` +
+          `no readable text to an automated reader — so the work itself COULD NOT BE INSPECTED. This is a property ` +
+          `of how the page is built, NOT evidence that the work is missing or empty. Do not mark criteria as failed ` +
+          `on this basis; ask for a readable copy — pasted text, a public document, or a screenshot.`,
+        findings: [],
+      };
+    }
+
     return {
       available: true,
       note: `The delivered link was fetched (${sizeKb}) and ${page.summary}.`,
       description: `A live page at ${url} (${file.mediaType}, ${sizeKb}). ${page.summary}.`,
       findings: [],
-      sourceExcerpt: page.text || undefined,
+      sourceExcerpt: page.text,
     };
   }
 

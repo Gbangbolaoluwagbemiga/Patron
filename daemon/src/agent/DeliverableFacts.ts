@@ -163,6 +163,55 @@ export function isAudio(mediaType: string): boolean {
  * <article>, drop the chrome. A single-page app that renders client-side still
  * publishes its description in metadata, which is better than nothing.
  */
+/**
+ * Hosts that serve nothing to a server-side reader, by design.
+ *
+ * Measured, not assumed. A real submission linked to a tweet:
+ *
+ *   x.com/…/status/…        → HTTP 200, 4,299 bytes, ZERO readable text,
+ *                             no og:description. A JavaScript shell.
+ *   linkedin.com/…          → HTTP 302 to a login wall, zero bytes.
+ *
+ * The reviewer handled that correctly and reported it disastrously: it said
+ * "no readable text is provided to verify the word count" against every single
+ * acceptance criterion, scored the work 0/100, and burned all three revision
+ * rounds doing it. The freelancer had delivered something real and was being
+ * failed for the platform they posted it on.
+ *
+ * "I could not read this" and "this is empty" are completely different
+ * findings, and only one of them is the freelancer's fault.
+ */
+const READER_BLOCKED_HOSTS = [
+  "x.com",
+  "twitter.com",
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "threads.net",
+  "tiktok.com",
+];
+
+export function isReaderBlockedHost(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    return READER_BLOCKED_HOSTS.find((h) => host === h || host.endsWith(`.${h}`)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** What to tell the reviewer, and the freelancer, when the host is the problem. */
+export function readerBlockedNote(host: string): string {
+  return (
+    `the deliverable is hosted on ${host}, which serves no readable content to an automated reader — ` +
+    `it returns a JavaScript shell or a login wall, so the work itself COULD NOT BE INSPECTED. ` +
+    `This is a limitation of ${host}, NOT evidence that the work is missing or empty. ` +
+    `Do not score the criteria as failed on this basis. Treat every criterion that depends on reading ` +
+    `the deliverable as UNVERIFIED, and ask for a readable copy — pasted text, a public document, or a ` +
+    `screenshot — rather than rejecting the work.`
+  );
+}
+
 export function readWebPage(raw: string): { summary: string; text: string } {
   const region =
     raw.match(/<main[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??

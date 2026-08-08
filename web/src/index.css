@@ -1137,9 +1137,11 @@ textarea {
 }
 
 .toast {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  padding-right: 34px;
   padding: 14px 17px;
   font-size: 14px;
   line-height: 1.45;
@@ -2898,3 +2900,26 @@ body {
   .nav-drawer { transition: none; }
   .drawer-scrim { animation: none; }
 }
+
+
+/* A notification you cannot close is not a notification -- three stuck toasts
+   sat over the page through a reload because the only way out was a timer that
+   a following event cancelled. */
+.toast-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--faint);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+.toast-dismiss:hover { color: var(--text); background: var(--surface-hi); }

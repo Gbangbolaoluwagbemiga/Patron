@@ -152,7 +152,21 @@ const agent = new AgentClient((event) => {
       );
     }
 
-    if (event.type === "work_rejected") {
+    /**
+     * BOTH names, because the decision and the event disagree.
+     *
+     * AgentClient stores the decision as `work_rejected` and broadcasts the
+     * event as `revision_requested`. This listener only ever checked the
+     * decision's name, so the one event it never matched was a rejection —
+     * and a rejection is the single moment a freelancer most needs to hear
+     * from us. Approvals emit `work_approved` and escalations emit
+     * `escalated_to_human`, which both match, which is exactly why those two
+     * notified and this one silently did not.
+     *
+     * Three testers went through three rejection rounds each and learned
+     * nothing until the job was escalated. The client learned nothing either.
+     */
+    if (event.type === "work_rejected" || event.type === "revision_requested") {
       void telegram.notifyClientForEscrow(
         id,
         [
@@ -198,7 +212,7 @@ const agent = new AgentClient((event) => {
   if (event.type === "work_approved" && event.escrowId) {
     void telegram.notifyWorkerForEscrow(event.escrowId, "✅ Your work was accepted. Payment is on its way to your wallet.");
   }
-  if (event.type === "work_rejected" && event.escrowId) {
+  if ((event.type === "work_rejected" || event.type === "revision_requested") && event.escrowId) {
     void telegram.notifyWorkerForEscrow(
       event.escrowId,
       `📝 Revision requested:\n\n${telegram.esc(event.decision?.reasoning ?? "See the ledger for details.")}\n\nSend an updated version when you're ready — the money stays locked in escrow either way.`,
