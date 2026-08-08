@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
@@ -123,6 +124,35 @@ export function Nav({ connected }: { connected: boolean }) {
    */
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+
+  /**
+   * The drawer is rendered into <body>, not into the rail. This is the third
+   * attempt and the first one that addresses the actual mechanism.
+   *
+   * Measured on production at 534px: the panel was building itself perfectly —
+   * 300 x 1014, visible, transform reset, seven links — and then being drawn
+   * inside a 534 x 55 box. Two properties on .sidebar did that:
+   *
+   *   backdrop-filter: blur(18px)  makes an element the CONTAINING BLOCK for
+   *                                its position: fixed descendants. `inset: 0`
+   *                                stopped meaning the viewport and started
+   *                                meaning the header strip.
+   *   overflow-y: auto             then clipped what stuck out — which is also
+   *                                the scrollbar that appeared in the header.
+   *
+   * No z-index or inset value can win against that, because the box the drawer
+   * is positioned in is simply the wrong box. So it leaves the rail. As a child
+   * of <body> it answers to the viewport and nothing can clip it.
+   */
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 1080px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1080px)");
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   // Any navigation closes it. A drawer that stays open over the page you just
   // asked for makes you dismiss it every single time.
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -159,15 +189,34 @@ export function Nav({ connected }: { connected: boolean }) {
     document.documentElement.dataset.rail = collapsed ? "collapsed" : "open";
   }, [collapsed]);
 
+  // One list, rendered once — into the rail on desktop, into the drawer on
+  // mobile. Rendering it twice and letting CSS hide one copy would put two nav
+  // landmarks and two copies of every link in the accessibility tree.
+  const routes = (
+    <>
+      {ledger.map((l, i) => (
+        <NavLink
+          key={l.to}
+          to={l.to}
+          end={l.end}
+          title={collapsed ? l.label : undefined}
+          className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+          // A short stagger on first paint so the rail assembles rather than
+          // appearing. Index-delayed, tiny, and never on navigation.
+          style={{ animationDelay: `${i * 34}ms` }}
+        >
+          <span className="nav-link-icon">
+            <l.icon size={16} />
+          </span>
+          <span className="nav-link-label">{l.label}</span>
+          {collapsed && <span className="nav-tip">{l.label}</span>}
+        </NavLink>
+      ))}
+    </>
+  );
+
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""} ${menuOpen ? "menu-open" : ""}`}>
-      {/* Backdrop, rendered INSIDE the rail on purpose.
-          As a sibling of <aside> it sat in a different stacking context, so the
-          drawer — nested inside a rail that carries its own z-index — could
-          never paint above it however high its z-index went. Measured: the
-          drawer was open, visible, and populated, with the scrim on top of it.
-          Same parent, plain sibling order, no ancestor games. */}
-      {menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
       {/* The collapse control belongs HERE, level with the brand, where every
           other application puts it and where the eye already is. Buried at the
           bottom of the rail it was below the fold on a short window and read as
@@ -200,26 +249,18 @@ export function Nav({ connected }: { connected: boolean }) {
         </button>
       </div>
 
-      <nav className="sidebar-links">
-        {ledger.map((l, i) => (
-          <NavLink
-            key={l.to}
-            to={l.to}
-            end={l.end}
-            title={collapsed ? l.label : undefined}
-            className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-            // A short stagger on first paint so the rail assembles rather than
-            // appearing. Index-delayed, tiny, and never on navigation.
-            style={{ animationDelay: `${i * 34}ms` }}
-          >
-            <span className="nav-link-icon">
-              <l.icon size={16} />
-            </span>
-            <span className="nav-link-label">{l.label}</span>
-            {collapsed && <span className="nav-tip">{l.label}</span>}
-          </NavLink>
-        ))}
-      </nav>
+      {!isMobile && <nav className="sidebar-links">{routes}</nav>}
+
+      {isMobile &&
+        createPortal(
+          <>
+            {menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+            <nav className={`nav-drawer ${menuOpen ? "open" : ""}`} aria-label="Site" aria-hidden={!menuOpen}>
+              {routes}
+            </nav>
+          </>,
+          document.body,
+        )}
 
       {/* Pinned to the bottom of the rail — the connection state and the second
           door are both persistent facts about the app rather than places to go,

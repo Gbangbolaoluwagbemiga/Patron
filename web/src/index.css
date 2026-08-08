@@ -2795,21 +2795,31 @@ body {
 
 
 
-/* ══ MOBILE DRAWER — one authoritative block ═════════════════════════════════
-   Rewritten rather than patched. The previous attempts left twelve separate
-   .sidebar-links rules across five media queries overriding one another, which
-   is why each fix looked right and changed nothing: top/bottom stopped
-   applying so the panel was 102px tall, and the scrim painted over a drawer
-   that was genuinely open, visible and populated.
+/* ══ MOBILE DRAWER ═══════════════════════════════════════════════════════════
+   The drawer is NOT a descendant of .sidebar. It is portalled to <body>, and
+   that is the whole fix — see the comment in components.tsx.
 
-   The scrim now lives INSIDE the rail, so both are children of one stacking
-   context and plain sibling z-index decides what covers what. */
+   Two earlier attempts moved the scrim around and raised z-indexes, and both
+   left the panel invisible, because the problem was never paint order. It was
+   the containing block: .sidebar carries backdrop-filter: blur(18px), and a
+   filtered element becomes the containing block for its position: fixed
+   descendants. `inset: 0` therefore resolved to the 534x55 header strip rather
+   than to the viewport, and .sidebar's overflow: auto clipped the 1014px panel
+   down to 55px — which is also where the scrollbar in the header came from.
+
+   As a child of <body> the panel answers to the viewport. Nothing above it can
+   contain it, clip it, or paint over it. */
 .menu-toggle { display: none; }
+.nav-drawer { display: none; }
 
 @media (max-width: 1080px) {
   /* An off-canvas panel sits beyond the viewport by design; without this it
      counts toward the document's scrollable width and the page slides. */
   html { overflow-x: clip; }
+
+  /* With the routes gone from the rail there is nothing left to overflow, and
+     a scrolling header is exactly what the user was seeing. */
+  .sidebar { overflow: visible; }
 
   .menu-toggle {
     display: inline-flex;
@@ -2830,15 +2840,16 @@ body {
   .sidebar { z-index: 90; }
 
   /* ── The panel ── */
-  .sidebar-links {
+  .nav-drawer {
     position: fixed;
     inset: 0 0 0 auto;          /* top/right/bottom pinned, left free */
-    z-index: 2;                 /* above the scrim, same parent */
-    width: min(300px, 84vw);
-    height: 100dvh;             /* explicit, so mobile browser chrome can't shrink it */
+    z-index: 201;               /* above the scrim, above the sticky rail */
+    display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
+    width: min(300px, 84vw);
+    height: 100dvh;             /* explicit, so mobile browser chrome can't shrink it */
     margin: 0;
     padding: 74px 14px 24px;
     overflow-y: auto;
@@ -2848,16 +2859,17 @@ body {
     box-shadow: -26px 0 60px rgba(0, 0, 0, 0.55);
     transform: translateX(100%);
     visibility: hidden;
-    pointer-events: none;
-    transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1), visibility 0.26s;
+    transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1), visibility 0.28s;
   }
-  .sidebar.menu-open .sidebar-links {
+  .nav-drawer.open {
     transform: translateX(0);
     visibility: visible;
-    pointer-events: auto;
   }
 
-  .sidebar-links .nav-link {
+  .nav-drawer .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 11px;
     width: 100%;
     justify-content: flex-start;
     white-space: normal;
@@ -2866,15 +2878,16 @@ body {
     border-radius: 11px;
     animation: none;
   }
-  .sidebar-links .nav-link-icon { display: inline-flex; }
-  .sidebar-links .nav-link-label { display: inline; }
-  .sidebar-links .nav-link::before { display: none; }
+  .nav-drawer .nav-link-icon { display: inline-flex; }
+  .nav-drawer .nav-link-label { display: inline; }
+  .nav-drawer .nav-link::before { display: none; }
+  .nav-drawer .nav-tip { display: none; }
 
   /* ── The backdrop ── */
   .drawer-scrim {
     position: fixed;
     inset: 0;
-    z-index: 1;                 /* below the panel, above everything else */
+    z-index: 200;               /* below the panel, above everything else */
     background: rgba(0, 0, 0, 0.6);
     animation: scrim-in 0.2s ease both;
   }
@@ -2882,6 +2895,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-links { transition: none; }
+  .nav-drawer { transition: none; }
   .drawer-scrim { animation: none; }
 }
