@@ -1786,7 +1786,7 @@ void (async () => {
         type: "dispute_resolved",
         reasoning:
           `A human arbiter reviewed the work and ruled. ${scope} was worth $${stake.toFixed(2)}, ` +
-          `split $${toFreelancer.toFixed(2)} to the freelancer and $${toClient.toFixed(2)} back to you.`,
+          `split $${toFreelancer.toFixed(2)} to the freelancer and $${toClient.toFixed(2)} back to the client.`,
         target: store.hiredFor(task.escrowId) ?? undefined,
         timestamp: Date.now(),
       });
@@ -1902,12 +1902,29 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   // is precisely the confusion #56 caused.
   const stake = paidOut + returned;
   const scope = awards.length === 1 ? `Milestone ${awards[0]!.milestoneIndex + 1}` : `${awards.length} milestones`;
-  const outcome =
+
+  /**
+   * "you" only where there is a single, known reader.
+   *
+   * One sentence was being sent to the freelancer, sent to the client, AND
+   * written into the public decision record. "…and $8.00 back to you" is right
+   * for exactly one of those three: the freelancer read their own rejection
+   * notice and saw eight dollars coming back to them.
+   *
+   * So the neutral wording is the default and the second person is the special
+   * case, rather than the other way round.
+   */
+  const said = (who: string) =>
     paidOut <= 0.000001
       ? `${scope} was worth $${stake.toFixed(2)}. The arbiter awarded the freelancer nothing.`
       : returned <= 0.000001
         ? `${scope} was worth $${stake.toFixed(2)}, and the arbiter awarded all of it to the freelancer.`
-        : `${scope} was worth $${stake.toFixed(2)}, split $${paidOut.toFixed(2)} to the freelancer and $${returned.toFixed(2)} back to you.`;
+        : `${scope} was worth $${stake.toFixed(2)}, split $${paidOut.toFixed(2)} to the freelancer and $${returned.toFixed(2)} back to ${who}.`;
+
+  /** For the freelancer, the public feed, and the record. */
+  const outcome = said("the client");
+  /** For the client's own inbox, where "you" is unambiguous. */
+  const outcomeForClient = said("you");
   const remainder = outstanding
     ? ` ${outstanding} milestone(s) of this commission are still undelivered, and that money stays in escrow.`
     : "";
@@ -1979,7 +1996,7 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
     [
       "⚖️ <b>The dispute on your commission has been resolved.</b>",
       "",
-      telegram.esc(outcome + remainder),
+      telegram.esc(outcomeForClient + remainder),
       returned > 0.000001 ? `$${returned.toFixed(2)} is back in your Patron balance to commission or withdraw.` : "",
       "",
       jobLink,
