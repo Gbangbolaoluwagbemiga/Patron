@@ -466,7 +466,9 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 ### What a judge can verify without trusting us
 
 - Open any commission on [SecureFlow's own dApp](https://secureflow-arc.vercel.app/jobs) — a
-  third-party interface we do not control — and see the same job.
+  separate application on its own deployment, reading the same contract — and see the
+  same job. It is not Patron's UI, so what renders there is the chain rather than our
+  rendering of it.
 - Follow any payment to [Arcscan](https://testnet.arcscan.app) and see the transaction.
 - Read `getAverageRating` off the contract and get the same rating the Register shows.
 - Join at [/work](https://web-plum-one-12.vercel.app/work), apply, and find your own
