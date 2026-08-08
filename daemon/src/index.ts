@@ -1597,25 +1597,29 @@ async function pollOnce() {
 }
 
 /**
- * One-time repair: #56's refund was written from a guess.
+ * Repair every dispute refund this daemon has ever written from a guess.
  *
- * The settlement code inferred $2.50 from the brief when the contract had
- * awarded $1.25, so the client's balance carried a figure nobody could verify.
- * Recomputed from the chain on boot, once, and then never again.
+ * Two generations of bad arithmetic left credits in the ledger for money that
+ * had not moved — #56 carried $3.70 against an actual return of $1.25. Rather
+ * than hard-code that one escrow a third time, every refund entry is checked
+ * against the contract's own DisputeResolved event and rewritten if it differs.
+ *
+ * Runs on boot. correctTreasuryEntry is keyed on the entry's tx_hash, so a
+ * figure that already matches is left alone and re-running costs nothing.
  */
 void (async () => {
-  try {
-    const task = store.listTasks(300).find((t) => t.escrowId === "56");
-    if (!task?.clientAddress || !task.briefJson) return;
-    const e = (await secureflow.getEscrow(56n)) as { paidAmount?: bigint; platformFee?: bigint };
-    if (e?.paidAmount === undefined) return;
-    const budget = Number(JSON.parse(task.briefJson).budget ?? 0);
-    const correct = Math.max(0, budget - Number(e.paidAmount) / 1e6 - Number(e.platformFee ?? 0n) / 1e6);
-    if (store.correctTreasuryEntry("dispute-refund:56", correct.toFixed(6))) {
-      console.log(`[repair] escrow 56 refund corrected to $${correct.toFixed(2)} from the contract`);
+  for (const task of store.listTasks(300)) {
+    if (!task.escrowId || !task.clientAddress) continue;
+    try {
+      const awards = await secureflow.disputeAwards(BigInt(task.escrowId));
+      if (!awards.length) continue;
+      const owed = awards.reduce((n, a) => n + a.clientAmount, 0);
+      if (store.correctTreasuryEntry(`dispute-refund:${task.escrowId}`, owed.toFixed(6))) {
+        console.log(`[repair] escrow ${task.escrowId} refund set to $${owed.toFixed(2)} — the amount the contract states it returned`);
+      }
+    } catch (err) {
+      console.warn(`[repair] could not check escrow ${task.escrowId}:`, err instanceof Error ? err.message : err);
     }
-  } catch (err) {
-    console.warn("[repair] could not correct escrow 56:", err instanceof Error ? err.message : err);
   }
 })();
 
@@ -1662,32 +1666,39 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   if (milestones.some((m) => Number(m.status) === MILESTONE_DISPUTED)) return;
 
   /**
-   * Money comes from the CONTRACT. Never from the brief, never from the subgraph.
+   * The award comes from the DisputeResolved event, and from nothing else.
    *
-   * The first version of this inferred the split from the brief's milestone
-   * amounts because the subgraph reported paidAmount as zero. It then told both
-   * parties "$2.50 each" — while the contract said the arbiter had awarded
-   * $1.25, which is what the freelancer's wallet actually received. Inventing a
-   * number and presenting it as a settlement is worse than saying nothing, and
-   * it is the exact failure this codebase has spent days removing everywhere
-   * else. The subgraph is fine for knowing THAT something happened; it is not
-   * an authority on how much.
+   * This figure has now been wrong twice, in two different ways, and both times
+   * a real person was told a number for money that had not moved:
+   *
+   *   1. Inferred from the brief — announced "$2.50 to each party" when the
+   *      arbiter had awarded $1.25.
+   *   2. Inferred from the contract's `totalAmount` as budget − paid − fee —
+   *      credited $3.70 when $1.25 had come back. `totalAmount` is only
+   *      decremented by the freelancer's share, so it cannot answer this.
+   *
+   * SecureFlow states both halves itself, at the moment it moves the money:
+   * DisputeResolved(…, freelancerAmount, clientAmount, …). Verified against
+   * #56, whose event reads freelancer $1.25 / client $1.25 and matches two USDC
+   * transfers in the same block. No arithmetic, no assumption, no third way to
+   * get this wrong.
    */
-  let onChain: { paidAmount?: bigint; platformFee?: bigint } | undefined;
-  try {
-    onChain = (await secureflow.getEscrow(BigInt(task.escrowId))) as { paidAmount?: bigint; platformFee?: bigint };
-  } catch {
-    return; // no verified figures, no settlement — try again next pass
-  }
-  if (!onChain || onChain.paidAmount === undefined) return;
+  const awards = await secureflow.disputeAwards(BigInt(task.escrowId));
+  if (!awards.length) return; // no stated award, no settlement — try again next pass
 
-  const paidOut = Number(onChain.paidAmount) / 1e6;
-  const fee = Number(onChain.platformFee ?? 0n) / 1e6;
-  const committed = Number(brief?.budget ?? 0);
-  // What is no longer the freelancer's and no longer at stake: the client's.
-  const returned = Math.max(0, committed - paidOut - fee);
+  const paidOut = awards.reduce((n, a) => n + a.freelancerAmount, 0);
+  const returned = awards.reduce((n, a) => n + a.clientAmount, 0);
 
-  store.updateTaskStatus(task.id, "completed", task.escrowId);
+  /**
+   * Resolving a dispute settles ONE milestone, not the job.
+   *
+   * #56 was a two-milestone commission; milestone 0 was disputed and resolved,
+   * milestone 1 was never delivered and its $2.50 is still escrowed. Marking
+   * the whole job completed there would have closed a commission that still
+   * holds money — so it only completes when nothing is left outstanding.
+   */
+  const outstanding = milestones.filter((m) => Number(m.status) === 0).length;
+  store.updateTaskStatus(task.id, outstanding ? "active" : "completed", task.escrowId);
 
   // Give the client back what the arbiter did not award. The money is already
   // in the treasury — this is the bookkeeping that makes it theirs again.
@@ -1702,12 +1713,20 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   }
 
   const jobLink = `https://web-plum-one-12.vercel.app/jobs/${task.escrowId}`;
+  // A dispute is over ONE milestone, so the sentence has to say which stake was
+  // split. "$2.50 split 50/50" against a $5 job reads as the whole job, which
+  // is precisely the confusion #56 caused.
+  const stake = paidOut + returned;
+  const scope = awards.length === 1 ? `Milestone ${awards[0]!.milestoneIndex + 1}` : `${awards.length} milestones`;
   const outcome =
     paidOut <= 0.000001
-      ? "The arbiter awarded nothing from this milestone."
+      ? `${scope} was worth $${stake.toFixed(2)}. The arbiter awarded the freelancer nothing.`
       : returned <= 0.000001
-        ? `The arbiter awarded the full $${paidOut.toFixed(2)} to the freelancer.`
-        : `The arbiter split it — $${paidOut.toFixed(2)} to the freelancer, $${returned.toFixed(2)} returned.`;
+        ? `${scope} was worth $${stake.toFixed(2)}, and the arbiter awarded all of it to the freelancer.`
+        : `${scope} was worth $${stake.toFixed(2)}, split $${paidOut.toFixed(2)} to the freelancer and $${returned.toFixed(2)} back to you.`;
+  const remainder = outstanding
+    ? ` ${outstanding} milestone(s) of this commission are still undelivered, and that money stays in escrow.`
+    : "";
 
   broadcast({
     type: "task_completed",
@@ -1735,7 +1754,7 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
     [
       "⚖️ <b>The dispute on your commission has been resolved.</b>",
       "",
-      telegram.esc(outcome),
+      telegram.esc(outcome + remainder),
       returned > 0.000001 ? `$${returned.toFixed(2)} is back in your Patron balance to commission or withdraw.` : "",
       "",
       jobLink,

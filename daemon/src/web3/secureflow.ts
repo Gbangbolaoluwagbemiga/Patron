@@ -253,6 +253,84 @@ export async function cancelJob(escrowId: bigint, as: CircleSigner = createCircl
   return write("cancelJob", [escrowId], as);
 }
 
+/**
+ * What an arbiter actually awarded, in the contract's own words.
+ *
+ * Every previous version of the settlement inferred this. The first read the
+ * brief and announced "$2.50 each" when the arbiter had awarded $1.25. The
+ * second read `totalAmount` and concluded $3.70 had come back when nothing
+ * had — `totalAmount` is not decremented for the client's share, so it cannot
+ * answer this question either.
+ *
+ * SecureFlow emits the answer directly:
+ *
+ *   DisputeResolved(escrowId, milestoneIndex, arbiter, freelancerAmount,
+ *                   clientAmount, timestamp)
+ *
+ * Two numbers, stated by the contract at the moment it moved the money, and
+ * verifiable against the USDC Transfer log in the same block. There is nothing
+ * left to infer.
+ *
+ * Scanned backwards in widening windows because the poller notices a
+ * resolution within seconds of it landing — the event is almost always in the
+ * most recent chunk, and the wider passes only exist so a daemon that was
+ * asleep still finds it.
+ */
+export interface DisputeAward {
+  milestoneIndex: number;
+  freelancerAmount: number;
+  clientAmount: number;
+  blockNumber: bigint;
+}
+
+const DISPUTE_RESOLVED = {
+  type: "event",
+  name: "DisputeResolved",
+  inputs: [
+    { name: "escrowId", type: "uint256", indexed: true },
+    { name: "milestoneIndex", type: "uint256", indexed: true },
+    { name: "arbiter", type: "address", indexed: true },
+    { name: "freelancerAmount", type: "uint256", indexed: false },
+    { name: "clientAmount", type: "uint256", indexed: false },
+    { name: "timestamp", type: "uint256", indexed: false },
+  ],
+} as const;
+
+export async function disputeAwards(escrowId: bigint): Promise<DisputeAward[]> {
+  const pc = getPublicClient();
+  const head = await pc.getBlockNumber();
+  const awards = new Map<number, DisputeAward>();
+
+  // ~9k blocks is roughly two hours on Arc; the last window reaches back a week.
+  for (const span of [9_000n, 90_000n, 900_000n]) {
+    const fromBlock = head > span ? head - span : 0n;
+    try {
+      const logs = await pc.getLogs({
+        address: config.secureflowAddress as `0x${string}`,
+        event: DISPUTE_RESOLVED,
+        args: { escrowId },
+        fromBlock,
+        toBlock: head,
+      });
+      for (const l of logs) {
+        const a = l.args as { milestoneIndex?: bigint; freelancerAmount?: bigint; clientAmount?: bigint };
+        if (a.clientAmount === undefined || a.freelancerAmount === undefined) continue;
+        awards.set(Number(a.milestoneIndex ?? 0n), {
+          milestoneIndex: Number(a.milestoneIndex ?? 0n),
+          freelancerAmount: Number(a.freelancerAmount) / 1e6,
+          clientAmount: Number(a.clientAmount) / 1e6,
+          blockNumber: l.blockNumber ?? 0n,
+        });
+      }
+      if (awards.size) break;
+    } catch {
+      // Providers cap log ranges; a refused window is not a missing award, so
+      // fall through to the next span rather than reporting "nothing awarded".
+    }
+  }
+  return [...awards.values()].sort((a, b) => a.milestoneIndex - b.milestoneIndex);
+}
+
 /** Last resort: reclaim after the deadline has passed, when a job stalled with work in progress. */
 export async function emergencyRefundAfterDeadline(
   escrowId: bigint,

@@ -633,8 +633,15 @@ export function treasuryClaimsTotal(): number {
  * mysterious adjustment is harder to trust than one that shows the right
  * number with the reason recorded in the code that fixed it.
  */
+/**
+ * Rewrite a ledger entry's amount. Returns true only when the figure actually
+ * moved — SQLite counts a row as changed even when the new value is identical,
+ * and a repair that reports success on every boot teaches you to ignore it.
+ */
 export function correctTreasuryEntry(txHash: string, amountUsdc: string): boolean {
-  const r = db.prepare(`UPDATE treasury_ledger SET amount_usdc = ? WHERE tx_hash = ?`).run(amountUsdc, txHash);
+  const r = db
+    .prepare(`UPDATE treasury_ledger SET amount_usdc = ? WHERE tx_hash = ? AND CAST(amount_usdc AS REAL) != CAST(? AS REAL)`)
+    .run(amountUsdc, txHash, amountUsdc);
   return Number(r.changes) > 0;
 }
 
