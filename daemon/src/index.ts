@@ -341,6 +341,18 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+const BOOTED_AT = Date.now();
+
+/**
+ * What the dispute backfill did on this boot, reported over /healthz.
+ *
+ * A repair that runs on startup and logs to stdout is invisible from outside,
+ * and stdout is exactly what you cannot read on a hosted daemon without going
+ * looking for it. Today that meant "the backfill found nothing" and "the deploy
+ * never happened" were indistinguishable.
+ */
+let backfillState: { status: string; found?: number; wrote?: string[]; error?: string } = { status: "pending" };
+
 function json(res: http.ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
@@ -590,8 +602,24 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("X-Total-Count", String(store.countCommissions()));
     return json(res, 200, store.listCommissions(limit, offset));
   }
+  /**
+   * Health, plus WHICH BUILD is answering.
+   *
+   * `{ok: true}` alone cost hours today. A fix went out, the behaviour did not
+   * change, and there was no way to tell whether the deploy had landed, the
+   * code was wrong, or the repair had silently failed — so the same bug got
+   * diagnosed three times against a daemon that may never have been running the
+   * fix. Railway injects the commit sha; the boot time distinguishes a restart
+   * from a redeploy of identical code.
+   */
   if (req.method === "GET" && url.pathname === "/healthz") {
-    return json(res, 200, { ok: true });
+    return json(res, 200, {
+      ok: true,
+      commit: (process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown").slice(0, 7),
+      startedAt: BOOTED_AT,
+      uptimeSeconds: Math.round((Date.now() - BOOTED_AT) / 1000),
+      disputeBackfill: backfillState,
+    });
   }
 
   // Treasury address + live balance — read-only, no key material involved. The
@@ -1617,20 +1645,26 @@ void (async () => {
    * over the same blocks answers for all of them at once.
    */
   let sweep: Map<string, secureflow.DisputeAward[]>;
+  backfillState = { status: "scanning" };
   try {
     sweep = await secureflow.recentDisputeAwards(secureflow.CHUNKS_PER_DAY * 7);
   } catch (err) {
-    console.warn("[repair] could not sweep dispute history:", err instanceof Error ? err.message : err);
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn("[repair] could not sweep dispute history:", error);
+    backfillState = { status: "failed", error };
     return;
   }
-  if (!sweep.size) return;
   console.log(`[repair] found ${sweep.size} resolved dispute(s) on chain`);
+  const wrote: string[] = [];
+  backfillState = { status: "done", found: sweep.size, wrote };
+  if (!sweep.size) return;
 
   for (const task of store.listTasks(300)) {
     if (!task.escrowId) continue;
     try {
       const awards = sweep.get(task.escrowId);
       if (!awards?.length) continue;
+      wrote.push(task.escrowId);
 
       const toFreelancer = awards.reduce((n, a) => n + a.freelancerAmount, 0);
       const toClient = awards.reduce((n, a) => n + a.clientAmount, 0);
