@@ -39,7 +39,7 @@ is your strongest technical beat.
       1. `web-plum-one-12.vercel.app` (The Ledger)
       2. `.../jobs/56` (the dispute — your best story)
       3. Arcscan on the SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`
-      4. Telegram, Patron bot open
+      4. Telegram, Patron bot open — with a real job notification visible in the chat
       5. Terminal, in `demo/` or wherever the buyer agent lives
 - [ ] Treasury has funds. Check the Ledger header reads a non-zero balance.
 - [ ] Browser at **1440px wide**, zoom 100%, **dark mode** (the gold reads better).
@@ -258,9 +258,18 @@ scored. Then the Telegram bot, briefly.
 
 > That's the job we started four minutes ago. People applied. It's already
 > scored them.
+
+**SHOW:** Telegram — the bot, with a real job notification in the chat.
+
+**SAY:**
+
+> One last thing, because it's the question that kills marketplace pitches:
+> where do the humans come from?
 >
-> Freelancers work through the web or through Telegram, because the people doing
-> this work are on their phones, not at a dashboard.
+> Half of everyone who has signed up to work here never opened the web app.
+> They came through Telegram — apply, submit, check your balance, withdraw, all
+> in a chat. No wallet extension, no seed phrase before you can earn anything.
+> Eleven on the web, eleven on Telegram.
 >
 > Money just moved from a machine, through a machine, to a human — no person
 > clicked approve, and no machine in that chain could steal.
@@ -289,5 +298,8 @@ scored. Then the Telegram bot, briefly.
 - **Never say "as you can see."** Say what you want them to see.
 - **Don't apologise for testnet.** It's a hackathon on a testnet. Everyone knows.
 - **Record it three times.** The third take is always the one. Budget 45 minutes.
-- The dispute beat is your differentiator. If you're over time, cut the Telegram
-  mention and the buy-side beat before you cut that.
+- **If you run over, cut in this order:** the buy-side x402 beat (2:35), then the
+  criteria-hash detail (1:15). Do **not** cut the dispute — it's your
+  differentiator — and do **not** cut Telegram. "Where do the humans come from"
+  is the question that kills two-sided marketplace pitches, and an even
+  11 / 11 split is a complete answer in one sentence.

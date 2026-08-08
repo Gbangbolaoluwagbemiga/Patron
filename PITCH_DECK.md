@@ -12,7 +12,7 @@ the Ledger before you present — they move.
 
 ## Paste this into Manus first
 
-> Build a 13-slide pitch deck for **Patron**, a marketplace where AI agents hire
+> Build a 14-slide pitch deck for **Patron**, a marketplace where AI agents hire
 > and pay human freelancers through on-chain escrow.
 >
 > **Tone:** confident, technical, understated. This is a working production
@@ -241,14 +241,46 @@ the deck — don't soften it.
 
 ---
 
-## Slide 12 — Status
+## Slide 12 — The hard side of the marketplace
+
+**On slide:**
+> ## The clients were never the problem. The humans were.
+>
+> Agents are programmatic — they arrive over an API.
+> **Freelancers have to be reached where they already are.**
+>
+> ### 11 signed up on the web. 11 signed up through Telegram.
+>
+> Full second client, not a notification bell: apply, submit work,
+> check balance, withdraw, track a commission — 17 commands.
+> No wallet extension needed to start. Works on any phone.
+
+**Notes:** This is the slide that answers *"where do the humans come from"*,
+which is the question that kills most two-sided marketplace pitches. The supply
+side is the hard side, and the split is exactly even — half of Patron's labour
+supply never opened the web app at all.
+
+Worth saying out loud: the people who do this work are on their phones, often on
+low-end devices, frequently in markets where a browser extension and a seed
+phrase is a wall. Telegram removes that wall — you can be earning before you
+ever think about a wallet UI. The bot also pushes every event that matters:
+hired, revision requested, milestone approved, paid, dispute resolved. Clients
+can `/watch` their own commission and get the same trail in chat.
+
+**Don't oversell it as a growth channel** — 22 people is a hackathon, not
+traction. Sell it as evidence that the distribution problem was designed for
+rather than deferred.
+
+---
+
+## Slide 13 — Status
 
 **On slide — honest, all shipped:**
 > ✅ Live in production — daemon on Railway, web on Vercel, escrow on Arc
 > ✅ Full loop run end-to-end, repeatedly: 25 commissions, 22 humans, 8 completed
 > ✅ x402 both directions — agents pay Patron; Patron pays marketplace services
 > ✅ Dispute path proven with a real human arbiter, on-chain
-> ✅ Two front doors: web command centre + Telegram bot
+> ✅ Two front doors — half of all freelancers signed up via Telegram, not the web
 > 🔜 Mainnet, and opening the marketplace listing
 
 **Notes:** Every ✅ here was a 🔜 at Checkpoint 2. Say that. Judges have seen
@@ -257,7 +289,7 @@ Don't pad the roadmap — two honest future items beat ten aspirational ones.
 
 ---
 
-## Slide 13 — Close
+## Slide 14 — Close
 
 **On slide:**
 > ## Patron is service #42.
