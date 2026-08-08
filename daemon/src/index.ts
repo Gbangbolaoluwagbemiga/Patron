@@ -1406,9 +1406,91 @@ async function sweepExpiredCommissions(): Promise<void> {
   }
 }
 
+/**
+ * Reclaim escrows that were abandoned mid-job.
+ *
+ * sweepExpiredCommissions only touches commissions still at "posted" — nobody
+ * hired, nothing at stake. That was the right rule and it left a real hole:
+ * once a freelancer IS hired and then walks away, or an arbiter settles one
+ * milestone of two and the rest is never delivered, SecureFlow correctly
+ * refuses cancelJob (their claim on the escrow is the whole product) and
+ * nothing else ever ran.
+ *
+ * Escrow #56 is the live example: $2.50 for an undelivered milestone, locked,
+ * with no code path anywhere that would ever release it. The contract has the
+ * answer — emergencyRefundAfterDeadline, callable by the depositor once the
+ * deadline plus a 30-day grace has passed — and it was exported here and never
+ * called. So the honest answer to "what happens on the 6th of October" was
+ * "nothing, forever". Now it is swept.
+ *
+ * The pre-filter is deliberately local. Reading every escrow from the chain on
+ * a 15-second poll would be enormous; a job cannot possibly be eligible before
+ * its own duration plus the grace period has elapsed, and that is answerable
+ * from the row itself at zero cost.
+ */
+const EMERGENCY_GRACE_DAYS = 30;
+
+async function sweepStrandedEscrows(): Promise<void> {
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId || !task.briefJson) continue;
+    if (task.status === "cancelled" || task.status === "refunded" || task.status === "posted") continue;
+
+    let brief: { durationDays?: number; title?: string };
+    try {
+      brief = JSON.parse(task.briefJson);
+    } catch {
+      continue;
+    }
+    const days = Number(brief.durationDays ?? 0);
+    if (!days) continue;
+    // Cheap local gate first — no RPC for the overwhelming majority of rows.
+    if (Date.now() < task.createdAt + (days + EMERGENCY_GRACE_DAYS + 1) * 86_400_000) continue;
+
+    try {
+      const escrow = (await secureflow.getEscrow(BigInt(task.escrowId))) as {
+        totalAmount?: bigint;
+        deadline?: bigint;
+        status?: number | bigint;
+      };
+      // Nothing left to reclaim, or already settled by the contract.
+      if (!escrow?.totalAmount || escrow.totalAmount <= 0n) continue;
+      if (Number(escrow.status ?? -1) !== 1) continue; // only ACTIVE escrows hold money this way
+      const opensAt = Number(escrow.deadline ?? 0n) + EMERGENCY_GRACE_DAYS * 86_400;
+      if (Math.floor(Date.now() / 1000) < opensAt) continue;
+
+      // Measure what actually came back rather than assuming the face value —
+      // same reason as the cancellation path.
+      const before = await treasuryBalance();
+      const txHash = await secureflow.emergencyRefundAfterDeadline(BigInt(task.escrowId));
+      const recovered = Math.max(0, (await treasuryBalance()) - before);
+
+      store.updateTaskStatus(task.id, "refunded", task.escrowId);
+      if (task.clientAddress && recovered > 0.000001) {
+        store.recordTreasuryEntry({
+          id: randomUUID(),
+          party: task.clientAddress,
+          direction: "refund",
+          amountUsdc: recovered.toFixed(6),
+          txHash: `emergency-refund:${task.escrowId}`,
+        });
+      }
+      console.log(`[poller] stranded escrow ${task.escrowId} reclaimed, $${recovered.toFixed(2)} returned (${txHash})`);
+
+      const message = `"${brief.title ?? "Commission"}" was never finished. Its remaining $${recovered.toFixed(2)} has been released from escrow and is back in your Patron balance.`;
+      broadcast({ type: "task_completed", message, escrowId: task.escrowId, txHash, timestamp: Date.now() });
+      void telegram.notifyClientForEscrow(task.escrowId, `💸 <b>Escrow released.</b>\n\n${telegram.esc(message)}`);
+    } catch (err) {
+      // Reverts are expected here — the contract is the authority on when this
+      // is allowed, and asking early costs nothing but a log line.
+      console.warn(`[poller] could not reclaim ${task.escrowId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
 async function pollOnce() {
   sweepStrandedBriefs();
   await sweepExpiredCommissions();
+  await sweepStrandedEscrows();
   if (!isGraphConfigured()) return;
   // Everything the poller does downstream costs an LLM call. While the model is
   // rate-limited there is nothing useful to do, and trying anyway is what kept
