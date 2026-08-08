@@ -1608,11 +1608,29 @@ async function pollOnce() {
  * figure that already matches is left alone and re-running costs nothing.
  */
 void (async () => {
+  /**
+   * ONE sweep, not one per commission.
+   *
+   * Arc's RPC caps a log range at 9,000 blocks — about 75 minutes — so reaching
+   * back a week means ~85 sequential requests. Doing that per escrow would have
+   * meant thousands of calls on every boot to answer a question that one pass
+   * over the same blocks answers for all of them at once.
+   */
+  let sweep: Map<string, secureflow.DisputeAward[]>;
+  try {
+    sweep = await secureflow.recentDisputeAwards(secureflow.CHUNKS_PER_DAY * 7);
+  } catch (err) {
+    console.warn("[repair] could not sweep dispute history:", err instanceof Error ? err.message : err);
+    return;
+  }
+  if (!sweep.size) return;
+  console.log(`[repair] found ${sweep.size} resolved dispute(s) on chain`);
+
   for (const task of store.listTasks(300)) {
     if (!task.escrowId) continue;
     try {
-      const awards = await secureflow.disputeAwards(BigInt(task.escrowId));
-      if (!awards.length) continue;
+      const awards = sweep.get(task.escrowId);
+      if (!awards?.length) continue;
 
       const toFreelancer = awards.reduce((n, a) => n + a.freelancerAmount, 0);
       const toClient = awards.reduce((n, a) => n + a.clientAmount, 0);

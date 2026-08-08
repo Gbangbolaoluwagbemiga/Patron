@@ -296,39 +296,92 @@ const DISPUTE_RESOLVED = {
   ],
 } as const;
 
-export async function disputeAwards(escrowId: bigint): Promise<DisputeAward[]> {
+/**
+ * Arc's RPC refuses any getLogs range wider than this. Measured, not guessed:
+ * 9,000 blocks is accepted and 90,000 is rejected outright.
+ *
+ * The first version of this asked for 90k and 900k windows, got "RPC Request
+ * failed" for both, swallowed it in a catch, and returned "no awards" — so the
+ * settlement it fed looked like it worked and silently did nothing at all. A
+ * range limit has to be respected by chunking, never by asking for more and
+ * hoping.
+ */
+const LOG_WINDOW = 9_000n;
+
+/** ~1.94 blocks/sec on Arc, so one window is roughly 75 minutes. */
+export const CHUNKS_PER_DAY = 12;
+
+async function scanDisputes(
+  chunks: number,
+  escrowId?: bigint,
+): Promise<Map<string, Map<number, DisputeAward>>> {
   const pc = getPublicClient();
   const head = await pc.getBlockNumber();
-  const awards = new Map<number, DisputeAward>();
+  const found = new Map<string, Map<number, DisputeAward>>();
 
-  // ~9k blocks is roughly two hours on Arc; the last window reaches back a week.
-  for (const span of [9_000n, 90_000n, 900_000n]) {
-    const fromBlock = head > span ? head - span : 0n;
+  for (let i = 0; i < chunks; i++) {
+    const toBlock = head - LOG_WINDOW * BigInt(i);
+    if (toBlock <= 0n) break;
+    const fromBlock = toBlock > LOG_WINDOW ? toBlock - LOG_WINDOW + 1n : 0n;
+    let logs;
     try {
-      const logs = await pc.getLogs({
+      logs = await pc.getLogs({
         address: config.secureflowAddress as `0x${string}`,
         event: DISPUTE_RESOLVED,
-        args: { escrowId },
+        ...(escrowId === undefined ? {} : { args: { escrowId } }),
         fromBlock,
-        toBlock: head,
+        toBlock,
       });
-      for (const l of logs) {
-        const a = l.args as { milestoneIndex?: bigint; freelancerAmount?: bigint; clientAmount?: bigint };
-        if (a.clientAmount === undefined || a.freelancerAmount === undefined) continue;
-        awards.set(Number(a.milestoneIndex ?? 0n), {
-          milestoneIndex: Number(a.milestoneIndex ?? 0n),
-          freelancerAmount: Number(a.freelancerAmount) / 1e6,
-          clientAmount: Number(a.clientAmount) / 1e6,
-          blockNumber: l.blockNumber ?? 0n,
-        });
-      }
-      if (awards.size) break;
     } catch {
-      // Providers cap log ranges; a refused window is not a missing award, so
-      // fall through to the next span rather than reporting "nothing awarded".
+      continue; // a refused window is not an empty one — keep walking back
     }
+    for (const l of logs) {
+      const a = l.args as { escrowId?: bigint; milestoneIndex?: bigint; freelancerAmount?: bigint; clientAmount?: bigint };
+      if (a.clientAmount === undefined || a.freelancerAmount === undefined) continue;
+      const key = String(a.escrowId ?? escrowId ?? "");
+      const forEscrow = found.get(key) ?? new Map<number, DisputeAward>();
+      const idx = Number(a.milestoneIndex ?? 0n);
+      forEscrow.set(idx, {
+        milestoneIndex: idx,
+        freelancerAmount: Number(a.freelancerAmount) / 1e6,
+        clientAmount: Number(a.clientAmount) / 1e6,
+        blockNumber: l.blockNumber ?? 0n,
+      });
+      found.set(key, forEscrow);
+    }
+    // Looking for one escrow and we have it: stop. A sweep keeps going.
+    if (escrowId !== undefined && found.size) break;
   }
-  return [...awards.values()].sort((a, b) => a.milestoneIndex - b.milestoneIndex);
+  return found;
+}
+
+/**
+ * What the arbiter awarded on one escrow.
+ *
+ * A day deep by default. The poller notices a resolution within seconds, so the
+ * award is nearly always in the newest window and the scan stops there — but a
+ * daemon that was restarting when the arbiter ruled would otherwise never look
+ * far enough back to find it, and the settlement would hang forever on an
+ * escrow whose money had already moved. This costs a few seconds, and only
+ * while a dispute is actually waiting to be settled.
+ */
+export async function disputeAwards(escrowId: bigint, chunks = CHUNKS_PER_DAY): Promise<DisputeAward[]> {
+  const found = await scanDisputes(chunks, escrowId);
+  const forEscrow = found.get(String(escrowId));
+  return forEscrow ? [...forEscrow.values()].sort((a, b) => a.milestoneIndex - b.milestoneIndex) : [];
+}
+
+/**
+ * Every award in recent history, keyed by escrow — one sweep for all of them.
+ *
+ * Used by the boot backfill, where asking per-escrow would multiply the same
+ * chunked scan by the number of commissions.
+ */
+export async function recentDisputeAwards(chunks: number): Promise<Map<string, DisputeAward[]>> {
+  const found = await scanDisputes(chunks);
+  return new Map(
+    [...found.entries()].map(([id, byIndex]) => [id, [...byIndex.values()].sort((a, b) => a.milestoneIndex - b.milestoneIndex)]),
+  );
 }
 
 /** Last resort: reclaim after the deadline has passed, when a job stalled with work in progress. */
