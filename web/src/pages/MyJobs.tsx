@@ -17,7 +17,7 @@ import { api } from "../api";
 import { useWallet } from "../wallet-context";
 import { JudgingCountdown, Notice, TELEGRAM_BOT_URL, shorten, timeAgo } from "../components";
 import { LedgerSkeleton } from "../motion";
-import { IconBolt, IconCheck, IconCoin, IconRefresh, IconScroll, IconSearch, IconShrug, IconSwords, IconTelegram } from "../Icon";
+import { IconBolt, IconCheck, IconCoin, IconGavel, IconRefresh, IconScroll, IconSearch, IconShrug, IconSplit, IconSwords, IconTelegram } from "../Icon";
 
 interface ClientEvent {
   type: string;
@@ -42,7 +42,15 @@ interface ClientJob {
   events: ClientEvent[];
 }
 
-/** One line per thing that happened, in the client's language rather than ours. */
+/**
+ * One line per thing that happened, in the client's language rather than ours.
+ *
+ * Anything missing here falls through to the raw event name, which is how a
+ * client came to read a bare lowercase "escalated" at the end of their trail:
+ * the daemon writes `escalated`, this map only knew `escalated_to_human`. The
+ * fallback is deliberately quiet, so a gap looks like a typo rather than an
+ * error — every type the daemon can emit is listed below.
+ */
 const EVENT_COPY: Record<string, { icon: typeof IconScroll; label: string }> = {
   application_scored: { icon: IconSwords, label: "Applicant scored" },
   portfolio_verified: { icon: IconSearch, label: "Portfolio checked" },
@@ -50,14 +58,22 @@ const EVENT_COPY: Record<string, { icon: typeof IconScroll; label: string }> = {
   no_suitable_applicant: { icon: IconShrug, label: "Nobody cleared the bar" },
   work_approved: { icon: IconCheck, label: "Work accepted" },
   work_rejected: { icon: IconScroll, label: "Revision requested" },
+  escalated: { icon: IconShrug, label: "Escalated to a human arbiter" },
   escalated_to_human: { icon: IconShrug, label: "Escalated to a human arbiter" },
+  dispute_resolved: { icon: IconGavel, label: "Arbiter ruled" },
+  payment_released: { icon: IconCoin, label: "Payment released" },
+  task_completed: { icon: IconCheck, label: "Commission closed" },
 };
 
 /** Where a commission has got to, as a client would describe it. */
 function stageOf(j: ClientJob): { label: string; tone: string } {
-  if (j.status === "completed") return { label: "Finished and paid", tone: "done" };
+  const ruled = j.events.some((e) => e.type === "dispute_resolved");
+  if (j.status === "completed") return { label: ruled ? "Settled by arbiter" : "Finished and paid", tone: "done" };
   if (j.status === "cancelled") return { label: "Refunded — nobody suitable applied", tone: "refunded" };
   if (j.status === "disputed") return { label: "With a human arbiter", tone: "warn" };
+  // A ruling settles the milestone it was raised over, not the commission. Say
+  // so, or the card claims work is "in progress" that nobody is doing.
+  if (ruled) return { label: "Arbiter ruled — remainder still escrowed", tone: "warn" };
   if (j.hiredAddress) return { label: "In progress — freelancer hired", tone: "active" };
   if (j.applicants > 0) return { label: `${j.applicants} applicant${j.applicants === 1 ? "" : "s"} being judged`, tone: "open" };
   return { label: "Open — waiting for applicants", tone: "open" };
@@ -298,17 +314,29 @@ export default function MyJobs() {
                         </li>
                       );
                     })}
-                    {Number(j.paidOut) > 0 && (
-                      <li className="trail-item">
-                        <span className="trail-icon">
-                          <IconCoin size={14} />
-                        </span>
-                        <div>
-                          <b>Paid — ${Number(j.paidOut).toFixed(2)} USDC</b>
-                          <div className="trail-note">Released from escrow straight to the freelancer's wallet.</div>
-                        </div>
-                      </li>
-                    )}
+                    {Number(j.paidOut) > 0 &&
+                      (() => {
+                        // Money that came out of a ruling did not "get released"
+                        // — it was awarded, against a stake the arbiter split.
+                        // Saying "paid to the freelancer" for a 50/50 ruling is
+                        // how a client ends up believing they lost the lot.
+                        const ruled = j.events.some((e) => e.type === "dispute_resolved");
+                        return (
+                          <li className="trail-item">
+                            <span className="trail-icon">{ruled ? <IconSplit size={14} /> : <IconCoin size={14} />}</span>
+                            <div>
+                              <b>
+                                {ruled ? "Awarded" : "Paid"} — ${Number(j.paidOut).toFixed(2)} USDC
+                              </b>
+                              <div className="trail-note">
+                                {ruled
+                                  ? "The arbiter's award, paid from escrow. Your share of the split went back to your Patron balance, and anything still undelivered stays in escrow."
+                                  : "Released from escrow straight to the freelancer's wallet."}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })()}
                   </ol>
                 )}
               </div>

@@ -372,6 +372,36 @@ export function recordPayment(p: {
   ).run(p.id, p.direction, p.escrowId ?? null, p.amountUsdc, p.counterparty ?? null, p.txHash ?? null, p.reason ?? null, Date.now());
 }
 
+/**
+ * Record a payment that a later pass might try to record again.
+ *
+ * recordPayment takes a fresh uuid every call, so a poller that re-settles the
+ * same escrow writes the payout twice and the ledger doubles. This one is keyed
+ * on a caller-supplied id, so re-running is a no-op.
+ */
+export function recordPaymentOnce(p: {
+  id: string;
+  direction: "in" | "out" | "escrow_lock" | "escrow_release";
+  escrowId?: string;
+  amountUsdc: string;
+  counterparty?: string;
+  txHash?: string;
+  reason?: string;
+}): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO payments (id, direction, escrow_id, amount_usdc, counterparty, tx_hash, reason, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(p.id, p.direction, p.escrowId ?? null, p.amountUsdc, p.counterparty ?? null, p.txHash ?? null, p.reason ?? null, Date.now());
+}
+
+/** Who Patron hired for this escrow, per its own decision record. */
+export function hiredFor(escrowId: string): string | null {
+  const row = db
+    .prepare(`SELECT target FROM decisions WHERE task_id = ? AND type = 'applicant_accepted' AND target IS NOT NULL ORDER BY timestamp DESC LIMIT 1`)
+    .get(escrowId) as { target?: string } | undefined;
+  return row?.target ?? null;
+}
+
 export function listPayments(limit = 100, offset = 0): any[] {
   return db.prepare(`SELECT * FROM payments ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(limit, offset);
 }

@@ -63,9 +63,11 @@ export function stageForEventType(type: string): Stage | null {
     case "work_approved":
     case "work_rejected":
     case "revision_requested":
+    case "escalated":
     case "escalated_to_human":
       return "review";
     case "payment_released":
+    case "dispute_resolved":
     case "task_completed":
       return "payout";
     default:

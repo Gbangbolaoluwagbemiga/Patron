@@ -1609,13 +1609,49 @@ async function pollOnce() {
  */
 void (async () => {
   for (const task of store.listTasks(300)) {
-    if (!task.escrowId || !task.clientAddress) continue;
+    if (!task.escrowId) continue;
     try {
       const awards = await secureflow.disputeAwards(BigInt(task.escrowId));
       if (!awards.length) continue;
-      const owed = awards.reduce((n, a) => n + a.clientAmount, 0);
-      if (store.correctTreasuryEntry(`dispute-refund:${task.escrowId}`, owed.toFixed(6))) {
-        console.log(`[repair] escrow ${task.escrowId} refund set to $${owed.toFixed(2)} — the amount the contract states it returned`);
+
+      const toFreelancer = awards.reduce((n, a) => n + a.freelancerAmount, 0);
+      const toClient = awards.reduce((n, a) => n + a.clientAmount, 0);
+      const stake = toFreelancer + toClient;
+      const scope = awards.length === 1 ? `Milestone ${awards[0]!.milestoneIndex + 1}` : `${awards.length} milestones`;
+
+      if (task.clientAddress && store.correctTreasuryEntry(`dispute-refund:${task.escrowId}`, toClient.toFixed(6))) {
+        console.log(`[repair] escrow ${task.escrowId} refund set to $${toClient.toFixed(2)} — the amount the contract states it returned`);
+      }
+
+      /**
+       * Backfill the verdict itself.
+       *
+       * The tracking page reads the decisions table, and the old settlement
+       * wrote nothing to it — so a client whose dispute HAD been ruled on saw
+       * their trail stop at "escalated to a human arbiter", forever, with
+       * $0.00 paid out. The ending existed on-chain and nowhere they could see
+       * it. Both writes are keyed on the escrow, so this is safe to re-run.
+       */
+      store.recordDecision({
+        id: `dispute-resolved:${task.escrowId}`,
+        taskId: task.escrowId,
+        type: "dispute_resolved",
+        reasoning:
+          `A human arbiter reviewed the work and ruled. ${scope} was worth $${stake.toFixed(2)}, ` +
+          `split $${toFreelancer.toFixed(2)} to the freelancer and $${toClient.toFixed(2)} back to you.`,
+        target: store.hiredFor(task.escrowId) ?? undefined,
+        timestamp: Date.now(),
+      });
+
+      if (toFreelancer > 0.000001) {
+        store.recordPaymentOnce({
+          id: `dispute-award:${task.escrowId}`,
+          direction: "escrow_release",
+          escrowId: task.escrowId,
+          amountUsdc: toFreelancer.toFixed(6),
+          counterparty: store.hiredFor(task.escrowId) ?? undefined,
+          reason: `Arbiter's award on ${scope.toLowerCase()}`,
+        });
       }
     } catch (err) {
       console.warn(`[repair] could not check escrow ${task.escrowId}:`, err instanceof Error ? err.message : err);
@@ -1727,6 +1763,47 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   const remainder = outstanding
     ? ` ${outstanding} milestone(s) of this commission are still undelivered, and that money stays in escrow.`
     : "";
+
+  /**
+   * WRITE THE ENDING DOWN.
+   *
+   * The tracking page builds its trail from the decisions table, and this
+   * settlement only ever broadcast over SSE and messaged Telegram. Both are
+   * ephemeral: a client who reloaded the page saw their commission stop dead at
+   * "escalated to a human arbiter", with no verdict and $0.00 paid out — the
+   * one moment in the whole flow they most need to see recorded.
+   *
+   * INSERT OR REPLACE on a deterministic id, so a poller pass that re-settles
+   * the same escrow rewrites this row instead of stacking duplicates.
+   */
+  store.recordDecision({
+    id: `dispute-resolved:${task.escrowId}`,
+    taskId: task.escrowId,
+    type: "dispute_resolved",
+    reasoning: `A human arbiter reviewed the work and ruled. ${outcome}${remainder}`,
+    target: store.hiredFor(task.escrowId) ?? undefined,
+    timestamp: Date.now(),
+  });
+
+  /**
+   * And record the award as a payment, so "Paid out" tells the truth.
+   *
+   * That figure counts payments with direction escrow_release, which Patron
+   * writes when IT releases a milestone. An arbiter's award moves the same
+   * money through the same escrow without Patron touching it, so the page
+   * showed $0.00 for a freelancer who had been paid $1.25. Keyed on the escrow
+   * so re-settling cannot pay them twice on paper.
+   */
+  if (paidOut > 0.000001) {
+    store.recordPaymentOnce({
+      id: `dispute-award:${task.escrowId}`,
+      direction: "escrow_release",
+      escrowId: task.escrowId,
+      amountUsdc: paidOut.toFixed(6),
+      counterparty: store.hiredFor(task.escrowId) ?? undefined,
+      reason: `Arbiter's award on ${scope.toLowerCase()}`,
+    });
+  }
 
   broadcast({
     type: "task_completed",
