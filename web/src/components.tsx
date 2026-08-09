@@ -90,6 +90,8 @@ export function Notice({
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 const COLLAPSE_KEY = "patron.sidebar.collapsed";
+/** Open commissions this browser has already been shown. */
+const SEEN_JOBS_KEY = "patron.jobs.seen";
 
 export function Nav({ connected }: { connected: boolean }) {
   // Named as sections of a guild's account book rather than as dashboard tabs.
@@ -124,6 +126,56 @@ export function Nav({ connected }: { connected: boolean }) {
    */
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+
+  /**
+   * "There is work waiting" has to survive not looking.
+   *
+   * A new commission fired a toast, which is only ever seen by someone already
+   * staring at the page — so a freelancer who signed up through the web and
+   * closed the tab had no way to learn a job had been posted. The Telegram side
+   * broadcasts to every registered worker; the web side had nothing equivalent.
+   *
+   * This is the honest, small version: a count of open commissions the browser
+   * has not seen yet, sitting on the nav until the board is opened. Real push
+   * to a closed tab needs a service worker and permissions, which is a bigger
+   * change than it looks and not one to make the night before a deadline.
+   */
+  const [unseenJobs, setUnseenJobs] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const tasks = await api<{ escrowId: string | null; status: string }[]>("/api/tasks");
+        const open = tasks.filter((t) => t.status === "posted" && t.escrowId).map((t) => t.escrowId!);
+        if (cancelled) return;
+        const seen = new Set<string>(JSON.parse(window.localStorage.getItem(SEEN_JOBS_KEY) ?? "[]"));
+        setUnseenJobs(open.filter((id) => !seen.has(id)).length);
+      } catch {
+        /* the badge is never worth breaking the rail over */
+      }
+    }
+    void poll();
+    const t = window.setInterval(() => void poll(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [location.pathname]);
+
+  // Opening the board is what counts as having seen them.
+  useEffect(() => {
+    if (location.pathname !== "/jobs" && location.pathname !== "/work") return;
+    void (async () => {
+      try {
+        const tasks = await api<{ escrowId: string | null; status: string }[]>("/api/tasks");
+        const open = tasks.filter((t) => t.status === "posted" && t.escrowId).map((t) => t.escrowId!);
+        window.localStorage.setItem(SEEN_JOBS_KEY, JSON.stringify(open));
+        setUnseenJobs(0);
+      } catch {
+        /* nothing to mark seen */
+      }
+    })();
+  }, [location.pathname]);
 
   /**
    * The drawer is rendered into <body>, not into the rail. This is the third
@@ -209,6 +261,11 @@ export function Nav({ connected }: { connected: boolean }) {
             <l.icon size={16} />
           </span>
           <span className="nav-link-label">{l.label}</span>
+          {unseenJobs > 0 && (l.to === "/jobs" || l.to === "/work") && (
+            <span className="nav-badge" title={`${unseenJobs} new commission${unseenJobs === 1 ? "" : "s"}`}>
+              {unseenJobs}
+            </span>
+          )}
           {collapsed && <span className="nav-tip">{l.label}</span>}
         </NavLink>
       ))}

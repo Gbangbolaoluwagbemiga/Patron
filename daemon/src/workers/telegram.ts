@@ -51,7 +51,9 @@ type Pending =
   | { kind: "cover"; escrowId: string }
   | { kind: "portfolio"; escrowId: string; coverLetter: string }
   | { kind: "deliverable"; escrowId: string }
-  | { kind: "withdraw" };
+  | { kind: "withdraw" }
+  /** Address is known; now we need to know HOW MUCH. */
+  | { kind: "withdraw-amount"; destination: `0x${string}`; available: number };
 
 const pending = new Map<number, Pending>();
 
@@ -741,13 +743,58 @@ async function handleText(msg: TgMessage) {
   if (state.kind === "withdraw") {
     pending.delete(chatId);
     if (!text.startsWith("0x")) return void (await send(chatId, "That doesn't look like an address — it should start with 0x."));
-    await doWithdraw(chatId, worker.id, text as `0x${string}`);
+
+    /**
+     * Ask how much. It used to send everything.
+     *
+     * /withdraw took an address and emptied the wallet, and nobody was ever
+     * asked. Someone withdrawing part of their earnings had no way to say so —
+     * the only available answer was "all of it" — and the balance afterwards
+     * read $0.02, which looks like a bug rather than the gas float it is.
+     */
+    let available = 0;
+    try {
+      available = Number((await workers.balance(worker.id)).balance);
+    } catch {
+      /* if the balance can't be read, still let them name an amount */
+    }
+    pending.set(chatId, { kind: "withdraw-amount", destination: text as `0x${string}`, available });
+    await send(
+      chatId,
+      [
+        available > 0 ? `You have <b>$${available.toFixed(2)} USDC</b>.` : "",
+        "How much would you like to send? Reply with an amount, or <b>all</b> for everything.",
+        "",
+        "<i>A little is always kept back for gas, so \"all\" leaves a few cents behind.</i>",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    return;
+  }
+
+  if (state.kind === "withdraw-amount") {
+    pending.delete(chatId);
+    const wantsAll = /^(all|max|everything)$/i.test(text.trim());
+    if (wantsAll) return void (await doWithdraw(chatId, worker.id, state.destination));
+
+    const amount = Number(text.replace(/[$,\s]/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return void (await send(chatId, "That's not an amount I can read. Send /withdraw again and reply with a number, or \"all\"."));
+    }
+    if (state.available > 0 && amount > state.available) {
+      return void (await send(
+        chatId,
+        `That's more than you have — your balance is $${state.available.toFixed(2)}. Nothing was sent. Send /withdraw to try again.`,
+      ));
+    }
+    await doWithdraw(chatId, worker.id, state.destination, amount.toFixed(6));
   }
 }
 
-async function doWithdraw(chatId: number, workerId: string, destination: `0x${string}`) {
+async function doWithdraw(chatId: number, workerId: string, destination: `0x${string}`, amountUsdc?: string) {
   try {
-    const { txHash, amount } = await workers.withdraw(workerId, destination);
+    const { txHash, amount } = await workers.withdraw(workerId, destination, amountUsdc);
     await send(
       chatId,
       [

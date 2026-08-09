@@ -2923,3 +2923,30 @@ body {
   transition: color 0.15s, background-color 0.15s;
 }
 .toast-dismiss:hover { color: var(--text); background: var(--surface-hi); }
+
+/* "There is work waiting", surviving not looking at the page. */
+.nav-badge {
+  margin-left: auto;
+  min-width: 19px;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  color: #1a1408;
+  background: var(--gold);
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+.sidebar.collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  margin: 0;
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: 9.5px;
+  line-height: 15px;
+}
+.nav-drawer .nav-badge { margin-left: auto; }
