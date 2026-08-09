@@ -321,11 +321,42 @@ export class AgentClient {
 
     const revisionsRemaining = maxRounds - history.filter((r) => !r.approved).length;
     const feedback = buildRevisionRequest(review, revisionsRemaining);
+
+    /**
+     * Tell them WHICH criteria failed, not just that something did.
+     *
+     * The per-criterion breakdown already existed and already went on-chain in
+     * the rejection feedback — but the decision's `reasoning` carried only the
+     * prose summary, and `reasoning` is what reaches the freelancer's Telegram,
+     * the client's Telegram, the public decision feed and the commission page.
+     * So the one audience who had to act on it got the vaguest version, and
+     * spent a revision round guessing which of seven criteria to fix.
+     *
+     * The passing criteria are listed too. On a rejection that is not padding:
+     * it tells someone what NOT to change on the next attempt, which is exactly
+     * how a second submission accidentally breaks what the first got right.
+     */
+    const failed = review.criteriaResults.filter((c) => !c.passed);
+    const met = review.criteriaResults.filter((c) => c.passed);
+    const reasoning = [
+      review.feedback,
+      failed.length
+        ? `\nStill to fix (${failed.length} of ${review.criteriaResults.length}):\n` +
+          failed.map((c) => `✗ ${c.criterion}${c.note ? ` — ${c.note}` : ""}`).join("\n")
+        : "",
+      met.length ? `\nAlready met — keep these:\n${met.map((c) => `✓ ${c.criterion}`).join("\n")}` : "",
+      `\n${revisionsRemaining} revision round${revisionsRemaining === 1 ? "" : "s"} left before this goes to a human arbiter.`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+      // Telegram caps a message at 4096 characters, and this is one part of it.
+      .slice(0, 2800);
+
     const decision: AgentDecision = {
       id: crypto.randomUUID(),
       taskId: escrowId.toString(),
       type: "work_rejected",
-      reasoning: review.feedback,
+      reasoning,
       timestamp: Date.now(),
     };
     this.decisions.push(decision);

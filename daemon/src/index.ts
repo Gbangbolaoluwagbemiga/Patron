@@ -172,7 +172,10 @@ const agent = new AgentClient((event) => {
         [
           "📝 <b>The delivery didn't pass — a revision was requested.</b>",
           "",
-          telegram.esc(event.decision?.reasoning?.slice(0, 400) ?? ""),
+          // 400 characters cut the criteria breakdown off mid-list, which is
+          // the part that says WHAT failed. The client is paying for this; they
+          // get to see which of their own acceptance criteria went unmet.
+          telegram.esc(event.decision?.reasoning?.slice(0, 1600) ?? ""),
           "",
           "Your money stays locked either way. The freelancer gets written feedback and another go.",
           jobLink,
