@@ -82,13 +82,63 @@ export interface VisionReview {
  * Pull the first plausible image URL out of a freelancer's submission text.
  * They paste links; they don't fill in a structured field.
  */
+/**
+ * Strip the sentence off the end of a URL.
+ *
+ * People write "here is the repo https://github.com/me/thing." and the full
+ * stop is not part of the address. This cost a real freelancer a rejection:
+ * they delivered two working links, the trailing period was captured into the
+ * first one, GitHub returned 404 for `…/foreman.`, and the reviewer correctly
+ * reported that the deliverable did not resolve. Both links were live.
+ *
+ * Closing brackets are only stripped when unbalanced, because plenty of real
+ * URLs legitimately end in one.
+ */
+function trimUrlPunctuation(url: string): string {
+  let u = url;
+  for (;;) {
+    const last = u.at(-1);
+    if (!last) break;
+    if (".,;:!?'\"".includes(last)) {
+      u = u.slice(0, -1);
+      continue;
+    }
+    if ((last === ")" && !u.includes("(")) || (last === "]" && !u.includes("[")) || (last === "}" && !u.includes("{"))) {
+      u = u.slice(0, -1);
+      continue;
+    }
+    break;
+  }
+  return u;
+}
+
+/**
+ * Every link in a submission, cleaned and ordered by how likely it is to BE
+ * the deliverable.
+ *
+ * More than one, deliberately. "Here is the repo … and here is the deployed
+ * site …" is how a developer hands over a web build, and inspecting only the
+ * first meant half the delivery was never looked at — then judged as though it
+ * had been.
+ */
+export function extractDeliverableUrls(text: string): string[] {
+  const raw = text.match(/https?:\/\/[^\s<>"'`]+/gi) ?? [];
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const r of raw) {
+    const u = trimUrlPunctuation(r);
+    if (u.length > 10 && !seen.has(u)) {
+      seen.add(u);
+      urls.push(u);
+    }
+  }
+  // A concrete file beats a page; everything else keeps the order it was written.
+  const isFile = (u: string) => /\.(png|jpe?g|gif|webp|svg|pdf|mp3|wav|m4a|ogg|flac|webm)(\?|#|$)/i.test(u);
+  return [...urls.filter(isFile), ...urls.filter((u) => !isFile(u))];
+}
+
 export function extractImageUrl(text: string): string | null {
-  const urls = text.match(/https?:\/\/[^\s<>"')]+/gi) ?? [];
-  // svg/pdf included: they are the most likely design deliverables, and leaving
-  // them out meant a submission linking one fell through to "first URL found".
-  // audio included because we can now transcribe it.
-  const deliverableLike = urls.find((u) => /\.(png|jpe?g|gif|webp|svg|pdf|mp3|wav|m4a|ogg|flac|webm)(\?|#|$)/i.test(u));
-  return deliverableLike ?? urls[0] ?? null;
+  return extractDeliverableUrls(text)[0] ?? null;
 }
 
 /** True when some vision-capable model is configured and usable. */
@@ -135,11 +185,49 @@ async function fetchImage(url: string): Promise<FetchResult> {
  * a freelancer's submission. Someone's payment should not hinge on whether an
  * image host was reachable.
  */
+/** How many links in one submission are worth opening. */
+const MAX_LINKS_INSPECTED = 3;
+
+/**
+ * Inspect EVERY link in the submission, not just the first one.
+ *
+ * "Here is the repo … and here is the deployed site …" is how a developer
+ * hands over a web build. Opening only the first meant the other half of the
+ * delivery was never looked at, and then graded as if it had been — so one
+ * unreachable link condemned a delivery whose other link was live and correct.
+ *
+ * Findings are merged: if ANY link could be inspected, the review is an
+ * inspection, and every link's outcome is reported so the reviewer can see
+ * which part of the delivery was verified and which was not.
+ */
 export async function inspectDeliverable(submissionText: string, criteria: string[]): Promise<VisionReview> {
-  const url = extractImageUrl(submissionText);
-  if (!url) {
+  const urls = extractDeliverableUrls(submissionText).slice(0, MAX_LINKS_INSPECTED);
+  if (!urls.length) {
     return { available: false, note: "No file link was included in the submission, so only the written description could be assessed.", findings: [] };
   }
+  if (urls.length === 1) return inspectOne(urls[0]!, criteria);
+
+  const results = await Promise.all(urls.map((u) => inspectOne(u, criteria)));
+  const usable = results.filter((r) => r.available);
+  const parts = results.map((r, i) => `Link ${i + 1} (${urls[i]}): ${r.description ?? r.note}`);
+
+  return {
+    available: usable.length > 0,
+    // Only a blocked host if EVERY link was blocked — one dead link among
+    // several is not a reason to stop reading the others.
+    inspectionBlockedByHost: results.every((r) => r.inspectionBlockedByHost === true),
+    note:
+      `The submission contained ${urls.length} links and each was opened.\n${parts.join("\n")}` +
+      (usable.length
+        ? `\nAt least one part of the delivery WAS inspected. Judge each criterion against whichever link is relevant to it, and do not fail a criterion that a readable link satisfies merely because a different link was unreachable.`
+        : ""),
+    description: usable.map((r) => r.description).filter(Boolean).join(" · ") || undefined,
+    findings: results.flatMap((r) => r.findings),
+    sourceExcerpt: usable.map((r) => r.sourceExcerpt).filter(Boolean).join("\n\n---\n\n").slice(0, 6000) || undefined,
+  };
+}
+
+async function inspectOne(url: string, criteria: string[]): Promise<VisionReview> {
 
   /**
    * Some hosts will never answer a server, and that is not the freelancer's
