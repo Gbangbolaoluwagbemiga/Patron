@@ -52,6 +52,16 @@ export interface AgentEvent {
   amountUsdc?: string;
   /** Who Patron paid/was paid by — only set on payment-bearing events. */
   counterparty?: string;
+  /**
+   * The job's title, carried on job_posted.
+   *
+   * Set here rather than looked up, because at the moment this fires the task
+   * row still has escrow_id NULL — the row is only updated with the escrow id
+   * AFTER processInstruction returns. Anything downstream that tried to find
+   * the job by escrow id found nothing, which is why the "new quest" broadcast
+   * to freelancers had never once fired.
+   */
+  title?: string;
   timestamp: number;
 }
 
@@ -99,6 +109,7 @@ export class AgentClient {
       amountUsdc: brief.budget.toString(),
       txHash,
       counterparty: "SecureFlow escrow",
+      title: brief.title,
     });
 
     return { brief, escrowId };

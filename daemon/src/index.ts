@@ -224,10 +224,19 @@ const agent = new AgentClient((event) => {
   if (event.type === "payment_released" && event.escrowId) {
     void telegram.notifyWorkerForEscrow(event.escrowId, `💰 Paid${event.amountUsdc ? ` — $${event.amountUsdc} USDC` : ""}. It's in your wallet now. /balance to see it.`);
   }
-  if (event.type === "job_posted" && event.escrowId && event.amountUsdc) {
-    const task = store.listTasks(5).find((t) => t.escrowId === event.escrowId);
-    const brief = task?.briefJson ? JSON.parse(task.briefJson) : null;
-    if (brief?.title) void telegram.broadcastNewQuest(brief.title, Number(event.amountUsdc), event.escrowId);
+  /**
+   * Tell freelancers a job exists.
+   *
+   * This used to look the job up in the database by escrow id — and always
+   * found nothing, because the task row is only given its escrow id AFTER
+   * processInstruction returns, and this fires from inside it. Every "new
+   * quest" broadcast since the bot shipped was silently skipped.
+   *
+   * The event now carries the title, so there is nothing to look up and no
+   * ordering to get wrong.
+   */
+  if (event.type === "job_posted" && event.escrowId && event.amountUsdc && event.title) {
+    void telegram.broadcastNewQuest(event.title, Number(event.amountUsdc), event.escrowId);
   }
   if (event.decision) {
     store.recordDecision({
