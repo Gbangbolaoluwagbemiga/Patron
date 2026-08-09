@@ -735,7 +735,7 @@ async function handleText(msg: TgMessage) {
         ].join("\n"),
       );
     } catch (err) {
-      await send(chatId, `Couldn't send that: ${err instanceof Error ? err.message : err}`);
+      await send(chatId, explainChainError(err, "Couldn't send that"));
     }
     return;
   }
@@ -790,6 +790,35 @@ async function handleText(msg: TgMessage) {
     }
     await doWithdraw(chatId, worker.id, state.destination, amount.toFixed(6));
   }
+}
+
+/**
+ * A chain revert is not a message to a person.
+ *
+ * A freelancer submitting to a job they were not hired for received the raw
+ * viem error: 400 bytes of calldata, an ESTIMATION_ERROR, a gas trace and a
+ * link to the viem docs. It told them nothing they could act on and looked
+ * like the product had broken.
+ *
+ * SecureFlow's custom errors are the useful part, so they are translated. The
+ * hex selectors are matched directly because the revert reaches us as a raw
+ * `execution reverted: 0x…` string rather than a decoded error.
+ */
+const CHAIN_ERRORS: [RegExp, string][] = [
+  [/0x82b42900|Unauthorized/i, "you're not the freelancer hired for that commission, so the escrow won't accept a delivery from you. /mine shows the jobs that are actually yours."],
+  [/0x9fbfc589|AlreadySubmitted/i, "that milestone has already been delivered and is waiting on review."],
+  [/0xf525e320|InvalidStatus/i, "that commission isn't in a state that accepts a delivery right now."],
+  [/insufficient funds|gas required/i, "there wasn't enough gas on your wallet to send it. Try again in a moment — I top it up automatically."],
+  [/timeout|timed out|ETIMEDOUT/i, "the network didn't answer in time. Nothing was sent, so it's safe to try again."],
+];
+
+function explainChainError(err: unknown, prefix: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  for (const [pattern, human] of CHAIN_ERRORS) {
+    if (pattern.test(raw)) return `${prefix} — ${human}`;
+  }
+  // Nothing recognised: say so plainly rather than pasting a stack trace.
+  return `${prefix}. Nothing was lost. Try again, or /help if it keeps happening.`;
 }
 
 async function doWithdraw(chatId: number, workerId: string, destination: `0x${string}`, amountUsdc?: string) {

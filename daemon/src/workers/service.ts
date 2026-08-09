@@ -299,6 +299,41 @@ export async function submit(
   const text = description.trim();
   if (!text) throw new UserFacingError("Describe what you're delivering, and include a link to the file.");
 
+  /**
+   * Are you actually the person hired for this job?
+   *
+   * SecureFlow answers this with Unauthorized(), which is correct and useless:
+   * a freelancer typed /submit 61 for a job still open for applications that
+   * they had never applied to, and got a raw viem stack trace — calldata,
+   * gas estimation error, a link to the viem docs — after their gas had already
+   * been spent. The contract was never going to accept it, and we knew that
+   * before sending.
+   *
+   * So it is checked here, where the answer can be a sentence instead.
+   */
+  const wallet = worker.walletAddress?.toLowerCase();
+  try {
+    const escrow = (await secureflow.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
+    const hired = (escrow?.beneficiary ?? "").toLowerCase();
+    const nobodyHired = !hired || /^0x0{40}$/.test(hired);
+    if (nobodyHired) {
+      throw new UserFacingError(
+        `Nobody has been hired for commission ${escrowId} yet — it's still taking applications, so there's nothing to deliver. ` +
+          `Apply with /jobs, and I'll message you if you get it.`,
+      );
+    }
+    if (wallet && hired !== wallet) {
+      throw new UserFacingError(
+        `Commission ${escrowId} went to a different freelancer, so only they can deliver it. ` +
+          `/mine shows the jobs that are actually yours.`,
+      );
+    }
+  } catch (err) {
+    // A UserFacingError above is the answer; a chain read failing is not, and
+    // must not block a legitimate delivery.
+    if (err instanceof UserFacingError) throw err;
+  }
+
   const index = milestoneIndex ?? (await resolveMilestone(escrowId));
 
   const signer = signerFor(worker);
