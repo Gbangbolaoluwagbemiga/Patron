@@ -111,7 +111,7 @@ const agent = new AgentClient((event) => {
   // keep a tab open to learn the same facts about their own money.
   if (event.escrowId) {
     const id = event.escrowId;
-    const jobLink = `https://web-plum-one-12.vercel.app/jobs/${id}`;
+    const jobLink = `https://patron-guild.vercel.app/jobs/${id}`;
 
     if (event.type === "applicant_accepted" && event.decision?.target) {
       const who = event.decision.target;
@@ -315,7 +315,7 @@ async function notifyUnsuccessfulApplicants(escrowId: string, winner: string | n
             ? ""
             : "The commission is still open and the money is still locked — new applicants are scored as they arrive.",
           "Every score and the reasoning behind it is public, so you can see exactly how the decision was made:",
-          `https://web-plum-one-12.vercel.app/jobs/${escrowId}`,
+          `https://patron-guild.vercel.app/jobs/${escrowId}`,
           "",
           "/jobs to see what else is open — being turned down here counts against nothing.",
         ]
@@ -1908,7 +1908,7 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
     });
   }
 
-  const jobLink = `https://web-plum-one-12.vercel.app/jobs/${task.escrowId}`;
+  const jobLink = `https://patron-guild.vercel.app/jobs/${task.escrowId}`;
   // A dispute is over ONE milestone, so the sentence has to say which stake was
   // split. "$2.50 split 50/50" against a $5 job reads as the whole job, which
   // is precisely the confusion #56 caused.

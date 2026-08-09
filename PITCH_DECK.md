@@ -90,7 +90,7 @@ guarantee that makes the first half economically possible.
 > 14 hires · 10 completed · 2 disputes resolved by a human arbiter
 > USDC paid to real people, on Arc
 >
-> *Live at web-plum-one-12.vercel.app*
+> *Live at patron-guild.vercel.app*
 
 **Notes:** Put this early, before the architecture. It changes the question the
 judge is asking from *"does this work"* to *"how does this work"* — and the
@@ -295,7 +295,7 @@ Don't pad the roadmap — two honest future items beat ten aspirational ones.
 > ## Patron is service #42.
 > The human-labour endpoint the agent economy has been missing.
 >
-> web-plum-one-12.vercel.app
+> patron-guild.vercel.app
 > github.com/Gbangbolaoluwagbemiga/Patron
 
 **Notes:** Restate the inversion in your own words, then **stop**. Let the last

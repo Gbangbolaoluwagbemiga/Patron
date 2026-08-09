@@ -124,7 +124,7 @@ function workerFor(tgUserId: number) {
   return store.getWorkerByChannelRef("telegram", String(tgUserId));
 }
 
-const WEB = "https://web-plum-one-12.vercel.app";
+const WEB = "https://patron-guild.vercel.app";
 
 /**
  * Testers said the bot felt like "one linear thing" with no sense of what else

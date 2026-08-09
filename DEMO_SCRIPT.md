@@ -9,9 +9,9 @@ reciting these.
 
 ## The one decision to make first: live or pre-run?
 
-Patron's application window is **five minutes** by default. A genuinely live
-end-to-end run cannot fit in a four-minute video, and waiting on camera is the
-fastest way to lose a judge.
+Patron's demo application window is **three minutes**. A genuinely live
+end-to-end run still cannot fit comfortably in a four-minute video, and waiting
+on camera is the fastest way to lose a judge.
 
 **Do this instead — the two-track take:**
 
@@ -25,9 +25,9 @@ Say plainly on camera: *"That job is still taking applications, so while it runs
 here's one that already finished."* Judges respect the cut. They do not respect
 four seconds of dead air, and they *really* don't respect a fake demo.
 
-**Do not** shorten the window to 30 seconds to force a full loop. It produces a
-job with one rushed applicant and makes the scoring look arbitrary — the scoring
-is your strongest technical beat.
+**Do not** shorten it further to force a full loop. Below about three minutes you
+get a job with one rushed applicant, which makes the scoring look arbitrary —
+and the scoring is your strongest technical beat.
 
 ---
 
@@ -36,7 +36,7 @@ is your strongest technical beat.
 - [ ] `curl -s https://patron-daemon-production.up.railway.app/healthz` → confirm
       `ok:true` and note `uptimeSeconds`. If the daemon is down, nothing else matters.
 - [ ] Open tabs, in this order, so you never search on camera:
-      1. `web-plum-one-12.vercel.app` (The Ledger)
+      1. `patron-guild.vercel.app` (The Ledger)
       2. `.../jobs/56` (the dispute — your best story)
       3. Arcscan on the SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`
       4. `secureflow-arc.vercel.app/jobs` — scrolled to the commission you'll show
@@ -166,7 +166,7 @@ acceptance criteria, the on-chain criteria hash.
 
 **SAY:**
 
-> That job is out taking applications for the next five minutes. So while it
+> That job is out taking applications for the next few minutes. So while it
 > runs — here's one that already went the whole way. Including the part where it
 > went wrong.
 

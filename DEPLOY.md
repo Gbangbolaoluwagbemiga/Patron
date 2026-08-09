@@ -6,7 +6,7 @@ Verified against each provider's own API, not assumed:
 | Service | Where it runs | Source |
 |---|---|---|
 | `daemon/` | Railway — `patron-daemon-production.up.railway.app` | **No repo connected.** CLI uploads only. |
-| `web/` | Vercel — `web-plum-one-12.vercel.app` | CLI uploads only; every deployment in the list is CLI-triggered. |
+| `web/` | Vercel — `patron-guild.vercel.app` | CLI uploads only; every deployment in the list is CLI-triggered. |
 | `services/portfolio-check/` | Railway — `patron-portfolio-check-production.up.railway.app` | **No repo connected.** CLI uploads only. |
 
 This cost most of an afternoon once. Two fixes were correct on the first
@@ -32,7 +32,7 @@ npm run build
 vercel deploy --prod --yes
 ```
 
-`--prod` moves the `web-plum-one-12.vercel.app` alias. Confirm with
+`--prod` moves the `patron-guild.vercel.app` alias. Confirm with
 `vercel inspect <deployment-url>` and check the Aliases block.
 
 ## Deploy the portfolio-check service
@@ -72,7 +72,7 @@ git-triggered, treat `uptimeSeconds` as the signal.
 For the web app, compare the served bundle hash with the local build:
 
 ```sh
-curl -s -A "Mozilla/5.0" https://web-plum-one-12.vercel.app/ | grep -o 'index-[A-Za-z0-9_-]*\.css'
+curl -s -A "Mozilla/5.0" https://patron-guild.vercel.app/ | grep -o 'index-[A-Za-z0-9_-]*\.css'
 ls web/dist/assets/ | grep css
 ```
 

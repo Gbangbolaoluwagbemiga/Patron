@@ -4,14 +4,14 @@
 
 | | |
 |---|---|
-| 🖥️ **Command center** | **[web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app)** — live data, no login |
-| 🙋 **Get hired (no wallet needed)** | **[web-plum-one-12.vercel.app/work](https://web-plum-one-12.vercel.app/work)** |
+| 🖥️ **Command center** | **[patron-guild.vercel.app](https://patron-guild.vercel.app)** — live data, no login |
+| 🙋 **Get hired (no wallet needed)** | **[patron-guild.vercel.app/work](https://patron-guild.vercel.app/work)** |
 | 💬 **Telegram** | **[@PatronGuildbot](https://t.me/PatronGuildbot)** — `/start` to join the guild |
 | ⚙️ **Daemon API** | [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app) |
 | 🔍 **Escrow contract** | [`0x6142…ab59` on Arcscan](https://testnet.arcscan.app/address/0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59) |
 | 🌐 **Third-party view** | [secureflow-arc.vercel.app/jobs](https://secureflow-arc.vercel.app/jobs) — our jobs on an interface we don't control |
 
-> **Try it in 20 seconds:** open [/work](https://web-plum-one-12.vercel.app/work) or the bot, type a
+> **Try it in 20 seconds:** open [/work](https://patron-guild.vercel.app/work) or the bot, type a
 > name, and you are a freelancer with a real on-chain wallet who can apply to a funded job.
 > No install, no extension, no seed phrase.
 
@@ -102,7 +102,7 @@ They apply, deliver, and get paid without the word "wallet" ever appearing.
 
 | Door | Where | Install required |
 |---|---|---|
-| **Web** | [`/work`](https://web-plum-one-12.vercel.app/work) | none — it's a URL |
+| **Web** | [`/work`](https://patron-guild.vercel.app/work) | none — it's a URL |
 | **Telegram** | [@PatronGuildbot](https://t.me/PatronGuildbot) | Telegram |
 | **Own wallet** | SecureFlow's own dApp, or `/link 0x…` | a wallet, by choice |
 
@@ -408,13 +408,13 @@ E2E_INSTRUCTION="..." npm run e2e            # override the job entirely
 
 No setup at all — it is a URL:
 
-1. Open [**/work**](https://web-plum-one-12.vercel.app/work) (or [@PatronGuildbot](https://t.me/PatronGuildbot) and send `/start`)
+1. Open [**/work**](https://patron-guild.vercel.app/work) (or [@PatronGuildbot](https://t.me/PatronGuildbot) and send `/start`)
 2. Type any name
 3. You now have a real Circle MPC wallet on Arc — check it on Arcscan from the page itself
 4. Apply to any open commission. That is a real `applyToJob` transaction signed by *your* wallet
 
 To watch it from Patron's side at the same time, keep
-[The Guild Master's Hand](https://web-plum-one-12.vercel.app/decisions) open — your application
+[The Guild Master's Hand](https://patron-guild.vercel.app/decisions) open — your application
 is scored there against everyone else's.
 
 ---
@@ -449,7 +449,7 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 
 ## Status
 
-- ✅ **Fully deployed and public** — daemon on Railway ([patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app), persistent volume), web on Vercel ([web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app)). Verified end-to-end against the real public URLs, not just localhost — `buyer-demo` ran the complete x402 flow against the deployed daemon (real 402, real Circle MPC signature, real payment, escrow opened), and the deployed frontend renders that same live data cross-origin with zero console errors.
+- ✅ **Fully deployed and public** — daemon on Railway ([patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app), persistent volume), web on Vercel ([patron-guild.vercel.app](https://patron-guild.vercel.app)). Verified end-to-end against the real public URLs, not just localhost — `buyer-demo` ran the complete x402 flow against the deployed daemon (real 402, real Circle MPC signature, real payment, escrow opened), and the deployed frontend renders that same live data cross-origin with zero console errors.
 - ✅ Escrow, subgraph, and dispute system live on Arc testnet (reused from SecureFlow)
 - ✅ Guild-master brain built: brief generation, applicant scoring, work review — structured-output, injection-hardened
 - ✅ Patron Agent Wallet provisioned and funded live on Arc testnet (Circle MPC)
@@ -471,7 +471,7 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
   rendering of it.
 - Follow any payment to [Arcscan](https://testnet.arcscan.app) and see the transaction.
 - Read `getAverageRating` off the contract and get the same rating the Register shows.
-- Join at [/work](https://web-plum-one-12.vercel.app/work), apply, and find your own
+- Join at [/work](https://patron-guild.vercel.app/work), apply, and find your own
   application on the public subgraph next to everyone else's.
 
 ### Two economic questions we can answer

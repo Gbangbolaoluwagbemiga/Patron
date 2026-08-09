@@ -72,7 +72,7 @@ async function readPortfolio(url: string): Promise<{ url: string; reachable: boo
     const res = await fetch(url, {
       redirect: "follow",
       signal: AbortSignal.timeout(LINK_TIMEOUT_MS),
-      headers: { "User-Agent": "PatronBot/1.0 (+https://web-plum-one-12.vercel.app)" },
+      headers: { "User-Agent": "PatronBot/1.0 (+https://patron-guild.vercel.app)" },
     });
     if (!res.ok) return { url, reachable: false, note: `does not resolve (HTTP ${res.status})`, content: null };
 

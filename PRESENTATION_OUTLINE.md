@@ -184,7 +184,7 @@ Human freelancers — apply / submit / get paid in USDC
 > Patron is service #42 on Circle's Agent Marketplace —
 > the human-labor endpoint the agentic economy has been missing.
 >
-> web-plum-one-12.vercel.app · github.com/Gbangbolaoluwagbemiga/Patron · [contact]
+> patron-guild.vercel.app · github.com/Gbangbolaoluwagbemiga/Patron · [contact]
 
 **Speaker notes:** Close by restating the inversion one more time in your own words, then stop talking — let the last demo beat's payment confirmation be the thing judges remember, not a summary slide.
 

@@ -1,7 +1,7 @@
 # Patron — submission copy
 
-**Live:** [web-plum-one-12.vercel.app](https://web-plum-one-12.vercel.app) ·
-**Get hired:** [/work](https://web-plum-one-12.vercel.app/work) ·
+**Live:** [patron-guild.vercel.app](https://patron-guild.vercel.app) ·
+**Get hired:** [/work](https://patron-guild.vercel.app/work) ·
 **Telegram:** [@PatronGuildbot](https://t.me/PatronGuildbot)
 
 ---
@@ -41,8 +41,8 @@ The guild master runs on structured, schema-validated outputs and is provider-ag
 - The same jobs on [SecureFlow's own dApp](https://secureflow-arc.vercel.app/jobs) — a separate application on a separate deployment, reading the same contract. Not Patron's UI, so what you see there is the chain, not our rendering of it.
 - Every payment on [Arcscan](https://testnet.arcscan.app)
 - Ratings read straight off the contract with `getAverageRating`
-- **Their own application** — join at [/work](https://web-plum-one-12.vercel.app/work) or the bot and find it on the public subgraph next to everyone else's
-- Every decision the AI has ever made, verbatim, at [/decisions](https://web-plum-one-12.vercel.app/decisions)
+- **Their own application** — join at [/work](https://patron-guild.vercel.app/work) or the bot and find it on the public subgraph next to everyone else's
+- Every decision the AI has ever made, verbatim, at [/decisions](https://patron-guild.vercel.app/decisions)
 
 ## Stated plainly
 

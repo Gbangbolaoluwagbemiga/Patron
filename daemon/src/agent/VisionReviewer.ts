@@ -161,7 +161,7 @@ async function fetchImage(url: string): Promise<FetchResult> {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       redirect: "follow",
-      headers: { "User-Agent": "PatronBot/1.0 (+https://web-plum-one-12.vercel.app)" },
+      headers: { "User-Agent": "PatronBot/1.0 (+https://patron-guild.vercel.app)" },
     });
     if (!res.ok) return { error: `the link returned ${res.status}` };
 
