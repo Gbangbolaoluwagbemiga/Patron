@@ -5,7 +5,7 @@ is now materially wrong — it still promises an end-to-end loop as upcoming wor
 carries the old headline, and quotes budgets that don't match anything that ran.
 Keep the old file for history; present from this one.
 
-All figures below were read from production on **8 Aug 2026**. Re-read them off
+All figures below were read from production on **9 Aug 2026**. Re-read them off
 the Ledger before you present — they move.
 
 ---
@@ -85,9 +85,9 @@ guarantee that makes the first half economically possible.
 
 **On slide — big numbers, minimal words:**
 
-> ## 25 commissions · 22 humans · 65 applications scored
+> ## 27 commissions · 24 humans · 75 applications scored
 >
-> 12 hires · 8 completed · 1 dispute resolved by a human arbiter
+> 13 hires · 9 completed · 2 disputes resolved by a human arbiter
 > USDC paid to real people, on Arc
 >
 > *Live at web-plum-one-12.vercel.app*
@@ -212,7 +212,7 @@ demos never demonstrate it because they never let anything fail.
 |---|---|
 | **Agent Wallets** | Patron's treasury — MPC, owner-set spending caps |
 | **x402 (sell)** | How agents commission Patron — paywalled `/api/hire` |
-| **x402 (buy)** | Patron pays marketplace services mid-decision — 12 calls in production |
+| **x402 (buy)** | Patron pays marketplace services mid-decision — 13 calls in production |
 | **Circle Gateway** | Batched settlement; cross-chain payout path |
 | **Marketplace** | Patron is service #42 — the human-labour endpoint |
 | **Circle CLI** | Wallet provisioning, funding, policy management |
@@ -249,7 +249,7 @@ the deck — don't soften it.
 > Agents are programmatic — they arrive over an API.
 > **Freelancers have to be reached where they already are.**
 >
-> ### 11 signed up on the web. 11 signed up through Telegram.
+> ### 11 signed up on the web. 13 signed up through Telegram.
 >
 > Full second client, not a notification bell: apply, submit work,
 > check balance, withdraw, track a commission — 17 commands.
@@ -257,8 +257,8 @@ the deck — don't soften it.
 
 **Notes:** This is the slide that answers *"where do the humans come from"*,
 which is the question that kills most two-sided marketplace pitches. The supply
-side is the hard side, and the split is exactly even — half of Patron's labour
-supply never opened the web app at all.
+side is the hard side, and Telegram is now the larger door — most of Patron's
+labour supply never opened the web app at all.
 
 Worth saying out loud: the people who do this work are on their phones, often on
 low-end devices, frequently in markets where a browser extension and a seed
@@ -267,7 +267,7 @@ ever think about a wallet UI. The bot also pushes every event that matters:
 hired, revision requested, milestone approved, paid, dispute resolved. Clients
 can `/watch` their own commission and get the same trail in chat.
 
-**Don't oversell it as a growth channel** — 22 people is a hackathon, not
+**Don't oversell it as a growth channel** — 24 people is a hackathon, not
 traction. Sell it as evidence that the distribution problem was designed for
 rather than deferred.
 
@@ -277,10 +277,10 @@ rather than deferred.
 
 **On slide — honest, all shipped:**
 > ✅ Live in production — daemon on Railway, web on Vercel, escrow on Arc
-> ✅ Full loop run end-to-end, repeatedly: 25 commissions, 22 humans, 8 completed
+> ✅ Full loop run end-to-end, repeatedly: 27 commissions, 24 humans, 9 completed
 > ✅ x402 both directions — agents pay Patron; Patron pays marketplace services
 > ✅ Dispute path proven with a real human arbiter, on-chain
-> ✅ Two front doors — half of all freelancers signed up via Telegram, not the web
+> ✅ Two front doors — most freelancers signed up via Telegram, not the web
 > 🔜 Mainnet, and opening the marketplace listing
 
 **Notes:** Every ✅ here was a 🔜 at Checkpoint 2. Say that. Judges have seen

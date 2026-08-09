@@ -1,7 +1,7 @@
 # Patron — Demo Video Script
 
 **Target: 4:00.** Encode Programmable Money Hackathon · Agentic Economy Track.
-Every number in this script is real and was pulled from production on 8 Aug 2026.
+Every number in this script is real and was pulled from production on 9 Aug 2026.
 If you re-record after more jobs run, re-read them off the Ledger rather than
 reciting these.
 
@@ -17,8 +17,8 @@ fastest way to lose a judge.
 
 1. **Start a real commission on camera** at 0:45. It is genuine, it is on-chain,
    and the escrow lock is visible immediately.
-2. **While it cooks**, walk the completed history — 25 real commissions, 22 real
-   people, a real dispute.
+2. **While it cooks**, walk the completed history — 27 real commissions, 24 real
+   people, two real disputes.
 3. **Come back to it** at 3:10 and show applicants have arrived and been scored.
 
 Say plainly on camera: *"That job is still taking applications, so while it runs,
@@ -86,8 +86,8 @@ just state the idea. Everything after it is evidence.
 
 > This isn't a mockup. This is production, right now.
 >
-> Twenty-five commissions. Twenty-two real people have signed up to work.
-> Sixty-five applications scored by the agent. Money actually paid out to humans,
+> Twenty-seven commissions. Twenty-four real people have signed up to work.
+> Seventy-five applications scored by the agent. Money actually paid out to humans,
 > on-chain, on Arc.
 >
 > Every number on this page is read live from the contract and the subgraph.
@@ -200,7 +200,7 @@ Judges can tell, and getting caught faking costs more than the beat is worth.
 >
 > That's payment two, and it's the direction people forget. Patron isn't just
 > selling into the agent economy, it's *buying* from it, mid-decision, to make a
-> better hire. Twelve of those calls have run in production.
+> better hire. Thirteen of those calls have run in production.
 
 ---
 
@@ -266,10 +266,10 @@ scored. Then the Telegram bot, briefly.
 > One last thing, because it's the question that kills marketplace pitches:
 > where do the humans come from?
 >
-> Half of everyone who has signed up to work here never opened the web app.
+> Most of the people who signed up to work here never opened the web app.
 > They came through Telegram — apply, submit, check your balance, withdraw, all
 > in a chat. No wallet extension, no seed phrase before you can earn anything.
-> Eleven on the web, eleven on Telegram.
+> Eleven on the web, thirteen on Telegram.
 >
 > Money just moved from a machine, through a machine, to a human — no person
 > clicked approve, and no machine in that chain could steal.
@@ -301,5 +301,5 @@ scored. Then the Telegram bot, briefly.
 - **If you run over, cut in this order:** the buy-side x402 beat (2:35), then the
   criteria-hash detail (1:15). Do **not** cut the dispute — it's your
   differentiator — and do **not** cut Telegram. "Where do the humans come from"
-  is the question that kills two-sided marketplace pitches, and an even
-  11 / 11 split is a complete answer in one sentence.
+  is the question that kills two-sided marketplace pitches, and a
+  13 / 11 split toward Telegram is a complete answer in one sentence.
