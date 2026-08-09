@@ -39,8 +39,9 @@ is your strongest technical beat.
       1. `web-plum-one-12.vercel.app` (The Ledger)
       2. `.../jobs/56` (the dispute — your best story)
       3. Arcscan on the SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`
-      4. Telegram, Patron bot open — with a real job notification visible in the chat
-      5. Terminal, in `demo/` or wherever the buyer agent lives
+      4. `secureflow-arc.vercel.app/jobs` — scrolled to the commission you'll show
+      5. Telegram, Patron bot open — with a real job notification visible in the chat
+      6. Terminal, in `demo/` or wherever the buyer agent lives
 - [ ] Treasury has funds. Check the Ledger header reads a non-zero balance.
 - [ ] Browser at **1440px wide**, zoom 100%, **dark mode** (the gold reads better).
 - [ ] Close every notification. Slack, Mail, Messages, calendar.
@@ -124,6 +125,18 @@ which is the question your architecture actually answers well.
 
 > — the budget is already locked in escrow. Before a single human has seen the
 > job. That ordering is the whole trust model, and I'll come back to it.
+>
+> That escrow is **SecureFlow** — an escrow protocol I built and shipped as its
+> own product. It's live on Arc today with its own users. Patron isn't a
+> contract I scaffolded for a hackathon weekend; it's built on rails that were
+> already running.
+
+**Note:** One sentence, then move on. The point is not "look at my other
+project" — it is that the milestone structure, the one-way key and the
+arbitration path were designed before Patron needed them, which is why they
+hold up when a judge pushes on them. Saying it here, at the moment the money
+locks, is when it means something. Saying it in a tech-stack list is when it
+sounds like padding.
 
 ---
 
@@ -233,7 +246,8 @@ Judges can tell, and getting caught faking costs more than the beat is worth.
 
 ### 3:25 – 3:45 · Beat 6 — the trust model, stated plainly
 
-**SHOW:** Arcscan on the SecureFlow contract.
+**SHOW:** Arcscan on the SecureFlow contract. Then switch to
+`secureflow-arc.vercel.app/jobs` and find the same commission.
 
 **SAY:**
 
@@ -246,6 +260,17 @@ Judges can tell, and getting caught faking costs more than the beat is worth.
 > Two independent cages, both Circle primitives: the one-way escrow, and
 > owner-set spending policies on the agent's own wallet. If the model went
 > completely off the rails tomorrow, the worst it could do is pay someone.
+>
+> And you don't have to take my word for any of it. This is SecureFlow's own
+> interface — a different application, on a different deployment, reading the
+> same contract. Same commission, same milestones, same money. What you've been
+> looking at all along is the chain, not my rendering of it.
+
+**Note:** This is the strongest thirty seconds available to you, because it is
+the only moment that survives a sceptical judge assuming the whole UI is a
+mock. Do not say "third-party" — you built SecureFlow, and a claim of
+independence that collapses on one click costs more than it buys. "A different
+application reading the same contract" is true and does the same work.
 
 ---
 
