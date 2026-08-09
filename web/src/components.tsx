@@ -836,7 +836,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
   // brief and writes a cover letter, the window has closed and they are scored
   // alone — the exact first-come race the window exists to prevent. Job #55 was
   // posted with no window and closed before anyone could apply.
-  const [window_, setWindow] = useState<"5" | "30" | "120" | "1440">("30");
+  const [window_, setWindow] = useState<"2" | "30" | "120" | "1440">("30");
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "done">("idle");
   const [result, setResult] = useState<{ taskId: string; escrowId: string } | null>(null);
   const [error, setError] = useState("");
@@ -870,7 +870,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
           ? " Deliver this as a single milestone paid on completion."
           : ` Split this into ${stages} milestones that are each reviewed and paid separately.`;
     const WINDOW_PHRASE: Record<string, string> = {
-      "5": " Give people 5 minutes to apply before choosing.",
+      "2": " Give people 2 minutes to apply before choosing.",
       "30": " Give people 30 minutes to apply before choosing.",
       "120": " Give people 2 hours to apply before choosing.",
       "1440": " Leave applications open for 24 hours before choosing.",
@@ -980,7 +980,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
         <label className="post-quest-field">
           <span>Applications open</span>
           <select value={window_} onChange={(e) => setWindow(e.target.value as typeof window_)}>
-            <option value="5">5 minutes (demo)</option>
+            <option value="2">2 minutes (demo)</option>
             <option value="30">30 minutes</option>
             <option value="120">2 hours</option>
             <option value="1440">24 hours</option>
