@@ -1,7 +1,7 @@
 # Patron — Demo Video Script
 
 **Target: 4:00.** Encode Programmable Money Hackathon · Agentic Economy Track.
-Every number in this script is real and was pulled from production on 9 Aug 2026.
+Every number in this script is real and was pulled from production on 9 Aug 2026 (evening).
 If you re-record after more jobs run, re-read them off the Ledger rather than
 reciting these.
 
@@ -18,7 +18,7 @@ fastest way to lose a judge.
 1. **Start a real commission on camera** at 0:45. It is genuine, it is on-chain,
    and the escrow lock is visible immediately.
 2. **While it cooks**, walk the completed history — 27 real commissions, 24 real
-   people, two real disputes.
+   people, ten completed, two real disputes.
 3. **Come back to it** at 3:10 and show applicants have arrived and been scored.
 
 Say plainly on camera: *"That job is still taking applications, so while it runs,
@@ -87,7 +87,7 @@ just state the idea. Everything after it is evidence.
 > This isn't a mockup. This is production, right now.
 >
 > Twenty-seven commissions. Twenty-four real people have signed up to work.
-> Seventy-five applications scored by the agent. Money actually paid out to humans,
+> Seventy-seven applications scored by the agent. Money actually paid out to humans,
 > on-chain, on Arc.
 >
 > Every number on this page is read live from the contract and the subgraph.
@@ -200,7 +200,7 @@ Judges can tell, and getting caught faking costs more than the beat is worth.
 >
 > That's payment two, and it's the direction people forget. Patron isn't just
 > selling into the agent economy, it's *buying* from it, mid-decision, to make a
-> better hire. Thirteen of those calls have run in production.
+> better hire. Fourteen of those calls have run in production.
 
 ---
 

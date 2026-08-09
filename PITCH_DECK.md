@@ -5,7 +5,7 @@ is now materially wrong — it still promises an end-to-end loop as upcoming wor
 carries the old headline, and quotes budgets that don't match anything that ran.
 Keep the old file for history; present from this one.
 
-All figures below were read from production on **9 Aug 2026**. Re-read them off
+All figures below were read from production on **9 Aug 2026 (evening)**. Re-read them off
 the Ledger before you present — they move.
 
 ---
@@ -85,9 +85,9 @@ guarantee that makes the first half economically possible.
 
 **On slide — big numbers, minimal words:**
 
-> ## 27 commissions · 24 humans · 75 applications scored
+> ## 27 commissions · 24 humans · 77 applications scored
 >
-> 13 hires · 9 completed · 2 disputes resolved by a human arbiter
+> 14 hires · 10 completed · 2 disputes resolved by a human arbiter
 > USDC paid to real people, on Arc
 >
 > *Live at web-plum-one-12.vercel.app*
@@ -212,7 +212,7 @@ demos never demonstrate it because they never let anything fail.
 |---|---|
 | **Agent Wallets** | Patron's treasury — MPC, owner-set spending caps |
 | **x402 (sell)** | How agents commission Patron — paywalled `/api/hire` |
-| **x402 (buy)** | Patron pays marketplace services mid-decision — 13 calls in production |
+| **x402 (buy)** | Patron pays marketplace services mid-decision — 14 calls in production |
 | **Circle Gateway** | Batched settlement; cross-chain payout path |
 | **Marketplace** | Patron is service #42 — the human-labour endpoint |
 | **Circle CLI** | Wallet provisioning, funding, policy management |
@@ -277,7 +277,7 @@ rather than deferred.
 
 **On slide — honest, all shipped:**
 > ✅ Live in production — daemon on Railway, web on Vercel, escrow on Arc
-> ✅ Full loop run end-to-end, repeatedly: 27 commissions, 24 humans, 9 completed
+> ✅ Full loop run end-to-end, repeatedly: 27 commissions, 24 humans, 10 completed
 > ✅ x402 both directions — agents pay Patron; Patron pays marketplace services
 > ✅ Dispute path proven with a real human arbiter, on-chain
 > ✅ Two front doors — most freelancers signed up via Telegram, not the web
