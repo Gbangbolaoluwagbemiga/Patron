@@ -131,6 +131,46 @@ ${visionBlock}`,
     schema: WorkReviewSchema,
   });
 
+  /**
+   * NOTHING DELIVERED CANNOT BE APPROVED. This is a rule, not a judgement.
+   *
+   * A submission carrying no link at all was approved 100/100 by
+   * openai/gpt-oss-120b on the text "I finished it, trust me." The same input
+   * was correctly scored 0 by llama-3.3-70b — so for as long as this decision
+   * was left to the model, whether Patron paid for nothing depended on which
+   * model happened to be serving that day. That is not a defensible place for
+   * the most expensive decision in the system to live.
+   *
+   * The stated promise is that Patron never pays out on a freelancer's word
+   * alone. This makes it structural rather than aspirational, and it is model-
+   * independent by construction: swap the model tomorrow and it still holds.
+   *
+   * Deliberately narrow. It fires ONLY when there is no artifact reference of
+   * any kind, which is unambiguous. A link that exists but could not be read —
+   * a blocked host, an unrasterisable format, a dead URL — is a different
+   * situation, handled honestly by the reviewer above and never silently
+   * penalised here.
+   */
+  const hasArtifactReference = /https?:\/\/\S+/i.test(`${submissionDescription} ${submissionLink}`);
+  if (!hasArtifactReference && parsed.approved) {
+    return {
+      ...parsed,
+      approved: false,
+      score: Math.min(parsed.score, 25),
+      feedback:
+        "No deliverable was included — the submission contains no link to any file or hosted work, so there is nothing to check against the acceptance criteria. " +
+        "Send an updated version with a link to the work itself. The money stays locked in escrow either way, and this does not count against you beyond the revision round.\n\n" +
+        parsed.feedback,
+      criteriaResults: parsed.criteriaResults.map((c) => ({
+        ...c,
+        passed: false,
+        note: "No deliverable was provided, so this criterion could not be checked.",
+      })),
+      inspectedArtifact: false,
+      inspectionNote: vision.note,
+    };
+  }
+
   return { ...parsed, inspectedArtifact: vision.available, inspectionNote: vision.note };
 }
 

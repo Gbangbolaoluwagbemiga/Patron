@@ -155,13 +155,13 @@ export class AgentClient {
         taskId: escrowId.toString(),
         type: "no_suitable_applicant",
         reasoning:
-          `Reviewed ${applications.length} applicant(s); the strongest scored ${best}/100, below the 70 required to hire. ` +
+          `Reviewed ${applications.length} applicant(s); the strongest scored ${best}/100, below the ${config.hireScoreThreshold} required to hire. ` +
           `The commission stays open and the budget stays locked — nobody is paid for work that wasn't done well enough, ` +
           `and nobody loses their claim on it. New applicants are scored as they arrive.`,
         timestamp: Date.now(),
       };
       this.decisions.push(decision);
-      this.emit("no_suitable_applicant", `No applicant reached 70/100 (best was ${best}). The commission stays open.`, {
+      this.emit("no_suitable_applicant", `No applicant reached ${config.hireScoreThreshold}/100 (best was ${best}). The commission stays open.`, {
         decision,
         escrowId: escrowId.toString(),
       });

@@ -20,8 +20,23 @@ export const config = {
   // credit balance. Same call shape (structured JSON), swap back by pointing
   // agent/* at the Anthropic client again once billing is sorted.
   groqApiKey: process.env.GROQ_API_KEY?.trim() || "",
-  groqModel: process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
-  groqFallbackModel: process.env.GROQ_FALLBACK_MODEL?.trim() || "llama-3.1-8b-instant",
+  // llama-3.3-70b-versatile was decommissioned by Groq on 2026-08-16. Anything
+  // still defaulting to it fails closed with no served model.
+  groqModel: process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b",
+  groqFallbackModel: process.env.GROQ_FALLBACK_MODEL?.trim() || "openai/gpt-oss-20b",
+  /**
+   * The score an applicant must reach to be hired.
+   *
+   * Configurable because it is MODEL-DEPENDENT, which is not obvious and cost a
+   * near-outage to learn. Re-scoring 25 historical applications when
+   * llama-3.3-70b was decommissioned showed gpt-oss-120b running a mean 10
+   * points lower on the same letters — at a fixed bar of 70 that took hiring
+   * from 9 of 9 down to 1, while every surface still reported healthy.
+   *
+   * Any model swap must be re-calibrated against scoring history before it is
+   * trusted. The bar is not a product decision; it is a property of the model.
+   */
+  hireScoreThreshold: Number(process.env.HIRE_SCORE_THRESHOLD ?? 55),
 
   // SecureFlow — Patron calls this contract, does NOT deploy its own
   secureflowAddress: (process.env.SECUREFLOW_CONTRACT_ADDRESS?.trim() ||
