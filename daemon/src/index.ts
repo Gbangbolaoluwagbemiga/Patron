@@ -644,6 +644,14 @@ const server = http.createServer(async (req, res) => {
       commit: (process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown").slice(0, 7),
       startedAt: BOOTED_AT,
       uptimeSeconds: Math.round((Date.now() - BOOTED_AT) / 1000),
+      // Which MODEL and which BAR are actually live. Code version alone was not
+      // enough: the hire threshold and the model are environment variables, and
+      // a daemon running the right code against the wrong model looks identical
+      // from outside — that combination silently took hiring from 9-in-9 to
+      // 1-in-9 during the llama-3.3 decommission.
+      model: config.groqModel,
+      fallbackModel: config.groqFallbackModel,
+      hireScoreThreshold: config.hireScoreThreshold,
       disputeBackfill: backfillState,
     });
   }
@@ -1456,21 +1464,52 @@ async function sweepExpiredCommissions(): Promise<void> {
  */
 const EMERGENCY_GRACE_DAYS = 30;
 
+/**
+ * Last reclaim attempt per escrow, so a locked one is not retried every 15s.
+ *
+ * The sweep now asks the contract instead of pre-judging with a status enum,
+ * which is correct — but it means an escrow that is genuinely not yet
+ * reclaimable reverts on every pass. Once an hour is plenty for something whose
+ * unlock date is measured in weeks, and it keeps a real failure visible in the
+ * log instead of buried under thousands of expected ones.
+ */
+const reclaimAttemptedAt = new Map<string, number>();
+const RECLAIM_RETRY_MS = 60 * 60 * 1000;
+
 async function sweepStrandedEscrows(): Promise<void> {
   for (const task of store.listTasks(200)) {
-    if (!task.escrowId || !task.briefJson) continue;
-    if (task.status === "cancelled" || task.status === "refunded" || task.status === "posted") continue;
+    if (!task.escrowId) continue;
 
-    let brief: { durationDays?: number; title?: string };
+    /**
+     * Do NOT filter on our own status, and do NOT filter on the chain's.
+     *
+     * Both were wrong, and an audit found $32 that would have been lost to it:
+     *
+     *   #26  chain PENDING (hired, never started)   $1.00   db "active"
+     *   #51  chain PENDING (hired, never started)   $0.50   db "active"
+     *   #61  chain EXPIRED, nobody ever hired       $30.00  db "cancelled"
+     *
+     * The old code skipped anything the DB called cancelled — #61 was recorded
+     * cancelled while the contract still held thirty dollars — and skipped any
+     * chain status other than ACTIVE, which excluded both PENDING and EXPIRED.
+     * All three were invisible to every sweep, permanently.
+     *
+     * The only authority on whether money can be reclaimed is the contract. It
+     * reverts harmlessly when the answer is no, so ASK IT rather than
+     * pre-judging with a status enum we have twice mapped incorrectly.
+     */
+    // Cheap local gate: nothing can possibly be eligible before its own grace
+    // period has elapsed, and this costs no RPC. Deliberately generous — it
+    // ignores durationDays, which the old gate required and which is missing on
+    // some rows.
+    if (Date.now() < task.createdAt + EMERGENCY_GRACE_DAYS * 86_400_000) continue;
+
+    let brief: { title?: string } = {};
     try {
-      brief = JSON.parse(task.briefJson);
+      brief = task.briefJson ? JSON.parse(task.briefJson) : {};
     } catch {
-      continue;
+      /* a job with an unreadable brief still has money worth reclaiming */
     }
-    const days = Number(brief.durationDays ?? 0);
-    if (!days) continue;
-    // Cheap local gate first — no RPC for the overwhelming majority of rows.
-    if (Date.now() < task.createdAt + (days + EMERGENCY_GRACE_DAYS + 1) * 86_400_000) continue;
 
     try {
       const escrow = (await secureflow.getEscrow(BigInt(task.escrowId))) as {
@@ -1478,11 +1517,14 @@ async function sweepStrandedEscrows(): Promise<void> {
         deadline?: bigint;
         status?: number | bigint;
       };
-      // Nothing left to reclaim, or already settled by the contract.
+      // The one thing worth pre-checking: no money, nothing to do.
       if (!escrow?.totalAmount || escrow.totalAmount <= 0n) continue;
-      if (Number(escrow.status ?? -1) !== 1) continue; // only ACTIVE escrows hold money this way
       const opensAt = Number(escrow.deadline ?? 0n) + EMERGENCY_GRACE_DAYS * 86_400;
       if (Math.floor(Date.now() / 1000) < opensAt) continue;
+
+      const lastTry = reclaimAttemptedAt.get(task.escrowId) ?? 0;
+      if (Date.now() - lastTry < RECLAIM_RETRY_MS) continue;
+      reclaimAttemptedAt.set(task.escrowId, Date.now());
 
       // Measure what actually came back rather than assuming the face value —
       // same reason as the cancellation path.
@@ -1506,9 +1548,58 @@ async function sweepStrandedEscrows(): Promise<void> {
       broadcast({ type: "task_completed", message, escrowId: task.escrowId, txHash, timestamp: Date.now() });
       void telegram.notifyClientForEscrow(task.escrowId, `💸 <b>Escrow released.</b>\n\n${telegram.esc(message)}`);
     } catch (err) {
-      // Reverts are expected here — the contract is the authority on when this
-      // is allowed, and asking early costs nothing but a log line.
-      console.warn(`[poller] could not reclaim ${task.escrowId}:`, err instanceof Error ? err.message : err);
+      // Reverts are expected — the contract is the authority on when a reclaim
+      // is allowed. Logged at most hourly per escrow thanks to the cooldown.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[poller] escrow ${task.escrowId} not yet reclaimable: ${msg.split("\n")[0]}`);
+    }
+  }
+}
+
+/**
+ * Make our status follow the chain, not the other way round.
+ *
+ * An audit found rows that disagreed with the contract in ways that mislead
+ * everyone reading them:
+ *
+ *   #56  db "completed"  chain ACTIVE, $3.75 still escrowed, milestone 2 never
+ *        delivered — the client's page said finished while money sat locked
+ *   #61  db "cancelled"  chain EXPIRED holding $30 — recorded as returned when
+ *        nothing had been returned
+ *
+ * Both came from writing a status at the moment we *asked* for something rather
+ * than when the chain agreed it happened. This corrects the record on every
+ * pass. It never moves money — only what we claim about it.
+ */
+const CHAIN_STATUS_TO_TASK: Record<number, string> = {
+  2: "completed",   // COMPLETED
+  3: "disputed",    // DISPUTED
+  4: "disputed",
+  5: "refunded",    // REFUNDED
+};
+
+async function reconcileTaskStatuses(): Promise<void> {
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId) continue;
+    if (task.status === "briefing" || task.status === "failed") continue;
+    try {
+      const e = (await secureflow.getEscrow(BigInt(task.escrowId))) as { totalAmount?: bigint; status?: number | bigint };
+      if (!e || e.status === undefined) continue;
+      const chain = Number(e.status);
+      const held = Number(e.totalAmount ?? 0n) / 1e6;
+
+      // A commission is only "completed" or "cancelled" when the escrow is
+      // actually empty. While it still holds money, something is outstanding.
+      let want = CHAIN_STATUS_TO_TASK[chain];
+      if (!want && held > 0.000001 && (task.status === "completed" || task.status === "cancelled")) {
+        want = "active";
+      }
+      if (want && want !== task.status) {
+        store.updateTaskStatus(task.id, want, task.escrowId);
+        console.log(`[reconcile] escrow ${task.escrowId}: "${task.status}" → "${want}" (chain status ${chain}, $${held.toFixed(2)} held)`);
+      }
+    } catch {
+      // A chain read failing is not evidence about status. Leave the row alone.
     }
   }
 }
@@ -1517,6 +1608,7 @@ async function pollOnce() {
   sweepStrandedBriefs();
   await sweepExpiredCommissions();
   await sweepStrandedEscrows();
+  await reconcileTaskStatuses();
   if (!isGraphConfigured()) return;
   // Everything the poller does downstream costs an LLM call. While the model is
   // rate-limited there is nothing useful to do, and trying anyway is what kept

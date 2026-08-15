@@ -233,9 +233,30 @@ Score every applicant above.`,
     // 50+28+15+5 and then writes "score: 85" has done the work correctly and
     // fumbled the addition; trusting the arithmetic over the assertion makes
     // the number reproducible and checkable rather than a stated impression.
-    const b = s.breakdown;
+    /**
+     * Clamp each PART to its own ceiling before summing, not the total afterwards.
+     *
+     * Clamping only the total broke the very invariant this block exists to
+     * guarantee: gpt-oss-20b returned parts above their stated maxima, the sum
+     * came to more than 100, the total was clamped to 100 — and the breakdown
+     * shown to the applicant no longer added up to their score. An applicant
+     * reading "capability 60/50" alongside arithmetic that does not work has
+     * every reason to distrust the whole judgement.
+     *
+     * Per-part clamping keeps the sum ≤ 100 by construction, so the total never
+     * needs clamping and the displayed parts are always inside their ranges.
+     */
+    const raw = s.breakdown;
+    const b = raw
+      ? {
+          capability: Math.max(0, Math.min(50, raw.capability)),
+          briefFit: Math.max(0, Math.min(30, raw.briefFit)),
+          timeline: Math.max(0, Math.min(15, raw.timeline)),
+          history: Math.max(0, Math.min(5, raw.history)),
+        }
+      : null;
     const summed = b ? b.capability + b.briefFit + b.timeline + b.history : null;
-    const score = summed !== null && !s.injectionDetected ? Math.max(0, Math.min(100, summed)) : s.score;
+    const score = summed !== null && !s.injectionDetected ? summed : s.score;
 
     return {
       application,

@@ -151,6 +151,34 @@ ${visionBlock}`,
    * situation, handled honestly by the reviewer above and never silently
    * penalised here.
    */
+  /**
+   * A deliverable nobody could open cannot be APPROVED either.
+   *
+   * llama-3.3-70b approved a submission at 100/100 whose only link was an
+   * x.com URL that serves no readable content to any automated reader. It had
+   * inspected nothing and paid out anyway. gpt-oss declines it — so once again
+   * whether Patron pays for unverifiable work depended on the model of the day.
+   *
+   * This is NOT the same as penalising the freelancer, and the difference
+   * matters: the score is left alone, the criteria are not marked failed, and
+   * the feedback says plainly that the limitation is ours. We simply do not
+   * release money against something we could not look at. They send a readable
+   * copy and get paid.
+   */
+  if (vision.inspectionBlockedByHost === true && parsed.approved) {
+    return {
+      ...parsed,
+      approved: false,
+      feedback:
+        "The delivered link is on a host that serves no readable content to an automated reader, so the work could not be inspected. " +
+        "This is a limitation on our side, not a judgement on the work — nothing here counts against you. " +
+        "Please re-send it somewhere readable (a public repo, a direct file link, or a plain web page) and it will be reviewed immediately.\n\n" +
+        parsed.feedback,
+      inspectedArtifact: false,
+      inspectionNote: vision.note,
+    };
+  }
+
   const hasArtifactReference = /https?:\/\/\S+/i.test(`${submissionDescription} ${submissionLink}`);
   if (!hasArtifactReference && parsed.approved) {
     return {
