@@ -384,6 +384,26 @@ export async function recentDisputeAwards(chunks: number): Promise<Map<string, D
   );
 }
 
+/**
+ * Escalate a commission that has run past its deadline to a human arbiter.
+ *
+ * The path that was missing. A job whose delivery window has elapsed cannot be
+ * cancelled (a freelancer has a claim) and cannot be emergency-refunded for
+ * another 30 days — so nine commissions holding $79.60 sat "overdue" with no
+ * route to resolution at all. SecureFlow built this for exactly that case.
+ *
+ * It does NOT refund. It hands the decision to a person, which is correct: a
+ * freelancer who is late but delivered something should not be ruled against
+ * automatically.
+ */
+export async function raiseOverdueDispute(
+  escrowId: bigint,
+  reason: string,
+  as: CircleSigner = createCircleSigner(),
+): Promise<`0x${string}`> {
+  return write("raiseOverdueDispute", [escrowId, reason.slice(0, 500)], as);
+}
+
 /** Last resort: reclaim after the deadline has passed, when a job stalled with work in progress. */
 export async function emergencyRefundAfterDeadline(
   escrowId: bigint,

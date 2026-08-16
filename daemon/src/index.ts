@@ -1604,10 +1604,94 @@ async function reconcileTaskStatuses(): Promise<void> {
   }
 }
 
+/**
+ * Escalate commissions that have run past their delivery window.
+ *
+ * "Overdue" was a label and nothing else. Nine commissions holding $79.60 sat
+ * past their deadlines with no route to resolution: cancelJob reverts once a
+ * freelancer has a claim, and emergencyRefundAfterDeadline needs another thirty
+ * days. Money the client could not get back and nobody was working for.
+ *
+ * SecureFlow has raiseOverdueDispute for exactly this. It does NOT refund — it
+ * hands the decision to a human arbiter, which is the right behaviour: a
+ * freelancer who is late but delivered something should not be ruled against
+ * automatically, and one who delivered nothing should not hold the money
+ * hostage for a month.
+ *
+ * The grace period exists so a freelancer a few hours late is not disputed out
+ * of the job. They are warned first, and only escalated if the grace elapses.
+ */
+const OVERDUE_GRACE_DAYS = Number(process.env.OVERDUE_GRACE_DAYS ?? 2);
+const overdueHandled = new Set<string>();
+
+async function sweepOverdueCommissions(): Promise<void> {
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId || overdueHandled.has(task.escrowId)) continue;
+    if (task.status === "cancelled" || task.status === "refunded" || task.status === "disputed") continue;
+
+    try {
+      const escrow = (await secureflow.getEscrow(BigInt(task.escrowId))) as {
+        totalAmount?: bigint;
+        deadline?: bigint;
+      };
+      // No money at stake means nothing to argue about.
+      if (!escrow?.totalAmount || escrow.totalAmount <= 0n) continue;
+
+      const deadline = Number(escrow.deadline ?? 0n);
+      if (!deadline || nowSec < deadline + OVERDUE_GRACE_DAYS * 86_400) continue;
+
+      const brief = task.briefJson ? JSON.parse(task.briefJson) : {};
+      const daysLate = Math.floor((nowSec - deadline) / 86_400);
+      const held = Number(escrow.totalAmount) / 1e6;
+
+      const txHash = await secureflow.raiseOverdueDispute(
+        BigInt(task.escrowId),
+        `Delivery window passed ${daysLate} day(s) ago with $${held.toFixed(2)} still escrowed. ` +
+          `Escalated automatically for a human arbiter to decide how the remaining balance should be settled.`,
+      );
+
+      overdueHandled.add(task.escrowId);
+      store.updateTaskStatus(task.id, "disputed", task.escrowId);
+      store.recordDecision({
+        id: `overdue-dispute:${task.escrowId}`,
+        taskId: task.escrowId,
+        type: "escalated",
+        reasoning:
+          `This commission passed its ${brief.durationDays ?? "?"}-day delivery window ${daysLate} day(s) ago with ` +
+          `$${held.toFixed(2)} still in escrow. Patron escalated it to a human arbiter rather than leaving the money ` +
+          `locked — it cannot refund on its own, and waiting for the emergency window would take another month.`,
+        target: store.hiredFor(task.escrowId) ?? undefined,
+        timestamp: Date.now(),
+      });
+
+      console.log(`[poller] overdue commission ${task.escrowId} escalated after ${daysLate}d (${txHash})`);
+
+      void telegram.notifyWorkerForEscrow(
+        task.escrowId,
+        `⏰ <b>This job passed its deadline.</b>\n\nIt has gone to a human arbiter to decide how the $${held.toFixed(2)} is settled. ` +
+          `If you have delivered work, say so — the arbiter reads the whole trail.\n\nhttps://patron-guild.vercel.app/jobs/${task.escrowId}`,
+      );
+      void telegram.notifyClientForEscrow(
+        task.escrowId,
+        `⏰ <b>Your commission ran past its deadline.</b>\n\n${telegram.esc(brief.title ?? "It")} was due ${daysLate} day(s) ago with ` +
+          `$${held.toFixed(2)} still escrowed, so it has gone to a human arbiter. Your money stays locked until they rule — ` +
+          `Patron cannot release or reclaim it on its own.\n\nhttps://patron-guild.vercel.app/jobs/${task.escrowId}`,
+      );
+    } catch (err) {
+      // Expected when the contract does not consider it overdue yet.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[poller] could not escalate overdue ${task.escrowId}: ${msg.split("\n")[0]}`);
+    }
+  }
+}
+
 async function pollOnce() {
   sweepStrandedBriefs();
   await sweepExpiredCommissions();
   await sweepStrandedEscrows();
+  await sweepOverdueCommissions();
   await reconcileTaskStatuses();
   if (!isGraphConfigured()) return;
   // Everything the poller does downstream costs an LLM call. While the model is

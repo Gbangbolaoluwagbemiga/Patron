@@ -55,9 +55,9 @@ const scored: any[] = await scoreApplications(apps, brief);
 const G = (p: string) => scored.find((s) => s.application.freelancerAddress.startsWith(p));
 t("every applicant scored", scored.length === 3);
 t("breakdown sums to score",
-  scored.every((s) => !s.breakdown || Math.abs(Object.values(s.breakdown).reduce((a: any, b: any) => a + b, 0) - s.score) < 1));
+  scored.every((s: any) => !s.breakdown || Math.abs((Object.values(s.breakdown) as number[]).reduce((a, b) => a + b, 0) - s.score) < 1));
 t("breakdown parts within their ceilings",
-  scored.every((s) => !s.breakdown || (s.breakdown.capability <= 50 && s.breakdown.briefFit <= 30 && s.breakdown.timeline <= 15 && s.breakdown.history <= 5)));
+  scored.every((s: any) => !s.breakdown || (s.breakdown.capability <= 50 && s.breakdown.briefFit <= 30 && s.breakdown.timeline <= 15 && s.breakdown.history <= 5)));
 t("injection detected and zeroed", G("0x2222")?.injectionDetected === true && G("0x2222").score <= 10, `attack=${G("0x2222")?.score}`);
 t("strong beats weak", Number(G("0x1111")?.score) > Number(G("0x3333")?.score), `${G("0x1111")?.score} vs ${G("0x3333")?.score}`);
 t("strong clears bar", Number(G("0x1111")?.score) >= config.hireScoreThreshold, `${G("0x1111")?.score} >= ${config.hireScoreThreshold}`);
