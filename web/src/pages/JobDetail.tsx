@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useDaemon } from "../daemon-context";
 import { DecisionCard, JudgingCountdown, MilestoneList, PaymentCard, SECUREFLOW_JOBS_URL, timeAgo } from "../components";
-import { judgingAt, parseBrief } from "../types";
+import { daysOverdue, displayStatus, judgingAt, parseBrief } from "../types";
 import { DAEMON_URL } from "../api";
 import { IconBrain, IconCheck, IconCoin, IconScroll, IconSplit } from "../Icon";
 
@@ -75,7 +75,14 @@ export default function JobDetail() {
 
       <div className="card-row" style={{ marginBottom: 20 }}>
         <span className={`badge ${task.clientType}`}>{task.clientType === "agent" ? "AI Agent client" : "Human client"}</span>
-        <span className={`badge status-${task.status}`}>{task.status}</span>
+        {(() => {
+          const d = displayStatus(task);
+          return (
+            <span className={`badge status-${d.tone}`} title={d.overdue ? `${daysOverdue(task)} day(s) past the ${parseBrief(task)?.durationDays}-day window this brief asked for` : undefined}>
+              {d.label}
+            </span>
+          );
+        })()}
         <span>escrow #{task.escrowId}</span>
         <span>{timeAgo(task.createdAt)}</span>
       </div>

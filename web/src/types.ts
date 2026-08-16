@@ -178,3 +178,33 @@ export function computeFreelancerStats(tasks: TaskRow[], decisions: DecisionRow[
 
   return stats.sort((a, b) => b.totalEarnedUsdc - a.totalEarnedUsdc || b.hires - a.hires);
 }
+
+/**
+ * What a reader should see, which is not always what the chain says.
+ *
+ * SecureFlow has no concept of a deadline passing — an escrow stays ACTIVE
+ * forever whether the work is a day late or a month abandoned. So a $15
+ * three-day commission sat on the board reading ACTIVE six days after it was
+ * posted, which is technically the contract's state and a lie to anyone
+ * scanning the list for something to work on.
+ *
+ * The badge now reports the chain state UNLESS the job has run past the
+ * duration its own brief asked for, in which case it says so. Nothing is
+ * mutated and no on-chain claim is made — this is a reading of two facts we
+ * already have side by side.
+ */
+export function displayStatus(task: TaskRow): { label: string; tone: string; overdue: boolean } {
+  const live = task.status === "active" || task.status === "posted";
+  const days = Number(parseBrief(task)?.durationDays ?? 0);
+  if (live && days > 0 && Date.now() > task.createdAt + days * 86_400_000) {
+    return { label: "overdue", tone: "overdue", overdue: true };
+  }
+  return { label: task.status, tone: task.status, overdue: false };
+}
+
+/** How far past its own deadline, in whole days. Only meaningful when overdue. */
+export function daysOverdue(task: TaskRow): number {
+  const days = Number(parseBrief(task)?.durationDays ?? 0);
+  if (!days) return 0;
+  return Math.max(0, Math.floor((Date.now() - (task.createdAt + days * 86_400_000)) / 86_400_000));
+}

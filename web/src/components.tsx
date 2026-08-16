@@ -7,7 +7,7 @@ const MotionLink = motion(Link);
 import { ARC_EXPLORER, api, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
 import { hasInjectedWallet } from "./wallet-connect";
 import { useWallet } from "./wallet-context";
-import { milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
+import { displayStatus, milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
 import { inkTransition, useCountUp, useFlashOnChange } from "./motion";
 import {
   IconAlert,
@@ -1151,7 +1151,10 @@ export function TaskCard({ task, linkToDetail = true }: { task: TaskRow; linkToD
           {entryNo && <span className="entry-no">ENTRY {entryNo}&nbsp;&nbsp;·&nbsp;&nbsp;</span>}
           <span className={`badge ${task.clientType}`}>{task.clientType === "agent" ? "AI Agent" : "Human"}</span>
         </span>
-        <span className={`badge status-${task.status}`}>{task.status}</span>
+        {(() => {
+          const d = displayStatus(task);
+          return <span className={`badge status-${d.tone}`}>{d.label}</span>;
+        })()}
       </div>
       <div className="card-title">{brief?.title ?? task.instruction}</div>
       {brief && (
