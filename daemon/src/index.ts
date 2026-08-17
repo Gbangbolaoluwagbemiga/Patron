@@ -1410,9 +1410,51 @@ function sweepStrandedBriefs(): void {
  * Deliberately only touches jobs still at "posted". The moment a freelancer is
  * hired their claim on the escrow is exactly what makes Patron worth trusting.
  */
+/**
+ * How much of an escrow is genuinely still at stake, in USDC.
+ *
+ * NOT `totalAmount`. That field is the ORIGINAL budget and is never decremented
+ * — #58 completed and paid its full $10 and still reports totalAmount $10.00.
+ * Gating on it would have escalated finished, fully-paid commissions to a human
+ * arbiter, which is the same mistake in a new costume: reading a field that
+ * looks like an answer to a question it does not answer.
+ *
+ * Milestone status is the truth. Anything not APPROVED still holds its value.
+ */
+async function unresolvedValue(escrowId: string): Promise<number> {
+  try {
+    const ms = (await secureflow.getMilestones(BigInt(escrowId))) as { amount?: bigint; status?: number | bigint }[];
+    if (!Array.isArray(ms) || !ms.length) return 0;
+    return ms
+      .filter((m) => Number(m.status ?? 0) !== MILESTONE_APPROVED)
+      .reduce((sum, m) => sum + Number(m.amount ?? 0n) / 1e6, 0);
+  } catch {
+    return 0; // cannot read it, do not act on it
+  }
+}
+
+/** Last cancel attempt per escrow, so a permanently-blocked one is not retried every 15s. */
+const cancelAttemptedAt = new Map<string, number>();
+const CANCEL_RETRY_MS = 30 * 60 * 1000;
+
 async function sweepExpiredCommissions(): Promise<void> {
-  for (const task of store.listTasks(100)) {
-    if (task.status !== "posted" || !task.escrowId || !task.briefJson) continue;
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId || !task.briefJson) continue;
+
+    /**
+     * Ask the CHAIN who was hired, not our own status column.
+     *
+     * This used to require `task.status === "posted"`, and that one filter cost
+     * real money. Rows drift — a job that was never hired sat as "active" in the
+     * database, so the sweep skipped it, the deadline passed, the contract moved
+     * it to EXPIRED, and by the time anything noticed, cancelJob no longer
+     * worked. Twelve un-hired commissions reached that state holding $79.60.
+     *
+     * cancelJob is only available while nobody is assigned (the contract says
+     * CannotCancelAssignedJob otherwise) and before expiry closes it off. That
+     * is a narrow window, and hitting it reliably means acting on what the
+     * contract says right now rather than on a status we may have mislabelled.
+     */
     let brief: { durationDays?: number; title?: string };
     try {
       brief = JSON.parse(task.briefJson);
@@ -1422,6 +1464,25 @@ async function sweepExpiredCommissions(): Promise<void> {
     const days = Number(brief.durationDays ?? 0);
     if (!days) continue;
     if (Date.now() < task.createdAt + days * 86_400_000) continue;
+
+    const lastTry = cancelAttemptedAt.get(task.escrowId) ?? 0;
+    if (Date.now() - lastTry < CANCEL_RETRY_MS) continue;
+
+    // The chain is the authority on both questions: is there money, and is
+    // anyone assigned to it.
+    let onChain: { beneficiary?: string; totalAmount?: bigint };
+    try {
+      onChain = (await secureflow.getEscrow(BigInt(task.escrowId))) as { beneficiary?: string; totalAmount?: bigint };
+    } catch {
+      continue;
+    }
+    // Someone is assigned — cancelling is not ours to do. That path is
+    // sweepOverdueCommissions, which escalates to a human instead.
+    if (!/^0x0{40}$/i.test(onChain.beneficiary ?? "")) continue;
+    // Milestone status, never totalAmount — see unresolvedValue().
+    if ((await unresolvedValue(task.escrowId)) <= 0.000001) continue;
+
+    cancelAttemptedAt.set(task.escrowId, Date.now());
 
     try {
       const txHash = await secureflow.cancelJob(BigInt(task.escrowId));
@@ -1635,16 +1696,33 @@ async function sweepOverdueCommissions(): Promise<void> {
       const escrow = (await secureflow.getEscrow(BigInt(task.escrowId))) as {
         totalAmount?: bigint;
         deadline?: bigint;
+        beneficiary?: string;
       };
-      // No money at stake means nothing to argue about.
-      if (!escrow?.totalAmount || escrow.totalAmount <= 0n) continue;
+      // No money at stake means nothing to argue about — and "at stake" is a
+      // milestone question, not a totalAmount one. See unresolvedValue().
+      const atStake = await unresolvedValue(task.escrowId);
+      if (atStake <= 0.000001) continue;
+
+      /**
+       * NEVER dispute a job with no freelancer.
+       *
+       * A dispute is a conflict between two parties. Raising one against nobody
+       * is meaningless on-chain and it reads terribly on a public ledger — an
+       * earlier version of this sweep escalated twelve un-hired commissions and
+       * turned a tidy board into a wall of disputes with no counterparty.
+       *
+       * An un-hired job is a CANCELLATION, and that is
+       * sweepExpiredCommissions' job. This one only handles the real case: a
+       * freelancer was hired, took the claim, and did not deliver.
+       */
+      if (/^0x0{40}$/i.test(escrow.beneficiary ?? "")) continue;
 
       const deadline = Number(escrow.deadline ?? 0n);
       if (!deadline || nowSec < deadline + OVERDUE_GRACE_DAYS * 86_400) continue;
 
       const brief = task.briefJson ? JSON.parse(task.briefJson) : {};
       const daysLate = Math.floor((nowSec - deadline) / 86_400);
-      const held = Number(escrow.totalAmount) / 1e6;
+      const held = atStake;
 
       const txHash = await secureflow.raiseOverdueDispute(
         BigInt(task.escrowId),

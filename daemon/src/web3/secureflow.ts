@@ -438,6 +438,16 @@ export async function hasApplied(escrowId: bigint, who: `0x${string}`): Promise<
   }) as Promise<boolean>;
 }
 
+/** Every milestone with its amount and status — the only reliable answer to "is money still at stake". */
+export async function getMilestones(escrowId: bigint) {
+  return getPublicClient().readContract({
+    address: config.secureflowAddress,
+    abi,
+    functionName: "getMilestones",
+    args: [escrowId],
+  });
+}
+
 export async function getEscrowApplications(escrowId: bigint) {
   return getPublicClient().readContract({
     address: config.secureflowAddress,
