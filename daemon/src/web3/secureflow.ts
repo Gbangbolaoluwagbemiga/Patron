@@ -438,6 +438,15 @@ export async function hasApplied(escrowId: bigint, who: `0x${string}`): Promise<
   }) as Promise<boolean>;
 }
 
+/** How many escrows the contract has ever created. The authoritative list of what exists. */
+export async function nextEscrowId(): Promise<bigint> {
+  return (await getPublicClient().readContract({
+    address: config.secureflowAddress,
+    abi,
+    functionName: "nextEscrowId",
+  })) as bigint;
+}
+
 /** Every milestone with its amount and status — the only reliable answer to "is money still at stake". */
 export async function getMilestones(escrowId: bigint) {
   return getPublicClient().readContract({

@@ -1535,11 +1535,80 @@ const EMERGENCY_GRACE_DAYS = 30;
  * log instead of buried under thousands of expected ones.
  */
 const reclaimAttemptedAt = new Map<string, number>();
+const reclaimFailures = new Map<string, number>();
 const RECLAIM_RETRY_MS = 60 * 60 * 1000;
+const RECLAIM_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Back off on repeated refusals — but never give up on one.
+ *
+ * Scanning the chain rather than our own table means seeing every escrow that
+ * still holds value, including ~22 whose reclaim the contract currently
+ * refuses. Retrying each hourly would bury a genuine failure under a thousand
+ * expected ones.
+ *
+ * Doubling to a daily ceiling rather than excluding them, because "the contract
+ * says no today" is not "the contract will always say no" — a status can
+ * change, a window can open, and a permanent exclusion list is how money gets
+ * quietly abandoned. This is the same reasoning that made the sweep stop
+ * filtering on status in the first place.
+ */
+function reclaimDueAt(escrowId: string): number {
+  const last = reclaimAttemptedAt.get(escrowId) ?? 0;
+  const fails = reclaimFailures.get(escrowId) ?? 0;
+  return last + Math.min(RECLAIM_RETRY_MS * 2 ** fails, RECLAIM_MAX_BACKOFF_MS);
+}
+
+/**
+ * Full chain scans are expensive; escrows unlock on a 30-day clock, so hourly
+ * is far more often than anything can change.
+ */
+let lastFullEscrowScan = 0;
+const FULL_SCAN_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Which escrow ids to sweep — asked of the CONTRACT, not of our database.
+ *
+ * The third and last version of one recurring mistake. This sweep used to
+ * iterate store.listTasks(), so it could only ever reclaim escrows we happened
+ * to have a task row for. Four escrows on testnet (#20, #21, #39, #54, $4.40)
+ * had no row at all — created before the tasks table existed — and were
+ * therefore invisible to every sweep forever, while the contract would have
+ * refunded all four on request.
+ *
+ * Our database records what Patron DID. The contract records what EXISTS. For
+ * "is there money of ours still locked up", only the second is authoritative,
+ * and a row in our table is not a precondition for money being real.
+ */
+async function escrowIdsToSweep(): Promise<string[]> {
+  const fromDb = store
+    .listTasks(300)
+    .map((t) => t.escrowId)
+    .filter((id): id is string => !!id);
+
+  if (Date.now() - lastFullEscrowScan < FULL_SCAN_INTERVAL_MS) return fromDb;
+
+  try {
+    const next = await secureflow.nextEscrowId();
+    lastFullEscrowScan = Date.now();
+    const all = Array.from({ length: Number(next) }, (_, i) => String(i));
+    return [...new Set([...all, ...fromDb])];
+  } catch {
+    return fromDb; // chain unreachable — fall back to what we know
+  }
+}
 
 async function sweepStrandedEscrows(): Promise<void> {
-  for (const task of store.listTasks(200)) {
-    if (!task.escrowId) continue;
+  for (const escrowId of await escrowIdsToSweep()) {
+    // A task row is a convenience here, never a requirement.
+    const task = store.listTasks(300).find((t) => t.escrowId === escrowId) ?? {
+      id: `orphan:${escrowId}`,
+      escrowId,
+      briefJson: null,
+      createdAt: 0,
+      clientAddress: null,
+      status: "unknown",
+    } as unknown as store.TaskRow;
 
     /**
      * Do NOT filter on our own status, and do NOT filter on the chain's.
@@ -1563,7 +1632,9 @@ async function sweepStrandedEscrows(): Promise<void> {
     // period has elapsed, and this costs no RPC. Deliberately generous — it
     // ignores durationDays, which the old gate required and which is missing on
     // some rows.
-    if (Date.now() < task.createdAt + EMERGENCY_GRACE_DAYS * 86_400_000) continue;
+    // Cheap local gate — skipped for orphans (createdAt 0), whose age we cannot
+    // know locally and whose eligibility the chain deadline settles below.
+    if (task.createdAt && Date.now() < task.createdAt + EMERGENCY_GRACE_DAYS * 86_400_000) continue;
 
     let brief: { title?: string } = {};
     try {
@@ -1573,46 +1644,56 @@ async function sweepStrandedEscrows(): Promise<void> {
     }
 
     try {
-      const escrow = (await secureflow.getEscrow(BigInt(task.escrowId))) as {
+      const escrow = (await secureflow.getEscrow(BigInt(escrowId))) as {
         totalAmount?: bigint;
         deadline?: bigint;
         status?: number | bigint;
+        depositor?: string;
       };
+      // Only ever reclaim escrows this treasury funded. Scanning the whole
+      // contract means seeing other people's escrows too.
+      if ((escrow?.depositor ?? "").toLowerCase() !== config.circleWalletAddress.toLowerCase()) continue;
       // The one thing worth pre-checking: no money, nothing to do.
       if (!escrow?.totalAmount || escrow.totalAmount <= 0n) continue;
       const opensAt = Number(escrow.deadline ?? 0n) + EMERGENCY_GRACE_DAYS * 86_400;
       if (Math.floor(Date.now() / 1000) < opensAt) continue;
 
-      const lastTry = reclaimAttemptedAt.get(task.escrowId) ?? 0;
-      if (Date.now() - lastTry < RECLAIM_RETRY_MS) continue;
-      reclaimAttemptedAt.set(task.escrowId, Date.now());
+      if (Date.now() < reclaimDueAt(escrowId)) continue;
+      reclaimAttemptedAt.set(escrowId, Date.now());
 
       // Measure what actually came back rather than assuming the face value —
       // same reason as the cancellation path.
       const before = await treasuryBalance();
-      const txHash = await secureflow.emergencyRefundAfterDeadline(BigInt(task.escrowId));
+      const txHash = await secureflow.emergencyRefundAfterDeadline(BigInt(escrowId));
       const recovered = Math.max(0, (await treasuryBalance()) - before);
 
-      store.updateTaskStatus(task.id, "refunded", task.escrowId);
+      reclaimFailures.delete(escrowId);
+      store.updateTaskStatus(task.id, "refunded", escrowId);
       if (task.clientAddress && recovered > 0.000001) {
         store.recordTreasuryEntry({
           id: randomUUID(),
           party: task.clientAddress,
           direction: "refund",
           amountUsdc: recovered.toFixed(6),
-          txHash: `emergency-refund:${task.escrowId}`,
+          txHash: `emergency-refund:${escrowId}`,
         });
       }
-      console.log(`[poller] stranded escrow ${task.escrowId} reclaimed, $${recovered.toFixed(2)} returned (${txHash})`);
+      console.log(`[poller] stranded escrow ${escrowId} reclaimed, $${recovered.toFixed(2)} returned (${txHash})`);
 
       const message = `"${brief.title ?? "Commission"}" was never finished. Its remaining $${recovered.toFixed(2)} has been released from escrow and is back in your Patron balance.`;
-      broadcast({ type: "task_completed", message, escrowId: task.escrowId, txHash, timestamp: Date.now() });
-      void telegram.notifyClientForEscrow(task.escrowId, `💸 <b>Escrow released.</b>\n\n${telegram.esc(message)}`);
+      broadcast({ type: "task_completed", message, escrowId: escrowId, txHash, timestamp: Date.now() });
+      void telegram.notifyClientForEscrow(escrowId, `💸 <b>Escrow released.</b>\n\n${telegram.esc(message)}`);
     } catch (err) {
       // Reverts are expected — the contract is the authority on when a reclaim
       // is allowed. Logged at most hourly per escrow thanks to the cooldown.
+      const fails = (reclaimFailures.get(escrowId) ?? 0) + 1;
+      reclaimFailures.set(escrowId, fails);
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[poller] escrow ${task.escrowId} not yet reclaimable: ${msg.split("\n")[0]}`);
+      // Only the first few are worth saying out loud; after that the backoff
+      // speaks for itself.
+      if (fails <= 3) {
+        console.warn(`[poller] escrow ${escrowId} not yet reclaimable (attempt ${fails}): ${msg.split("\n")[0]}`);
+      }
     }
   }
 }
