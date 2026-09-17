@@ -13,7 +13,7 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { createPublicClient, http as viemHttp, formatEther, verifyMessage } from "viem";
-import { config, arcTestnet, rpcUrl } from "./config.js";
+import { config, arcTestnet, rpcUrl, explorerAddress } from "./config.js";
 import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
 import { createPatronGateway } from "./circle/gateway.js";
 import { createPatronPaywall, ORDER_FEE_USDC } from "./circle/x402-seller.js";
@@ -666,7 +666,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         address: config.circleWalletAddress,
         balance: formatEther(balance),
-        explorerUrl: `https://testnet.arcscan.app/address/${config.circleWalletAddress}`,
+        explorerUrl: explorerAddress(config.circleWalletAddress),
       });
     } catch (err) {
       return json(res, 500, { error: err instanceof Error ? err.message : String(err) });

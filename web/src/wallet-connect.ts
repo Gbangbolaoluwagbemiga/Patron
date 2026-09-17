@@ -7,13 +7,15 @@
 import { useCallback, useState } from "react";
 import { createWalletClient, custom, formatEther, parseEther } from "viem";
 
-const ARC_TESTNET_CHAIN_ID_HEX = "0x4cef52"; // 5042002
+/** Chain the browser is asked to add/switch to. Env-driven so mainnet and testnet cannot diverge from the daemon. */
+const ARC_CHAIN_ID = Number(import.meta.env.VITE_ARC_CHAIN_ID ?? 5042);
+const ARC_TESTNET_CHAIN_ID_HEX = `0x${ARC_CHAIN_ID.toString(16)}`;
 const ARC_TESTNET_PARAMS = {
   chainId: ARC_TESTNET_CHAIN_ID_HEX,
-  chainName: "Arc Testnet",
+  chainName: ARC_CHAIN_ID === 5042 ? "Arc" : "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: ["https://rpc.drpc.testnet.arc.network"],
-  blockExplorerUrls: ["https://testnet.arcscan.app"],
+  rpcUrls: [import.meta.env.VITE_ARC_RPC_URL ?? "https://rpc.mainnet.arc.io"],
+  blockExplorerUrls: [import.meta.env.VITE_ARC_EXPLORER_URL ?? "https://explorer.arc.io"],
 };
 
 type Eip1193Provider = {
@@ -55,7 +57,7 @@ export function describeWalletError(err: unknown): string {
     case 4901:
       return "Your wallet isn't connected to a network. Unlock it and try again.";
     case -32603:
-      return e.data?.message ?? "Your wallet rejected the request internally. Check you're on Arc Testnet with enough balance for gas.";
+      return e.data?.message ?? "Your wallet rejected the request internally. Check you're on the Arc network with enough balance for gas.";
   }
 
   // viem wraps provider errors and puts the useful line in shortMessage.

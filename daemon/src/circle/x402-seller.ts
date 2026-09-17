@@ -9,9 +9,10 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createGatewayMiddleware, type PaymentRequest, type PaymentResponse } from "@circle-fin/x402-batching/server";
-import { config } from "../config.js";
+import { chainId, config } from "../config.js";
 
-const ARC_TESTNET_NETWORK = `eip155:${5042002}`;
+/** Whichever Arc network the environment points at — never a literal. */
+const ARC_NETWORK = `eip155:${chainId}`;
 
 /**
  * Applies Circle's x402 paywall to a raw Node request/response pair. Returns
@@ -21,7 +22,7 @@ const ARC_TESTNET_NETWORK = `eip155:${5042002}`;
 export function createPatronPaywall(sellerAddress: `0x${string}`, priceUsdc: string) {
   const paywall = createGatewayMiddleware({
     sellerAddress,
-    networks: ARC_TESTNET_NETWORK,
+    networks: ARC_NETWORK,
     facilitatorUrl: config.gatewayFacilitatorUrl,
   }).require(`$${priceUsdc}`);
 

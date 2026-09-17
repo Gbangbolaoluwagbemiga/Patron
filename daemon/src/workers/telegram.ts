@@ -13,7 +13,7 @@
 import * as store from "../store.js";
 import * as workers from "./service.js";
 import * as secureflow from "../web3/secureflow.js";
-import { config } from "../config.js";
+import { config, explorerAddress, explorerTx } from "../config.js";
 import { llmPaused, llmPauseRemaining } from "../llm-status.js";
 
 const API = (method: string) => `https://api.telegram.org/bot${config.telegramBotToken}/${method}`;
@@ -455,7 +455,7 @@ async function handleText(msg: TgMessage) {
         [
           "<b>Your wallet</b>",
           `<code>${worker.walletAddress}</code>`,
-          `<a href="https://testnet.arcscan.app/address/${worker.walletAddress}">See it on the block explorer</a> — it's a real address on a public chain, and anything in it is yours.`,
+          `<a href="${explorerAddress(worker.walletAddress ?? "")}">See it on the block explorer</a> — it's a real address on a public chain, and anything in it is yours.`,
           "",
           "<b>Is there a seed phrase?</b>",
           "No — and that's the honest answer rather than a refusal.",
@@ -711,7 +711,7 @@ async function handleText(msg: TgMessage) {
           llmPaused()
             ? `Your application is on-chain and safe. The guild master is rate-limited right now and resumes in ${llmPauseRemaining()} — I'll message you as soon as it has scored everyone.`
             : "The job stays open for a while so others can apply, then the guild master scores everyone together and hires the best fit. I'll message you either way — you don't have to keep checking.",
-          `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
+          `<a href="${explorerTx(txHash)}">See it on the block explorer</a>`,
         ].join("\n"),
       );
     } catch (err) {
@@ -731,7 +731,7 @@ async function handleText(msg: TgMessage) {
           "📮 Sent.",
           "",
           "It gets reviewed against every acceptance criterion. If it passes, the escrow pays you immediately. If not, you'll get specific written feedback and another go.",
-          `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
+          `<a href="${explorerTx(txHash)}">See it on the block explorer</a>`,
         ].join("\n"),
       );
     } catch (err) {
@@ -828,7 +828,7 @@ async function doWithdraw(chatId: number, workerId: string, destination: `0x${st
       chatId,
       [
         `✅ Sent $${Number(amount).toFixed(2)} USDC to your wallet.`,
-        `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
+        `<a href="${explorerTx(txHash)}">See it on the block explorer</a>`,
       ].join("\n"),
     );
   } catch (err) {

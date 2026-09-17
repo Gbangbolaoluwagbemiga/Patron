@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentEvent, DecisionRow, PaymentRow, TaskRow } from "./types";
 
 export const DAEMON_URL = import.meta.env.VITE_DAEMON_URL ?? "http://localhost:8787";
-export const ARC_EXPLORER = "https://testnet.arcscan.app";
+export const ARC_EXPLORER = (import.meta.env.VITE_ARC_EXPLORER_URL ?? "https://explorer.arc.io").replace(/\/+$/, "");
 
 /**
  * One request helper, surfacing the daemon's own error text.

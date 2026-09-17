@@ -15,7 +15,8 @@ import { keccak256, toBytes } from "viem";
 import { config } from "./config.js";
 import { createServiceSigner } from "./circleSigner.js";
 
-const ARC_TESTNET_NETWORK = `eip155:${config.circleBlockchain === "ARC-TESTNET" ? 5042002 : 5042002}`;
+/** Derived from the chain we are configured for — the old form hardcoded testnet on both branches. */
+const ARC_NETWORK = `eip155:${arcTestnet.id}`;
 
 function json(res: http.ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -55,7 +56,7 @@ function getSellerAddress(): `0x${string}` {
 function applyPaywall(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
   const paywall = createGatewayMiddleware({
     sellerAddress: getSellerAddress(),
-    networks: ARC_TESTNET_NETWORK,
+    networks: ARC_NETWORK,
     facilitatorUrl: config.gatewayFacilitatorUrl,
   }).require(`$${config.fee}`);
 

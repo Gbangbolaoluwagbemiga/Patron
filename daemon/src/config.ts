@@ -1,17 +1,43 @@
 import "dotenv/config";
 import { defineChain } from "viem";
 
-/** Arc Testnet — Circle's stablecoin-native L1. USDC is the native currency (6 decimals). */
-export const rpcUrl = process.env.ARC_RPC_URL?.trim() || "https://rpc.drpc.testnet.arc.network";
+/**
+ * Arc — Circle's stablecoin-native L1. USDC is the native currency.
+ *
+ * Every network-specific value is environment-driven, and the DEFAULTS ARE
+ * MAINNET. That direction matters: a missing variable should fail toward the
+ * network we actually run on, not quietly point a live daemon at testnet and
+ * report success against money that isn't real.
+ *
+ *   mainnet  chainId 5042     rpc.mainnet.arc.io     explorer.arc.io
+ *   testnet  chainId 5042002  rpc.testnet.arc.io     explorer.testnet.arc.io
+ *
+ * `testnet` is derived rather than declared, so it can never disagree with the
+ * chain id it sits next to.
+ */
+export const ARC_MAINNET_ID = 5042;
 
+export const rpcUrl = process.env.ARC_RPC_URL?.trim() || "https://rpc.mainnet.arc.io";
+export const chainId = Number(process.env.ARC_CHAIN_ID ?? ARC_MAINNET_ID);
+export const explorerUrl = (process.env.ARC_EXPLORER_URL?.trim() || "https://explorer.arc.io").replace(/\/+$/, "");
+
+/**
+ * Still exported as `arcTestnet` because ~30 call sites import that name and
+ * renaming them buys nothing but churn. It is whichever Arc network the
+ * environment points at.
+ */
 export const arcTestnet = defineChain({
-  id: Number(process.env.ARC_CHAIN_ID ?? 5042002),
-  name: "Arc Testnet",
+  id: chainId,
+  name: chainId === ARC_MAINNET_ID ? "Arc" : "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
   rpcUrls: { default: { http: [rpcUrl] } },
-  blockExplorers: { default: { name: "Arcscan", url: "https://testnet.arcscan.app" } },
-  testnet: true,
+  blockExplorers: { default: { name: "Arc Explorer", url: explorerUrl } },
+  testnet: chainId !== ARC_MAINNET_ID,
 });
+
+/** One place that builds explorer links, so none of them can be left on testnet. */
+export const explorerTx = (txHash: string) => `${explorerUrl}/tx/${txHash}`;
+export const explorerAddress = (addr: string) => `${explorerUrl}/address/${addr}`;
 
 export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY?.trim() || "",
@@ -50,11 +76,11 @@ export const config = {
   circleEntitySecret: process.env.CIRCLE_ENTITY_SECRET?.trim() || "",
   circleWalletId: process.env.CIRCLE_WALLET_ID?.trim() || "",
   circleWalletAddress: (process.env.CIRCLE_WALLET_ADDRESS?.trim() || "") as `0x${string}` | "",
-  circleBlockchain: process.env.CIRCLE_BLOCKCHAIN?.trim() || "ARC-TESTNET",
+  circleBlockchain: process.env.CIRCLE_BLOCKCHAIN?.trim() || "ARC",
 
   // Circle Gateway (x402 nanopayments)
   gatewayFacilitatorUrl:
-    process.env.GATEWAY_FACILITATOR_URL?.trim() || "https://gateway-api-testnet.circle.com",
+    process.env.GATEWAY_FACILITATOR_URL?.trim() || "https://gateway-api.circle.com",
   x402OrderFee: process.env.X402_ORDER_FEE?.trim() || "0.05",
 
   // x402 BUY side — Patron paying a marketplace service (services/portfolio-check)

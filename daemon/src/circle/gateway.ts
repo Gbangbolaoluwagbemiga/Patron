@@ -2,7 +2,7 @@ import { parseUnits, formatUnits, erc20Abi, pad, maxUint256, zeroAddress } from 
 import { generatePrivateKey } from "viem/accounts";
 import { randomBytes } from "node:crypto";
 import { GatewayClient, CHAIN_CONFIGS, BatchEvmScheme, type TransferResponse } from "@circle-fin/x402-batching/client";
-import { rpcUrl } from "../config.js";
+import { config, rpcUrl } from "../config.js";
 import { createCircleSigner } from "./circleSigner.js";
 
 /**
@@ -83,7 +83,8 @@ const BURN_INTENT_TYPES = {
   ],
 } as const;
 
-const GATEWAY_API_TESTNET = "https://gateway-api-testnet.circle.com/v1";
+/** Base URL comes from config so mainnet and testnet cannot be confused. */
+const GATEWAY_API = `${config.gatewayFacilitatorUrl.replace(/\/+$/, "")}/v1`;
 
 /**
  * Ceiling on any single x402 buy-side leg. A portfolio check is a sub-second
@@ -226,7 +227,7 @@ export function createPatronGateway(): PatronGateway {
       message: burnIntent,
     });
 
-    const resp = await fetch(`${GATEWAY_API_TESTNET}/transfer`, {
+    const resp = await fetch(`${GATEWAY_API}/transfer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify([{ burnIntent, signature }], (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
