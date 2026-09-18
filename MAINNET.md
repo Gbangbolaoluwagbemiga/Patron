@@ -35,7 +35,19 @@ that is not real.
 
 ## Runbook
 
-### 1 — Deploy SecureFlow (needs your hand; see note at the end)
+### ✅ DONE — SecureFlow is live on Arc mainnet
+
+    contract   0xa60b14a62c871D5E4E7B9AeDb974FAAF688604F5
+    deploy     block 21409627   tx 0x4ca55a8a…   0.0961 USDC
+    whitelist  block 21409925   tx 0x4d86dda9…   0.0010 USDC
+    owner / fee collector       0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41
+    platform fee                100 bp (1%)
+    USDC                        whitelisted — jobs can be posted
+
+Verified 5/5 by `daemon/scripts/verify-mainnet.ts`. Total cost $0.097
+against a $0.247 estimate.
+
+### 1 — Deploy SecureFlow (done; kept for reproducibility)
 
 ```sh
 cd Secureflow/SecureFlow-scaffold/contracts/solidity

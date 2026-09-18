@@ -43,7 +43,7 @@ const read = async (fn: string, args: any[] = []) => {
 const owner = await read("owner");
 t("owner is set", !!owner, String(owner));
 const feeBP = await read("platformFeeBP");
-t("platform fee is 2.5%", Number(feeBP) === 250, `${Number(feeBP)} bp`);
+t("platform fee is 1%", Number(feeBP) === 100, `${Number(feeBP)} bp — matches the live testnet contract and the copy shown to freelancers`);
 const collector = await read("feeCollector");
 if (collector) console.log(`        fee collector: ${collector}`);
 
