@@ -572,6 +572,7 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     account,
     refreshAccount,
     signMessage,
+    wallets,
   } = useWallet();
   const yieldInfo = useYield();
 
@@ -671,9 +672,35 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
             <div className="treasury-fund-label">No browser wallet detected — send funds to the address instead.</div>
           ) : !address ? (
             <>
-              <button className="treasury-connect-btn" onClick={connect} disabled={connecting}>
-                {connecting ? "Connecting…" : "Connect Wallet"}
-              </button>
+              {/*
+                PICK THE WALLET, DO NOT INHERIT IT.
+                window.ethereum is one slot several extensions race for, and the
+                winner changes between page loads — Rabby even reports itself as
+                MetaMask. A request got stuck in a MetaMask this user cannot
+                open, and every click after that was refused by a wallet they do
+                not use. Listing what actually announced itself is the only way
+                out of that, and it is one click either way.
+              */}
+              {wallets.length > 1 ? (
+                <div className="wallet-picker">
+                  {wallets.map((w) => (
+                    <button
+                      key={w.rdns}
+                      className="wallet-pick-btn"
+                      onClick={() => connect(w.rdns)}
+                      disabled={connecting}
+                      title={w.rdns}
+                    >
+                      {w.icon && <img src={w.icon} alt="" width={16} height={16} />}
+                      {connecting ? "…" : w.name}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button className="treasury-connect-btn" onClick={() => connect(wallets[0]?.rdns)} disabled={connecting}>
+                  {connecting ? "Connecting…" : "Connect Wallet"}
+                </button>
+              )}
               {/*
                 THE MESSAGE HAS TO BE WHERE THE CLICK WAS.
                 This error was rendered once, at the BOTTOM of this component,

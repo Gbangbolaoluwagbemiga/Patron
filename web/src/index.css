@@ -2993,3 +2993,16 @@ body {
   margin-top: 8px; max-width: 320px; text-align: right;
   font-size: 12px; line-height: 1.5; color: #e9a1a1;
 }
+
+/* One button per wallet that actually announced itself (EIP-6963). */
+.wallet-picker { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.wallet-pick-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 13px; font: inherit; font-size: 13px; cursor: pointer;
+  color: var(--ink, #e8e6e3);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9px;
+}
+.wallet-pick-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.wallet-pick-btn:disabled { opacity: 0.5; cursor: default; }
+.wallet-pick-btn img { border-radius: 4px; }

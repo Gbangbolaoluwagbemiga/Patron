@@ -4,7 +4,7 @@
 // Circle MPC exactly as before (see IMPLEMENTATION.md) — this only ever signs with
 // the VISITOR's own wallet, sending the visitor's own funds, by the visitor's own
 // explicit approval in their wallet's UI. Nothing here can move Patron's funds.
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createWalletClient, custom, formatEther, parseEther } from "viem";
 
 /** Chain the browser is asked to add/switch to. Env-driven so mainnet and testnet cannot diverge from the daemon. */
@@ -18,6 +18,53 @@ const ARC_TESTNET_PARAMS = {
   blockExplorerUrls: [import.meta.env.VITE_ARC_EXPLORER_URL ?? "https://explorer.arc.io"],
 };
 
+/**
+ * EIP-6963 — ask which wallets are here instead of taking whichever one won.
+ *
+ * window.ethereum is a single slot that every installed wallet races to claim,
+ * and the winner is not stable between page loads. This machine has four
+ * (Rabby, Core, MetaMask, Phantom) and Rabby sets isMetaMask = true for
+ * compatibility, so the slot cannot even be identified reliably once claimed.
+ *
+ * The concrete cost: a connection request got stuck in MetaMask, which this
+ * user cannot open any more, and every later click was rejected with -32002 by
+ * a wallet they do not use and cannot clear. No amount of retrying fixes that.
+ * The only way out is to choose the wallet, which is what 6963 exists for.
+ */
+export interface DiscoveredWallet {
+  rdns: string;
+  name: string;
+  icon: string;
+  provider: Eip1193Provider;
+}
+
+const discovered = new Map<string, DiscoveredWallet>();
+
+if (typeof window !== "undefined") {
+  window.addEventListener("eip6963:announceProvider", (event: Event) => {
+    const detail = (event as CustomEvent).detail as
+      | { info?: { rdns?: string; name?: string; icon?: string }; provider?: Eip1193Provider }
+      | undefined;
+    if (!detail?.info?.rdns || !detail.provider) return;
+    discovered.set(detail.info.rdns, {
+      rdns: detail.info.rdns,
+      name: detail.info.name ?? detail.info.rdns,
+      icon: detail.info.icon ?? "",
+      provider: detail.provider,
+    });
+  });
+  // Wallets announce on request; they also announce on load, so ask repeatedly
+  // over the first moment in case this module ran before they were ready.
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  setTimeout(() => window.dispatchEvent(new Event("eip6963:requestProvider")), 300);
+  setTimeout(() => window.dispatchEvent(new Event("eip6963:requestProvider")), 1200);
+}
+
+/** Every wallet that announced itself, deduplicated by rdns. */
+export function listWallets(): DiscoveredWallet[] {
+  return [...discovered.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -26,6 +73,11 @@ type Eip1193Provider = {
 function getInjectedProvider(): Eip1193Provider | null {
   const anyWindow = window as unknown as { ethereum?: Eip1193Provider };
   return anyWindow.ethereum ?? null;
+}
+
+/** The chosen wallet if there is one, otherwise whatever claimed window.ethereum. */
+function providerFor(rdns: string | null): Eip1193Provider | null {
+  return (rdns ? discovered.get(rdns)?.provider : null) ?? getInjectedProvider();
 }
 
 /**
@@ -106,6 +158,16 @@ export function hasInjectedWallet(): boolean {
 
 export function useWalletConnect() {
   const [address, setAddress] = useState<string | null>(null);
+  /**
+   * Which wallet the person actually picked, so later signing uses the same one.
+   *
+   * Mirrored into a ref because fund/signMessage/readBalance are memoised on
+   * [address], and a callback that closed over the old choice would sign with
+   * a different wallet than the one that connected — which is exactly the
+   * confusion this whole change exists to end.
+   */
+  const [activeRdns, setActiveRdns] = useState<string | null>(null);
+  const activeRdnsRef = useRef<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [funding, setFunding] = useState(false);
   const [error, setError] = useState("");
@@ -120,7 +182,7 @@ export function useWalletConnect() {
   const [balance, setBalance] = useState<string | null>(null);
 
   const readBalance = useCallback(async (who: string) => {
-    const provider = getInjectedProvider();
+    const provider = providerFor(activeRdnsRef.current);
     if (!provider) return;
     try {
       const wei = (await provider.request({ method: "eth_getBalance", params: [who, "latest"] })) as string;
@@ -130,8 +192,10 @@ export function useWalletConnect() {
     }
   }, []);
 
-  const connect = useCallback(async () => {
-    const provider = getInjectedProvider();
+  const connect = useCallback(async (rdns?: string) => {
+    // An explicitly chosen wallet always wins over whatever claimed the slot.
+    const chosen = rdns ? discovered.get(rdns)?.provider ?? null : null;
+    const provider = chosen ?? getInjectedProvider();
     if (!provider) {
       setError("No wallet found — install MetaMask or another browser wallet.");
       return;
@@ -181,6 +245,7 @@ export function useWalletConnect() {
         }
       }
 
+      if (rdns) { setActiveRdns(rdns); activeRdnsRef.current = rdns; }
       setAddress(accounts[0]);
       void readBalance(accounts[0]);
     } catch (err) {
@@ -192,7 +257,7 @@ export function useWalletConnect() {
 
   const fund = useCallback(
     async (toAddress: string, amountUsdc: string) => {
-      const provider = getInjectedProvider();
+      const provider = providerFor(activeRdnsRef.current);
       if (!provider || !address) {
         setError("Connect your wallet first.");
         return null;
@@ -229,7 +294,7 @@ export function useWalletConnect() {
    */
   const signMessage = useCallback(
     async (message: string): Promise<string | null> => {
-      const provider = getInjectedProvider();
+      const provider = providerFor(activeRdnsRef.current);
       if (!provider || !address) {
         setError("Connect your wallet first.");
         return null;
@@ -246,6 +311,8 @@ export function useWalletConnect() {
   );
 
   return {
+    wallets: listWallets(),
+    activeRdns,
     address,
     balance,
     connecting,
