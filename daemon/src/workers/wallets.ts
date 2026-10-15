@@ -139,15 +139,65 @@ export async function withdrawTo(
   worker: { walletAddress: string },
   destination: `0x${string}`,
   amountUsdc?: string,
-): Promise<{ txHash: `0x${string}`; amount: string }> {
+  /**
+   * Where the contractor wants the money. Omitted or "arc" is a plain transfer
+   * on this chain; anything else burns through CCTP v2 and mints there.
+   */
+  destinationChain?: string,
+): Promise<{ txHash: `0x${string}`; amount: string; chain: string; crossChain?: { domain: number; explorerUrl: string } }> {
   const from = worker.walletAddress as `0x${string}`;
   const balance = await workerBalance(from);
-  // Leave a little behind for gas, or the withdrawal itself cannot be signed.
-  const spendable = amountUsdc ?? (Number(balance) - Number(SIGNUP_GAS_USDC) / 2).toFixed(6);
+
+  /*
+   * THE GAS RESERVE HAS TO APPLY TO AN EXPLICIT AMOUNT TOO.
+   *
+   * This read `amountUsdc ?? (balance - gas/2)`, so the reserve was skipped
+   * entirely whenever a caller named a figure — and the Telegram path always
+   * names one. On Arc gas and the asset are the same balance, so "withdraw my
+   * whole balance" is never satisfiable: the transfer cannot pay for itself.
+   * The old code let that through and it failed at estimation, in front of the
+   * contractor, with nothing useful to read.
+   */
+  const reserve = Number(SIGNUP_GAS_USDC) / 2;
+  const available = Number(balance) - reserve;
+  const spendable = amountUsdc ?? available.toFixed(6);
+
   if (Number(spendable) <= 0) throw new Error(`Nothing to withdraw — balance is $${balance}`);
+  if (Number(spendable) > available) {
+    throw new Error(
+      `Can't send $${Number(spendable).toFixed(6)} — on Arc the gas comes out of this same balance, so $${reserve.toFixed(6)} ` +
+        `has to stay behind. The most you can withdraw right now is $${Math.max(0, available).toFixed(6)}.`,
+    );
+  }
 
   const { createSignerFor } = await import("../circle/circleSigner.js");
   const signer = createSignerFor(from);
+
+  /*
+   * Cross-chain payout. The contractor is paid in native USDC on their own
+   * chain — no bridge, no wrapped asset, no pool to be drained.
+   *
+   * The mint on the far side is NOT done here: it needs gas on that chain,
+   * which neither Patron nor a freshly provisioned worker wallet holds. The
+   * caller is handed the burn so it can tell the contractor plainly that the
+   * money is on its way and what finishes it.
+   */
+  const chain = (destinationChain ?? "arc").toLowerCase();
+  if (chain !== "arc") {
+    const cctp = await import("../web3/cctp.js");
+    const burn = await cctp.burnForContractor({
+      recipient: destination,
+      amountUsdc: spendable,
+      destination: chain,
+      as: signer,
+    });
+    return {
+      txHash: burn.txHash,
+      amount: spendable,
+      chain,
+      crossChain: { domain: burn.destinationDomain, explorerUrl: burn.explorerUrl },
+    };
+  }
   const hash = await signer.walletClient.writeContract({
     chain: arcTestnet,
     account: from,
@@ -158,5 +208,5 @@ export async function withdrawTo(
   });
   const pub = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
   await pub.waitForTransactionReceipt({ hash });
-  return { txHash: hash, amount: spendable };
+  return { txHash: hash, amount: spendable, chain: "arc" };
 }
