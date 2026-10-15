@@ -97,7 +97,7 @@ this market is real and the demand side is where the work is.
 ## What a judge can verify without trusting us
 
 - **The same jobs on an interface we don't control** —
-  [SecureFlow's own dApp](https://secureflow-arc.vercel.app/jobs), a separate
+  [SecureFlow's own dApp](https://secureflow.work/jobs), a separate
   application on a separate deployment reading the same contract. What you see
   there is the chain, not our rendering of it.
 - **Every payment** on [explorer.arc.io](https://explorer.arc.io).

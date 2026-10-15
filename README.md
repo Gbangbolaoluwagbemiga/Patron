@@ -15,7 +15,7 @@ rails I built and deployed myself.
 | ⚙️ **Daemon API** | [patron-daemon-production.up.railway.app/healthz](https://patron-daemon-production.up.railway.app/healthz) |
 | 🔒 **Escrow (Arc mainnet, upgradeable)** | [`0xbdeb…3372`](https://explorer.arc.io/address/0xbdeb44945979a01584fd7d796a71C707D2F83372) — SecureFlow, UUPS proxy |
 | 🌱 **Yield controller** | [`0x92a0…aa37`](https://explorer.arc.io/address/0x92a0C47e819b84069eb95776497421850103aa37) |
-| 🌐 **Third-party view** | [secureflow-arc.vercel.app/jobs](https://secureflow-arc.vercel.app/jobs) — the same jobs on an interface I don't control |
+| 🌐 **Third-party view** | [secureflow.work/jobs](https://secureflow.work/jobs) — the same jobs on an interface I don't control |
 
 ---
 
@@ -524,7 +524,7 @@ USDC is the native gas token on both. The ERC-20 interface lives at
 
 ### What a judge can verify without trusting us
 
-- Open any commission on [SecureFlow's own dApp](https://secureflow-arc.vercel.app/jobs) — a
+- Open any commission on [SecureFlow's own dApp](https://secureflow.work/jobs) — a
   separate application on its own deployment, reading the same contract — and see the
   same job. It is not Patron's UI, so what renders there is the chain rather than our
   rendering of it.

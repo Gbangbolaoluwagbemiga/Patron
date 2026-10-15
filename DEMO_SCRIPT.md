@@ -39,7 +39,7 @@ and the scoring is your strongest technical beat.
       1. `patron-guild.vercel.app` (The Ledger)
       2. `.../jobs/56` (the dispute — your best story)
       3. Arcscan on the SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`
-      4. `secureflow-arc.vercel.app/jobs` — scrolled to the commission you'll show
+      4. `secureflow.work/jobs` — scrolled to the commission you'll show
       5. Telegram, Patron bot open — with a real job notification visible in the chat
       6. Terminal, in `demo/` or wherever the buyer agent lives
 - [ ] Treasury has funds. Check the Ledger header reads a non-zero balance.
@@ -247,7 +247,7 @@ Judges can tell, and getting caught faking costs more than the beat is worth.
 ### 3:25 – 3:45 · Beat 6 — the trust model, stated plainly
 
 **SHOW:** Arcscan on the SecureFlow contract. Then switch to
-`secureflow-arc.vercel.app/jobs` and find the same commission.
+`secureflow.work/jobs` and find the same commission.
 
 **SAY:**
 

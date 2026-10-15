@@ -119,7 +119,7 @@ own model.
 | Cost to build | the layer above | ~40 LOC — already works via SecureFlow's own dApp |
 
 Mode B costs almost nothing *because of the noticeboard property*: a crypto-native
-freelancer can already apply through `secureflow-arc.vercel.app` today and our guild master
+freelancer can already apply through `secureflow.work` today and our guild master
 scores them identically. Graduation is `/withdraw` then `/switch-to-own-wallet`.
 
 **Say the testnet caveat before a judge does:** this is testnet USDC. Levels 1–2 (leave it,

@@ -35,7 +35,7 @@ import {
   type IconComponent,
 } from "./Icon";
 
-const SECUREFLOW_JOBS_URL = "https://secureflow-arc.vercel.app/jobs";
+const SECUREFLOW_JOBS_URL = "https://secureflow.work/jobs";
 /** The second door. Exported because more than one page needs to point at it. */
 export const TELEGRAM_BOT_URL = "https://t.me/PatronGuildbot";
 
