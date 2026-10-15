@@ -2986,3 +2986,10 @@ body {
   margin-top: 10px; font-size: 12px; opacity: 0.62; line-height: 1.55;
   border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 10px;
 }
+
+/* The connect error belongs beside the connect button, not at the foot of the
+   card — see the comment at its render site. */
+.treasury-connect-error {
+  margin-top: 8px; max-width: 320px; text-align: right;
+  font-size: 12px; line-height: 1.5; color: #e9a1a1;
+}

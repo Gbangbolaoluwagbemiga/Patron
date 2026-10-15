@@ -670,9 +670,21 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
           {!hasInjectedWallet() ? (
             <div className="treasury-fund-label">No browser wallet detected — send funds to the address instead.</div>
           ) : !address ? (
-            <button className="treasury-connect-btn" onClick={connect} disabled={connecting}>
-              {connecting ? "Connecting…" : "Connect Wallet"}
-            </button>
+            <>
+              <button className="treasury-connect-btn" onClick={connect} disabled={connecting}>
+                {connecting ? "Connecting…" : "Connect Wallet"}
+              </button>
+              {/*
+                THE MESSAGE HAS TO BE WHERE THE CLICK WAS.
+                This error was rendered once, at the BOTTOM of this component,
+                while the button sits at the top-right of the card — so a
+                connect that failed in 23ms with a perfectly good explanation
+                ("your wallet already has a request pending") scrolled off
+                screen, and the button read as dead. A diagnostic was needed to
+                discover a message the app already had.
+              */}
+              {error && <div className="treasury-connect-error">⚠ {error}</div>}
+            </>
           ) : (
             <div className="wallet-chip">
               <span className="dot live" />

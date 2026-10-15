@@ -54,7 +54,10 @@ export function describeWalletError(err: unknown): string {
     case "ACTION_REJECTED":
       return "You cancelled the request in your wallet — nothing was sent.";
     case -32002:
-      return "Your wallet already has a pending request. Open the extension and finish or dismiss it, then try again.";
+      return (
+        `${walletName()} already has a connection request waiting from an earlier click. ` +
+        `Open the extension, approve or dismiss it, and then try again — nothing here will work until that one is cleared.`
+      );
     case 4900:
     case 4901:
       return "Your wallet isn't connected to a network. Unlock it and try again.";
@@ -76,6 +79,25 @@ export function describeWalletError(err: unknown): string {
     /* circular */
   }
   return "Your wallet returned an error with no details.";
+}
+
+/**
+ * Which wallet window.ethereum actually resolved to.
+ *
+ * Worth naming, because several can be installed at once — this machine
+ * announced Rabby, Core, MetaMask and Phantom over EIP-6963 — and only ONE of
+ * them wins the window.ethereum slot. "Open your wallet" is unhelpful advice
+ * when you have four; "open Rabby" is the whole answer.
+ */
+export function walletName(): string {
+  const p = getInjectedProvider() as (Eip1193Provider & Record<string, boolean>) | null;
+  if (!p) return "Your wallet";
+  if (p.isRabby) return "Rabby";
+  if (p.isMetaMask) return "MetaMask";
+  if (p.isCoinbaseWallet) return "Coinbase Wallet";
+  if (p.isBraveWallet) return "Brave Wallet";
+  if (p.isPhantom) return "Phantom";
+  return "Your wallet";
 }
 
 export function hasInjectedWallet(): boolean {

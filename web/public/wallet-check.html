@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wallet check</title>
+<style>
+ body{font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b0b0d;color:#e8e6e3;padding:24px;max-width:760px;margin:0 auto}
+ h1{font-size:18px;margin:0 0 16px} .row{padding:8px 0;border-bottom:1px solid #222;display:flex;gap:12px}
+ .k{min-width:230px;color:#9b968f} .v{word-break:break-all}
+ .ok{color:#76c48b} .bad{color:#e06c6c} .warn{color:#e0c56c}
+ button{margin-top:18px;padding:10px 18px;font:inherit;background:#e8c87a;border:0;border-radius:8px;cursor:pointer}
+ pre{background:#141418;padding:12px;border-radius:8px;white-space:pre-wrap;margin-top:14px}
+</style></head><body>
+<h1>Patron — wallet diagnostic</h1>
+<div id="out"></div>
+<button id="go">Run eth_requestAccounts</button>
+<pre id="log">Click the button and copy everything on this page back to Claude.</pre>
+<script>
+const out=document.getElementById('out'), log=document.getElementById('log');
+const row=(k,v,cls)=>{const d=document.createElement('div');d.className='row';
+  d.innerHTML=`<div class="k">${k}</div><div class="v ${cls||''}">${v}</div>`;out.appendChild(d);};
+const eth=window.ethereum;
+row('window.ethereum present', eth?'YES':'NO', eth?'ok':'bad');
+if(eth){
+  row('isMetaMask', String(!!eth.isMetaMask), eth.isMetaMask?'ok':'warn');
+  row('isCoinbaseWallet', String(!!eth.isCoinbaseWallet));
+  row('isRabby', String(!!eth.isRabby));
+  row('isBraveWallet', String(!!eth.isBraveWallet));
+  row('has .request()', String(typeof eth.request==='function'), typeof eth.request==='function'?'ok':'bad');
+  row('providers[] count', eth.providers?String(eth.providers.length):'(none — single provider)');
+  row('selectedAddress', eth.selectedAddress||'(null)');
+  row('chainId (cached)', eth.chainId||'(none)');
+  try{ row('constructor', eth.constructor?.name||'?'); }catch(e){}
+}
+row('EIP-6963 announce', 'listening…','warn');
+const found=[];
+window.addEventListener('eip6963:announceProvider', e=>{
+  found.push(e.detail?.info?.name||'?');
+  row('EIP-6963 wallet', `${e.detail?.info?.name} (${e.detail?.info?.rdns})`,'ok');
+});
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+setTimeout(()=>{ if(!found.length) row('EIP-6963 result','none announced','bad'); },800);
+
+document.getElementById('go').onclick=async()=>{
+  if(!eth){ log.textContent='window.ethereum is undefined — no wallet is injected into this page.'; return; }
+  log.textContent='calling eth_requestAccounts … (if nothing happens, your extension is not responding)';
+  const t0=Date.now();
+  try{
+    const a=await eth.request({method:'eth_requestAccounts'});
+    log.textContent=`RESOLVED in ${Date.now()-t0}ms\naccounts: ${JSON.stringify(a)}`;
+  }catch(err){
+    log.textContent=`REJECTED in ${Date.now()-t0}ms\ncode: ${err&&err.code}\nmessage: ${err&&err.message}\nraw: ${JSON.stringify(err,Object.getOwnPropertyNames(err||{})).slice(0,400)}`;
+  }
+};
+</script></body></html>
