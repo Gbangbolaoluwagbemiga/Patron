@@ -106,19 +106,97 @@ export interface Quest {
   closesAt: number;
   /** Only set when a worker was supplied — lets a surface hide "Apply" on ones they've taken. */
   alreadyApplied?: boolean;
+  /**
+   * Who reviews the work and releases the money.
+   *
+   * "patron" means this agent opened the escrow and will judge the delivery.
+   * "client" means somebody else did — the job is real and applying to it is
+   * real, but a human on the other side decides, not Patron. Saying which is
+   * the difference between a board and a claim we cannot keep.
+   */
+  managedBy: "patron" | "client";
 }
 
 /** Open commissions, optionally marked up for one worker. */
-export function openQuests(): Quest[] {
-  return store
-    // Same reason as the poller's window: open jobs are filtered out of the
-    // most-recent N, so N has to outrun the finished ones stacking up in front.
-    .listTasks(300)
-    .filter((t) => t.status === "posted" && t.escrowId && t.briefJson)
-    .map((t) => {
+/**
+ * Every job a human can actually apply to, asked of the CONTRACT.
+ *
+ * This read our own task table and filtered on status === "posted". Two real,
+ * funded, open commissions were sitting on Arc mainnet — $0.30 between them —
+ * while the board told every visitor "No open commissions at this moment",
+ * because neither had a row in this database. Same mistake as asking our own
+ * database which escrows exist: the chain is the thing that knows.
+ *
+ * It also meant a job posted on SecureFlow's own dApp was invisible here, which
+ * quietly contradicts the claim that these are the same jobs on two interfaces.
+ *
+ * The database is still used, for what it is actually good at: the brief. The
+ * contract stores a title and a description; our row stores the acceptance
+ * criteria, the milestone wording and the application window. So the chain
+ * decides WHICH jobs exist and the row enriches the ones it knows about.
+ */
+/**
+ * The board, cached.
+ *
+ * Reading it costs one nextEscrowId plus a getEscrow per escrow, and this is a
+ * PUBLIC endpoint — every visitor to /work, every Telegram /jobs, every poll of
+ * the page. Doing that per request is a self-inflicted denial of service: the
+ * public Arc RPC rate-limits by IP, and with a poller running alongside it the
+ * reads started failing with "Request exceeds defined limit", which emptied the
+ * board for everyone.
+ *
+ * Thirty seconds is longer than a person refreshes and far shorter than the
+ * minutes an application window runs for, so nothing a worker can act on is
+ * ever stale enough to matter.
+ */
+let boardCache: { at: number; quests: Quest[] } | null = null;
+const BOARD_TTL_MS = 30_000;
+
+export async function openQuests(): Promise<Quest[]> {
+  if (boardCache && Date.now() - boardCache.at < BOARD_TTL_MS) return boardCache.quests;
+
+  const byEscrow = new Map<string, store.TaskRow>();
+  for (const t of store.listTasks(300)) {
+    if (t.escrowId && t.briefJson && store.isOnCurrentChain(t)) byEscrow.set(t.escrowId, t);
+  }
+
+  /*
+   * A FLICKER MUST NOT EMPTY THE BOARD.
+   *
+   * This returned [] the moment nextEscrowId() threw, and the public Arc RPC
+   * rate-limits under load — two daemons and a script were enough. The visible
+   * result is "No open commissions at this moment" shown to a freelancer while
+   * funded work sits on chain, which is indistinguishable from there being no
+   * work, and they leave.
+   *
+   * So: retry once, and if the chain still will not answer, fall back to the
+   * rows we do have rather than to silence. A slightly stale board is a far
+   * better lie than an empty one — and it is the same board this function
+   * returned before it learned to read the chain at all.
+   */
+  let next: bigint | null = null;
+  for (let attempt = 0; attempt < 2 && next === null; attempt++) {
+    try {
+      next = await secureflow.nextEscrowId();
+    } catch (err) {
+      console.warn(`[quests] nextEscrowId attempt ${attempt} failed:`, (err as Error)?.message?.split("\n")[0]?.slice(0, 160));
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 750));
+    }
+  }
+
+  if (next === null) {
+    // A stale board beats an empty one: the jobs it lists were real 30 seconds
+    // ago and are almost certainly still open.
+    if (boardCache) {
+      console.warn("[quests] chain unreadable — serving the last good board");
+      return boardCache.quests;
+    }
+    console.warn("[quests] chain unreadable — serving the board from local rows only");
+    return [...byEscrow.values()].flatMap((t) => {
       const brief = JSON.parse(t.briefJson as string);
+      if (t.status !== "posted") return [];
       const windowMinutes = (brief.applicationWindowMinutes as number | undefined) ?? config.applicationWindowMinutes;
-      return {
+      return [{
         escrowId: t.escrowId as string,
         title: brief.title as string,
         budget: brief.budget as number,
@@ -126,8 +204,76 @@ export function openQuests(): Quest[] {
         criteria: (brief.criteria ?? []) as string[],
         milestones: (brief.milestones ?? []) as { description: string; amount: number }[],
         closesAt: t.createdAt + windowMinutes * 60_000,
-      };
+        managedBy: "patron" as const,
+      }];
     });
+  }
+
+  const treasury = config.circleWalletAddress.toLowerCase();
+  const quests: Quest[] = [];
+
+  for (let id = 0n; id < next; id++) {
+    let esc: {
+      depositor?: string;
+      beneficiary?: string;
+      totalAmount?: bigint;
+      deadline?: bigint;
+      status?: number | bigint;
+      isOpenJob?: boolean;
+      projectTitle?: string;
+    };
+    try {
+      esc = (await secureflow.getEscrow(id)) as typeof esc;
+    } catch {
+      continue; // deleted or never existed — not an open job either way
+    }
+
+    // The contract's own definition of "a human may apply to this": open to
+    // applications, nobody hired, still Pending, and actually holding money.
+    const open =
+      esc?.isOpenJob === true &&
+      (esc.beneficiary ?? "").toLowerCase() === "0x0000000000000000000000000000000000000000" &&
+      Number(esc.status ?? -1) === 0 &&
+      (esc.totalAmount ?? 0n) > 0n;
+    if (!open) continue;
+
+    const key = String(id);
+    const row = byEscrow.get(key);
+    const brief = row?.briefJson ? (JSON.parse(row.briefJson) as Record<string, unknown>) : null;
+    const windowMinutes = (brief?.applicationWindowMinutes as number | undefined) ?? config.applicationWindowMinutes;
+
+    let milestones = (brief?.milestones ?? []) as { description: string; amount: number }[];
+    if (!milestones.length) {
+      // No local brief — take the stages from the contract so a worker still
+      // sees how the money is split rather than one opaque figure.
+      try {
+        const ms = (await secureflow.getMilestones(id)) as { amount: bigint; requirements: string; description: string }[];
+        milestones = ms.map((m) => ({
+          description: m.requirements || m.description || "Deliverable",
+          amount: Number(m.amount) / 1e6,
+        }));
+      } catch {
+        /* leave it empty — better than inventing stages */
+      }
+    }
+
+    const deadlineMs = Number(esc.deadline ?? 0n) * 1000;
+    quests.push({
+      escrowId: key,
+      title: (brief?.title as string) || esc.projectTitle || `Commission #${key}`,
+      budget: Number(esc.totalAmount ?? 0n) / 1e6,
+      durationDays: (brief?.durationDays as number) ?? Math.max(1, Math.round((deadlineMs - Date.now()) / 86_400_000)),
+      criteria: (brief?.criteria ?? []) as string[],
+      milestones,
+      // A local row knows when applications close; a chain-only job has only a
+      // delivery deadline, which is the honest upper bound on applying.
+      closesAt: row ? row.createdAt + windowMinutes * 60_000 : deadlineMs,
+      managedBy: (esc.depositor ?? "").toLowerCase() === treasury ? "patron" : "client",
+    });
+  }
+
+  boardCache = { at: Date.now(), quests };
+  return quests;
 }
 
 /**
@@ -139,7 +285,7 @@ export function openQuests(): Quest[] {
  */
 export async function openQuestsFor(workerId: string): Promise<Quest[]> {
   const worker = store.getWorker(workerId);
-  const quests = openQuests();
+  const quests = await openQuests();
   if (!worker?.walletAddress) return quests;
   const address = worker.walletAddress as `0x${string}`;
   return Promise.all(

@@ -893,7 +893,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/worker/quests") {
-    return json(res, 200, workers.openQuests());
+    return json(res, 200, await workers.openQuests());
   }
 
   /**
