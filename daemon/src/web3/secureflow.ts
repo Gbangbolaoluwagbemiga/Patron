@@ -45,6 +45,30 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
+/**
+ * The shared read client and chain, exposed so the yield controller module can
+ * talk to its own contract without opening a second connection or duplicating
+ * the network config. Both are derived from the same env as everything here,
+ * which is the point: one place decides which chain this process is on.
+ */
+export function client(): PublicClient {
+  return getPublicClient();
+}
+
+export function chain() {
+  return arcTestnet;
+}
+
+/** One read against the SecureFlow contract, by function name. */
+export async function readContract(functionName: string, args: unknown[] = []): Promise<unknown> {
+  return getPublicClient().readContract({
+    address: config.secureflowAddress,
+    abi,
+    functionName,
+    args,
+  });
+}
+
 export interface CreateEscrowParams {
   totalAmount: bigint; // in USDC base units (6 decimals)
   durationDays: bigint;

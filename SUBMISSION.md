@@ -112,13 +112,26 @@ this market is real and the demand side is where the work is.
 What is real: the escrow is live on Arc mainnet and upgradeable, real USDC has
 been paid to real people, and the agent has run unattended for a month.
 
-What is not yet real: **escrowed funds are not currently earning.** The yield
-controller is deployed and attached, the opt-in path works and two mainnet
-escrows have opted in — but no venue is attached, because there is not a usable
-one on Arc mainnet today. Uniswap v4 and Aave are not deployed there, and USYC
-is permissioned with a $100,000 minimum and zero supply on Arc. Saying the money
-yields when the adapter slot is `address(0)` would be a lie told about money
-contractors are counting on, so the UI says it is not earning.
+What is real but unproven: **escrowed funds can earn, and none has yet.** The
+yield controller `0x92a0…aa37` is attached to the escrow in both directions,
+with an **Aave v4 adapter** at `0x65317ec4…01Fe` holding reserve 0 against
+**35.1M USDC of available liquidity** on Arc mainnet. The opt-in path works and
+two mainnet escrows have taken it. The freelancer's share of whatever is earned
+is 60%.
+
+What has not happened is a single cent actually being deployed, and the contract
+is right to refuse. An open job is refundable in full by `cancelJob` at any
+instant, so its investable ceiling is exactly zero until a freelancer is
+assigned — the cap is derived from the largest claim that could arrive next, not
+from a percentage. So yield begins at the moment someone is hired, and every
+escrow that has opted in so far either finished or is still open.
+
+We checked this the wrong way first, and the mistake is worth stating because it
+is the one this whole system is built against: the adapter map is keyed by
+token, we read `yieldAdapter(address(0))` on the reasoning that USDC is Arc's
+native asset, got a zero, and concluded there was no venue. SecureFlow files
+USDC under the ERC-20 precompile `0x3600…`. The lookup answered a different
+question than the one asked and returned a plausible zero.
 
 What is taken on trust: taste, originality and licensing cannot be checked from
 bytes. Those are taken at the contractor's word, marked as such, and backed by

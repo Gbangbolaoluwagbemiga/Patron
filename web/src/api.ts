@@ -52,6 +52,7 @@ export function stageForEventType(type: string): Stage | null {
     case "brief_generated":
       return "brief";
     case "job_posted":
+    case "yield_opted_in":
       return "escrow";
     case "applications_fetched":
     case "application_scored":

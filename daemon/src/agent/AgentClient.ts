@@ -20,6 +20,8 @@ import type { AcceptanceBrief, AgentDecision, Application } from "../web3/types.
 import { graphQuery, isGraphConfigured } from "../graph/client.js";
 import { GET_JOB_APPLICATIONS, type GQLApplication } from "../graph/queries.js";
 import * as secureflow from "../web3/secureflow.js";
+import * as yieldController from "../web3/yield.js";
+import { createCircleSigner } from "../circle/circleSigner.js";
 import type { PatronGateway } from "../circle/gateway.js";
 import { config } from "../config.js";
 import * as store from "../store.js";
@@ -28,6 +30,7 @@ import { parseUnits } from "viem";
 export type AgentEventType =
   | "brief_generated"
   | "job_posted"
+  | "yield_opted_in"
   | "applications_fetched"
   | "application_scored"
   | "applicant_accepted"
@@ -111,6 +114,43 @@ export class AgentClient {
       counterparty: "SecureFlow escrow",
       title: brief.title,
     });
+
+    /*
+     * Put the locked budget to work while it waits, and give most of the return
+     * to whoever takes the job.
+     *
+     * This is a decision about someone else's money, so it is made once, in the
+     * open, and can never be taken back — the contract enforces that
+     * (ChoiceAlreadyMade), and the window closes the moment work starts. Doing
+     * it here is the only place it CAN be done: the escrow is still Pending and
+     * nobody is relying on the terms yet.
+     *
+     * It changes nothing about safety. The controller will not lend a cent of
+     * an open job, because cancelJob can refund it in full at any instant — the
+     * ceiling is derived from the largest claim that could arrive next, so
+     * capital only goes to work once a freelancer is actually assigned.
+     *
+     * Deliberately non-fatal. A commission whose money is correctly locked is a
+     * success even if it never earns a cent; failing the job over a failed
+     * opt-in would trade the thing that matters for the bonus.
+     */
+    try {
+      const optInTx = await yieldController.optIn(escrowId, createCircleSigner());
+      if (optInTx) {
+        const state = await yieldController.yieldState(escrowId);
+        this.emit(
+          "yield_opted_in",
+          state.canEarn
+            ? `Budget opted into yield while it waits. ${state.freelancerSharePct}% of anything earned goes to the freelancer. ` +
+              `Nothing is lent until someone is hired — an open job is refundable in full.`
+            : `Budget opted into yield, but no venue is attached, so it will earn nothing for now.`,
+          { escrowId: escrowId.toString(), txHash: optInTx, counterparty: "SecureFlow yield controller" },
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[agent] could not opt escrow ${escrowId} into yield: ${msg.split("\n")[0]}`);
+    }
 
     return { brief, escrowId };
   }

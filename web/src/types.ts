@@ -32,6 +32,7 @@ export interface PaymentRow {
 export type AgentEventType =
   | "brief_generated"
   | "job_posted"
+  | "yield_opted_in"
   | "applications_fetched"
   | "application_scored"
   | "applicant_accepted"

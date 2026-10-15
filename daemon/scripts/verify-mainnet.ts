@@ -104,19 +104,49 @@ if (hasController) {
   const backRef = await y("escrow");
   t("controller points back at this escrow", String(backRef).toLowerCase() === SF.toLowerCase(), String(backRef));
 
+  /*
+   * ASK UNDER THE KEY THE ESCROWS ACTUALLY USE.
+   *
+   * The adapter map is keyed by token. This checked address(0) only, reasoning
+   * that USDC is Arc's native asset — and so reported "NO VENUE, nothing can
+   * earn" about a controller that has had an Aave v4 adapter attached the whole
+   * time. SecureFlow records USDC as the ERC-20 precompile (0x3600...), so that
+   * is the key its escrows are filed under; the zero key is empty.
+   *
+   * Exactly the shape of mistake this file exists to catch: a lookup that
+   * answers a different question than the one asked and returns a plausible
+   * zero. Both keys are read now, and the one in use is named.
+   */
   const NATIVE = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-  const adapter = await y("yieldAdapter", [NATIVE]);
-  const deployed = await y("deployedAssets", [NATIVE]);
+  const [adapterErc, adapterNative] = await Promise.all([y("yieldAdapter", [USDC]), y("yieldAdapter", [NATIVE])]);
+  const live = [
+    { key: "ERC-20 USDC (0x3600…)", addr: adapterErc as string | undefined, token: USDC as `0x${string}` },
+    { key: "native (address(0))", addr: adapterNative as string | undefined, token: NATIVE },
+  ].find((c) => !!c.addr && c.addr !== NATIVE);
+
+  const deployed = live ? await y("deployedAssets", [live.token]) : undefined;
   const share = await y("freelancerShareBP");
-  const hasVenue = !!adapter && adapter !== NATIVE;
-  console.log(`
-  yield controller ${controller}`);
-  console.log(`        venue (native)   : ${hasVenue ? adapter : "address(0) — NO VENUE, nothing can earn"}`);
-  console.log(`        deployed assets  : ${deployed === undefined ? "?" : formatUnits(deployed as bigint, 6)} USDC`);
+  console.log(`\n  yield controller ${controller}`);
+  console.log(`        venue            : ${live ? `${live.addr}  (keyed by ${live.key})` : "none under either token key"}`);
+  console.log(`        deployed assets  : ${deployed === undefined ? "0" : formatUnits(deployed as bigint, 6)} USDC`);
   console.log(`        freelancer share : ${share === undefined ? "?" : Number(share) / 100}%`);
-  // Deliberately NOT a failure. No venue is the correct, honest state on a chain
-  // that has none worth using — the failure would be claiming otherwise.
-  console.log(`        ${hasVenue ? "escrows CAN earn" : "escrows cannot earn yet — do not claim yield anywhere in the UI or docs"}`);
+  t("a yield venue is attached", !!live, live ? "escrowed funds can earn" : "nothing can earn — do not claim yield in the UI or docs");
+
+  if (live?.addr) {
+    const vAbi = [
+      { type: "function", name: "availableLiquidity", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+      { type: "function", name: "totalAssets", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+      { type: "function", name: "vault", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+    ] as const;
+    const vr = async (fn: "availableLiquidity" | "totalAssets" | "vault") => {
+      try { return await pc.readContract({ address: live.addr as `0x${string}`, abi: vAbi, functionName: fn }); } catch { return undefined; }
+    };
+    const [liq, held, boundTo] = await Promise.all([vr("availableLiquidity"), vr("totalAssets"), vr("vault")]);
+    console.log(`        venue liquidity  : ${liq === undefined ? "?" : formatUnits(liq as bigint, 6)} USDC`);
+    console.log(`        our position     : ${held === undefined ? "?" : formatUnits(held as bigint, 6)} USDC`);
+    // A venue answering to a different controller could not return our money.
+    t("venue is bound to this controller", String(boundTo).toLowerCase() === String(controller).toLowerCase(), String(boundTo));
+  }
 }
 
 if (TREASURY) {

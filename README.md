@@ -62,7 +62,10 @@ Built for the **Tameion Agents Hackathon** (Canteen × Circle × Arc).
   against liquidity, pays for services inside a spend cap, logs its reasoning,
   escalates to a human only at a threshold.
 - **RFB 01 — Intelligent Business Treasury**: idle escrow is put to work through
-  the yield controller above, and unwound when an obligation comes due.
+  the yield controller above — an **Aave v4 adapter on Arc mainnet** with 35.1M
+  USDC of available liquidity — and unwound when an obligation comes due, with
+  60% of what is earned going to the contractor. Nothing is deployed while a job
+  is still open, because an open job is refundable in full at any instant.
 
 ## What has actually happened
 
