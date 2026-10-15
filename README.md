@@ -1,39 +1,84 @@
 # Patron
 
-**The human-labor endpoint of the agent economy.**
+**An AI agent that runs a company's contractor spend.** It holds the budget in
+USDC, writes the brief, screens applicants, reviews what comes back, pays on
+delivery, and leaves an audit trail of every decision it made about the money.
+
+Settled on [Arc](https://arc.io) — Circle's stablecoin-native L1 — on escrow
+rails I built and deployed myself.
 
 | | |
 |---|---|
 | 🖥️ **Command center** | **[patron-guild.vercel.app](https://patron-guild.vercel.app)** — live data, no login |
-| 🙋 **Get hired (no wallet needed)** | **[patron-guild.vercel.app/work](https://patron-guild.vercel.app/work)** |
-| 💬 **Telegram** | **[@PatronGuildbot](https://t.me/PatronGuildbot)** — `/start` to join the guild |
-| ⚙️ **Daemon API** | [patron-daemon-production.up.railway.app](https://patron-daemon-production.up.railway.app) |
-| 🔍 **Escrow contract** | [`0x6142…ab59` on Arcscan](https://testnet.arcscan.app/address/0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59) |
-| 🌐 **Third-party view** | [secureflow-arc.vercel.app/jobs](https://secureflow-arc.vercel.app/jobs) — our jobs on an interface we don't control |
-
-> **Try it in 20 seconds:** open [/work](https://patron-guild.vercel.app/work) or the bot, type a
-> name, and you are a freelancer with a real on-chain wallet who can apply to a funded job.
-> No install, no extension, no seed phrase.
-
-
-Circle's Agent Marketplace already lets AI agents pay for 41 services — every one of them a machine (data, inference, voice, analytics). When an agent needs work only a human can do — a logo with taste, a voiceover with warmth, an article with a soul — there is no shop. **Patron is that shop.**
-
-> AI agents pay Patron via x402. Patron hires, manages, and pays real humans through on-chain escrow. Machines paying machines paying humans — no human approval step, and no way for any machine in the chain to steal.
-
-Built for the **Encode Programmable Money Hackathon — Agentic Economy Track**.
+| 🙋 **Take a paid job (no wallet needed)** | **[patron-guild.vercel.app/work](https://patron-guild.vercel.app/work)** |
+| 💬 **Telegram** | **[@PatronGuildbot](https://t.me/PatronGuildbot)** — `/start` |
+| ⚙️ **Daemon API** | [patron-daemon-production.up.railway.app/healthz](https://patron-daemon-production.up.railway.app/healthz) |
+| 🔒 **Escrow (Arc mainnet, upgradeable)** | [`0xbdeb…3372`](https://explorer.arc.io/address/0xbdeb44945979a01584fd7d796a71C707D2F83372) — SecureFlow, UUPS proxy |
+| 🌱 **Yield controller** | [`0x92a0…aa37`](https://explorer.arc.io/address/0x92a0C47e819b84069eb95776497421850103aa37) |
+| 🌐 **Third-party view** | [secureflow-arc.vercel.app/jobs](https://secureflow-arc.vercel.app/jobs) — the same jobs on an interface I don't control |
 
 ---
 
-## The idea, as a guild
+## The problem
 
-| Role | Who |
+A business with contractors has the same loop every time: decide what's needed,
+find someone, judge whether they can do it, check the work, release the money,
+remember whether they were any good. Every step needs a person, and the money
+sits idle in an account the whole time.
+
+Finance tools automate the *payment*. They do not make the *decision*. Someone
+still reads the proposal, still forms a view on the deliverable, still decides
+whether this invoice gets paid today. That judgement is the work, and it is the
+part nobody has automated — because to automate it you have to be willing to let
+software move money on its own conclusion.
+
+**Patron is willing.** And the reason that is safe is the second half of the
+build: it can release the escrow to the contractor, and it can never route the
+escrow to itself. Not by bug, not by prompt injection, not by operator error.
+The contract will not let it.
+
+## What it actually decides
+
+Not "automates" — decides, and writes down why:
+
+| Decision | What it weighs |
 |---|---|
-| 🏰 Quest givers | AI agents (any framework). Humans can walk in too. |
-| ⚔️ Adventurers | Human freelancers — apply, work, get paid in USDC. |
-| 🧙 Guild master | An LLM brain — writes the brief, picks the applicant, inspects the work, releases payment. Built on Anthropic's structured-output API; currently running on Groq (`llama-3.3-70b-versatile`) while the Anthropic account's billing gets sorted — same zod schemas, same injection defenses, one provider swapped for another with zero business-logic changes. |
-| 🔒 The vault | [SecureFlow](https://testnet.arcscan.app/address/0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59) escrow on Arc — funds locked from moment one. |
+| **What the job is** | Turns a sentence of intent into a brief with acceptance criteria and priced milestones |
+| **Who gets hired** | Scores every applicant comparatively on capability, brief fit, timeline and on-chain history — and declines to hire when nobody is good enough (it has done this 11 times) |
+| **Whether the work passes** | Fetches and inspects the actual deliverable, judges it against the criteria it wrote, and will not approve a submission with no artifact — on any model |
+| **Whether to pay, revise, or escalate** | Releases, requests a revision with written feedback, or hands the call to a human arbiter at the policy threshold |
+| **What the contractor is worth next time** | Writes a rating to the contract after payout, so the next hiring decision is informed by the last one |
 
-**The one-way key:** the guild master can pay the adventurer. It can never pocket the gold. Rejection triggers a revision round with written feedback, not theft — and after max revisions, a human arbiter steps in via SecureFlow's dispute system.
+Every one of those is a row in the public ledger with its reasoning attached.
+
+## Requests for Builders
+
+Built for the **Tameion Agents Hackathon** (Canteen × Circle × Arc).
+
+- **RFB 03 — Contractor & Vendor Network Manager** *(primary)*: milestone
+  payments tied to completed work, contractors scored on delivery, screened at
+  onboarding, and matched to new needs from on-chain reputation.
+- **RFB 04 — Autonomous Business Operator**: holds USDC, weighs obligations
+  against liquidity, pays for services inside a spend cap, logs its reasoning,
+  escalates to a human only at a threshold.
+- **RFB 01 — Intelligent Business Treasury**: idle escrow is put to work through
+  the yield controller above, and unwound when an obligation comes due.
+
+## What has actually happened
+
+Measured from the production daemon, not estimated:
+
+| | |
+|---|---|
+| USDC locked into escrow | **$121.70** across 29 jobs |
+| USDC paid out to humans | **$17.00** |
+| Jobs completed | **10** |
+| Agent decisions logged | **100** — 39 applicant scorings, 8 hires, 7 rejections, 3 disputes resolved |
+| Daemon uptime | 27 days continuous |
+
+The escrow rails are live on Arc mainnet. The trading record above was built on
+Arc testnet, where the agent has been running unattended for a month; the
+agent's own treasury wallet is mid-migration to mainnet.
 
 ---
 
@@ -130,7 +175,7 @@ model:
 > Their money is fully theirs and fully extractable. The key is not extractable by anyone.
 
 **Mode B — bring your own wallet** costs almost nothing and is always available: a
-crypto-native freelancer applies through SecureFlow's own dApp and the guild master scores
+crypto-native freelancer applies through SecureFlow's own dApp and the agent scores
 them identically. `/withdraw` then `/switch-to-own-wallet` is the graduation path, so
 managed mode is a ramp rather than a trap.
 
@@ -205,7 +250,7 @@ Everything the command center and both worker doors run on.
 | `POST` | `/api/hire` | **x402-gated.** How an AI agent commissions work. Returns 402 until paid. |
 | `POST` | `/api/instruct` | The human/unguarded front door — same pipeline, no fee. |
 | `GET` | `/api/tasks` | Every commission and its status. |
-| `GET` | `/api/decisions` | The guild master's reasoning, verbatim. |
+| `GET` | `/api/decisions` | The agent's reasoning, verbatim. |
 | `GET` | `/api/payments` | Every real movement of money, with tx hashes. |
 | `GET` | `/api/wallet` | Treasury address + live balance. |
 | `GET` | `/api/ratings?addresses=` | On-chain ratings, read from the contract. |
@@ -312,7 +357,7 @@ were designed up front. They are listed honestly as such.
 | x402 buy side | `GatewayClient` + `BatchEvmScheme` from `@circle-fin/x402-batching/client` |
 | Agent wallet | Circle MPC wallet (`@circle-fin/developer-controlled-wallets`), wrapped as a viem `WalletClient` via a custom EIP-1193 transport — handles arbitrary SecureFlow calldata (arrays, strings) exactly like a hot wallet |
 | Chain writes | SecureFlow ABI via the Agent Wallet's `writeContract` — `createEscrow` / `acceptFreelancer` / `approveMilestone` / `rejectMilestone` / `disputeMilestone` |
-| AI decisions | Structured outputs, zod-validated both ways. Built for Anthropic (`output_config.format` + `client.messages.parse()`); **currently running on Groq** (`groq-sdk`, `llama-3.3-70b-versatile`) via a matching `groqStructured()` helper (`daemon/src/groq/structured.ts`) — same schemas, same prompts, same injection defenses, different vendor. Swap-back to Anthropic is a one-line change per call site once billing is sorted. |
+| AI decisions | Structured outputs, zod-validated both ways. Built for Anthropic (`output_config.format` + `client.messages.parse()`); **currently running on Groq** (`groq-sdk`, `openai/gpt-oss-120b`, falling back to `openai/gpt-oss-20b`) via a matching `groqStructured()` helper (`daemon/src/groq/structured.ts`) — same schemas, same prompts, same injection defenses, different vendor. Swap-back to Anthropic is a one-line change per call site once billing is sorted. |
 | Data | SecureFlow GoldSky subgraph v3 (read), `node:sqlite` for daemon state + payment feed |
 | Frontend | React + Vite, multi-page (React Router), hand-built CSS — no component library, no Tailwind. Fraunces + IBM Plex Mono + Inter. See **The command center** above. |
 
@@ -434,7 +479,18 @@ npm run deposit -- 0.5  # deposits into Circle's GatewayWallet — x402 settleme
 npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 ```
 
-**Chain facts (Arc Testnet):** chain ID `5042002` · RPC `https://rpc.drpc.testnet.arc.network` · Explorer `https://testnet.arcscan.app` · SecureFlow contract `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59`.
+**Chain facts.**
+
+| | Arc mainnet | Arc testnet |
+|---|---|---|
+| Chain ID | `5042` | `5042002` |
+| RPC | `https://rpc.mainnet.arc.io` | `https://rpc.testnet.arc.io` |
+| Explorer | `https://explorer.arc.io` | `https://explorer.testnet.arc.io` |
+| SecureFlow | `0xbdeb44945979a01584fd7d796a71C707D2F83372` (UUPS proxy) | `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59` |
+| Yield controller | `0x92a0C47e819b84069eb95776497421850103aa37` | — |
+
+USDC is the native gas token on both. The ERC-20 interface lives at
+`0x3600000000000000000000000000000000000000` with 6 decimals on either network.
 
 ---
 
@@ -461,7 +517,7 @@ npm run demo -- "I need a logo for my coffee shop, budget \$10, 3 days."
 - ✅ **x402 buy side proven** — `services/portfolio-check/` (its own Circle wallet, deployed to Railway) is a real marketplace service Patron pays over x402 to verify an applicant's track record before hiring. Both directions of the x402 story are now live, not just the sell side.
 - ✅ **A human can be onboarded and paid without touching crypto** — managed Circle MPC wallet provisioned on signup, gas dripped automatically, and `applyToJob` signed *by the worker's own wallet*. Verified on-chain; the application lands on the public subgraph indistinguishable from a crypto-native one. Two doors: `/work` (no install) and [@PatronGuildbot](https://t.me/PatronGuildbot) (native push).
 - ✅ **On-chain reputation** — `submitRating` written to SecureFlow when a job completes, scored from the reviews that actually happened (5 stars clean, one off per revision round), read back from the contract rather than computed by us.
-- ✅ **Dispute path proven live** — deliberately failed a milestone twice on purpose; the guild master rejected with real actionable feedback both times, then escalated to SecureFlow's dispute system with a real on-chain `disputeMilestone` transaction. Found and fixed a real bug in the process (a resubmission after rejection was silently never getting re-reviewed).
+- ✅ **Dispute path proven live** — deliberately failed a milestone twice on purpose; the agent rejected with real actionable feedback both times, then escalated to SecureFlow's dispute system with a real on-chain `disputeMilestone` transaction. Found and fixed a real bug in the process (a resubmission after rejection was silently never getting re-reviewed).
 
 ### What a judge can verify without trusting us
 
