@@ -35,7 +35,21 @@ const { createEIP1193Provider } = nodeRequire(
 export interface CircleSigner {
   readonly address: `0x${string}`;
   signTypedData: (params: {
-    domain: { name: string; version: string; chainId: number; verifyingContract: `0x${string}` };
+    /**
+     * chainId and verifyingContract are OPTIONAL, and in practice omitted.
+     *
+     * This used to require both. Circle's EIP-1193 provider rejects a domain
+     * carrying chainId with "Invalid parameters were provided to the RPC
+     * method", so the shape the type demanded was one the provider refuses —
+     * and the only real caller (gateway.ts, signing Gateway burn intents with
+     * `{ name, version }`) had to cast around its own interface to compile.
+     *
+     * A type that every caller must defeat is not describing the system. The
+     * Gateway burn intent binds its chain through sourceDomain/destinationDomain
+     * inside the message, not through the domain separator, so there is nothing
+     * to add here.
+     */
+    domain: { name: string; version: string; chainId?: number; verifyingContract?: `0x${string}` };
     types: Record<string, Array<{ name: string; type: string }>>;
     primaryType: string;
     message: Record<string, unknown>;

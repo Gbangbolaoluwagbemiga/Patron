@@ -12,3 +12,13 @@ dist/
 
 # Runtime data
 daemon/data/*.db
+
+# Any env file, however it is suffixed.
+#
+# The patterns above covered ".env", ".env.local" and "*.env" — but NOT
+# ".env.testnet.bak", which is exactly the name a cutover backup gets and which
+# carries a live API key and entity secret. One `git add -A` would have pushed
+# it to a public repo. Match the prefix, not a guessed list of suffixes.
+.env*
+!.env.example
+!**/.env.example

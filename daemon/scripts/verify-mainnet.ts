@@ -9,6 +9,7 @@
  * whitelisted (a job silently fails to post if not), and does the treasury hold
  * enough to both pay gas and fund an escrow.
  */
+import "dotenv/config";
 import { createPublicClient, http, formatUnits, formatEther } from "viem";
 import abiJson from "../src/web3/SecureFlowABI.json" with { type: "json" };
 
@@ -127,7 +128,10 @@ if (TREASURY) {
   t("treasury can pay gas", nat > 0n);
   t("treasury can fund a $0.20 job", (bal as bigint) >= 202_000n, `needs ~0.202 incl. the 1% platform fee`);
 } else {
-  console.log("\n  CIRCLE_WALLET_ADDRESS not set — skipping treasury checks.");
+  // A skipped check reads like a passed one in a wall of PASS lines. The whole
+  // point of this script is to be run before money moves, so not knowing
+  // whether the treasury can fund a job is a failure, not a footnote.
+  t("treasury checks ran", false, "CIRCLE_WALLET_ADDRESS not set — cannot tell if the treasury can pay for anything");
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
