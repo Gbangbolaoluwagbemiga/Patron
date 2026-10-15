@@ -1032,12 +1032,16 @@ const server = http.createServer(async (req, res) => {
       const brief = task?.briefJson ? JSON.parse(task.briefJson) : null;
       const planned: { description?: string; amount?: number }[] = Array.isArray(brief?.milestones) ? brief.milestones : [];
 
-      const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId });
-      const onChain = new Map(
-        (result.escrow?.milestones ?? []).map((m) => [Number(m.milestoneIndex), m]),
-      );
+      // Straight from the contract. This endpoint tells a worker what to deliver
+      // and whether their last submission landed; reading it from a subgraph
+      // bound to one deployment meant a daemon pointed anywhere else showed them
+      // somebody else's milestones, or none.
+      const chainMilestones = (await secureflow
+        .getMilestones(BigInt(escrowId))
+        .catch(() => [])) as ChainMilestone[];
+      const onChain = new Map(chainMilestones.map((m, i) => [i, m]));
 
-      const STATUS = ["awaiting delivery", "delivered — under review", "accepted and paid", "revision requested", "disputed", "resolved"];
+      const STATUS = ["awaiting delivery", "delivered — under review", "accepted and paid", "revision requested", "disputed", "change proposed"];
       const milestones = (planned.length ? planned : [{ description: brief?.title ?? "Deliverable", amount: brief?.budget }]).map((p, i) => {
         const m = onChain.get(i);
         const delivered = m?.description ?? null;
@@ -1285,9 +1289,13 @@ const MILESTONE = {
  */
 interface ChainMilestone {
   amount: bigint;
+  /** The freelancer's submission text — overwritten each time they submit. */
   description: string;
+  /** The client's original requirements, set at creation and never overwritten. */
+  requirements: string;
   status: number;
   submittedAt: bigint;
+  approvedAt: bigint;
 }
 
 const MILESTONE_SUBMITTED = MILESTONE.Submitted;

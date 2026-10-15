@@ -379,10 +379,9 @@ async function resolveMilestone(escrowId: string): Promise<number> {
   if (expected === 1) return 0;
 
   try {
-    const { graphQuery } = await import("../graph/client.js");
-    const { GET_JOB_BY_ID } = await import("../graph/queries.js");
-    const result = await graphQuery<{ escrow: { milestones: { milestoneIndex: number; status: number }[] } | null }>(GET_JOB_BY_ID, { escrowId });
-    const byIndex = new Map((result.escrow?.milestones ?? []).map((m) => [Number(m.milestoneIndex), Number(m.status)]));
+    const secureflow = await import("../web3/secureflow.js");
+    const ms = (await secureflow.getMilestones(BigInt(escrowId))) as { status: number | bigint }[];
+    const byIndex = new Map(ms.map((m, i) => [i, Number(m.status)]));
     for (let i = 0; i < expected; i++) {
       const status = byIndex.get(i) ?? 0; // never touched = still to do
       if (status !== MS_SUBMITTED && status !== MS_APPROVED) return i; // pending or sent back for revision
@@ -391,7 +390,7 @@ async function resolveMilestone(escrowId: string): Promise<number> {
     // last stage is the only sensible reading of "here is my work".
     return expected - 1;
   } catch {
-    return 0; // subgraph down: the old behaviour, which is right for most jobs
+    return 0; // cannot read the chain: assume the first stage, which is right for most jobs
   }
 }
 
