@@ -2,7 +2,8 @@ import { parseUnits, formatUnits, erc20Abi, pad, maxUint256, zeroAddress } from 
 import { generatePrivateKey } from "viem/accounts";
 import { randomBytes } from "node:crypto";
 import { GatewayClient, CHAIN_CONFIGS, BatchEvmScheme, type TransferResponse } from "@circle-fin/x402-batching/client";
-import { config, rpcUrl } from "../config.js";
+import { ARC_MAINNET_ID, chainId, config, rpcUrl } from "../config.js";
+import * as store from "../store.js";
 import { createCircleSigner } from "./circleSigner.js";
 
 /**
@@ -109,10 +110,29 @@ const X402_TIMEOUT_MS = 20_000;
 export function createPatronGateway(): PatronGateway {
   const signer = createCircleSigner();
   const scheme = new BatchEvmScheme(signer);
-  const chainConfig = CHAIN_CONFIGS.arcTestnet;
+  /*
+   * PICK THE NETWORK FROM THE CHAIN ID, NEVER BY NAME.
+   *
+   * Both of these were hardcoded to "arcTestnet" while the daemon ran on Arc
+   * mainnet, and the failure mode is the worst kind: CHAIN_CONFIGS.arcTestnet
+   * names a GatewayWallet and GatewayMinter that have NO CODE on mainnet, and a
+   * call to an address with no code does not revert — it succeeds as a no-op.
+   * So deposit() approved real USDC, called a dead address, waited for a
+   * receipt, got "success", and reported the money was in Gateway when it had
+   * never left the wallet. withdraw() signed burn intents naming testnet
+   * contracts and submitted them to the testnet facilitator.
+   *
+   * It also broke x402 in the other direction: pay() advertised
+   * eip155:5042002 while x402-seller.ts correctly advertises eip155:5042, so
+   * the buy side rejected every mainnet counterparty it met.
+   *
+   * One derivation, used for the config, the client and the facilitator URL.
+   */
+  const gatewayChain: "arc" | "arcTestnet" = chainId === ARC_MAINNET_ID ? "arc" : "arcTestnet";
+  const chainConfig = CHAIN_CONFIGS[gatewayChain];
   const address = signer.address;
 
-  const reader = new GatewayClient({ chain: "arcTestnet", privateKey: generatePrivateKey(), rpcUrl });
+  const reader = new GatewayClient({ chain: gatewayChain, privateKey: generatePrivateKey(), rpcUrl });
 
   async function pay<T = unknown>(
     url: string,
@@ -157,6 +177,49 @@ export function createPatronGateway(): PatronGateway {
       );
     });
     if (!batchingOption) throw new Error(`No Gateway batching option for ${expectedNetwork} — seller may not support Arc.`);
+
+    /*
+     * THE SECOND CAGE, WHICH UNTIL NOW WAS ONLY A COMMENT.
+     *
+     * config.ts has defined dailySpendCapUsdc and x402BuySpendCapUsdc from the
+     * beginning, with a note saying "Patron enforces caps itself before every
+     * signed spend (see circle/gateway.ts)". Nothing in the repository read
+     * either value. The amount below is whatever the SELLER put in its 402
+     * response, and it went straight into an MPC signature — so a compromised
+     * or misconfigured PORTFOLIO_CHECK_URL could quote any figure up to the
+     * treasury balance and Patron would sign it.
+     *
+     * Checked before createPaymentPayload, because after it the authorization
+     * exists and is the seller's to use.
+     */
+    const askedUnits = BigInt(String((batchingOption as { amount?: string | number }).amount ?? "0"));
+    const askedUsdc = Number(askedUnits) / 1e6;
+
+    if (askedUsdc > config.x402BuySpendCapUsdc) {
+      throw new Error(
+        `Refusing to pay $${askedUsdc.toFixed(6)} for ${url} — over the $${config.x402BuySpendCapUsdc} per-call cap.`,
+      );
+    }
+
+    // The daily tally is keyed by UTC date and persisted, because a counter held
+    // in memory is reset by every restart — and a crash-loop would then be a way
+    // to spend without limit.
+    const day = new Date().toISOString().slice(0, 10);
+    const tallyKey = `x402_spent_micros:${day}`;
+    const spentMicros = store.getPollerInt(tallyKey) ?? 0;
+    const capMicros = Math.round(config.dailySpendCapUsdc * 1e6);
+
+    if (spentMicros + Number(askedUnits) > capMicros) {
+      throw new Error(
+        `Refusing to pay $${askedUsdc.toFixed(6)} for ${url} — would exceed today's $${config.dailySpendCapUsdc} spend cap ` +
+          `($${(spentMicros / 1e6).toFixed(6)} already spent).`,
+      );
+    }
+
+    // Counted BEFORE signing. An authorization that is signed and then fails to
+    // settle has still been handed out, and counting only successes would let a
+    // seller that always errors drain the cap's worth of signatures.
+    store.setPollerInt(tallyKey, spentMicros + Number(askedUnits));
 
     // ── The MPC signature: Circle signs the EIP-3009 authorization. No raw key. ──
     const paymentPayload = await scheme.createPaymentPayload(paymentRequired.x402Version ?? 2, batchingOption as never);

@@ -29,7 +29,21 @@ export const explorerUrl = (process.env.ARC_EXPLORER_URL?.trim() || "https://exp
 export const arcTestnet = defineChain({
   id: chainId,
   name: chainId === ARC_MAINNET_ID ? "Arc" : "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
+  /*
+   * 18, not 6.
+   *
+   * On Arc the native asset and the ERC-20 at 0x3600... are the SAME money at
+   * two scales: the treasury reads 0.701073393020471662 from eth_getBalance
+   * (18dp) and 701073 from balanceOf (6dp) in the same instant — a factor of
+   * 1e12. Circle's own SDK declares both arc and arcTestnet with decimals: 18,
+   * and MAINNET.md says 18.
+   *
+   * Declaring 6 here made every formatEther gas figure viem renders wrong by
+   * 1e12 (a $0.0004 transaction prints as $420,021,000), and would have been
+   * live rather than cosmetic the first time anything sent a native `value` —
+   * today nothing does, because every transfer takes the ERC-20 path.
+   */
+  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
   rpcUrls: { default: { http: [rpcUrl] } },
   blockExplorers: { default: { name: "Arc Explorer", url: explorerUrl } },
   testnet: chainId !== ARC_MAINNET_ID,
@@ -65,8 +79,27 @@ export const config = {
   hireScoreThreshold: Number(process.env.HIRE_SCORE_THRESHOLD ?? 55),
 
   // SecureFlow — Patron calls this contract, does NOT deploy its own
-  secureflowAddress: (process.env.SECUREFLOW_CONTRACT_ADDRESS?.trim() ||
-    "0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59") as `0x${string}`,
+  /*
+   * No default, deliberately.
+   *
+   * This fell back to 0x6142bf48…ab59 — the old Arc TESTNET contract — which
+   * contradicts this file's own stated rule that a missing variable should fail
+   * toward the network we actually run on. Unset the variable on a mainnet
+   * daemon and it would quietly read and write a testnet deployment, with every
+   * escrow id resolving to a different job.
+   *
+   * Throwing is the only honest default for the address that decides where the
+   * money is.
+   */
+  secureflowAddress: (() => {
+    const addr = process.env.SECUREFLOW_CONTRACT_ADDRESS?.trim();
+    if (!addr) {
+      throw new Error(
+        "SECUREFLOW_CONTRACT_ADDRESS is not set. It has no default: guessing it would point this daemon at the wrong network's escrows.",
+      );
+    }
+    return addr as `0x${string}`;
+  })(),
   usdcAddress: (process.env.USDC_ADDRESS?.trim() ||
     "0x3600000000000000000000000000000000000000") as `0x${string}`,
   graphUrl: process.env.GRAPH_URL?.trim() || "",
@@ -78,9 +111,35 @@ export const config = {
   circleWalletAddress: (process.env.CIRCLE_WALLET_ADDRESS?.trim() || "") as `0x${string}` | "",
   circleBlockchain: process.env.CIRCLE_BLOCKCHAIN?.trim() || "ARC",
 
-  // Circle Gateway (x402 nanopayments)
-  gatewayFacilitatorUrl:
-    process.env.GATEWAY_FACILITATOR_URL?.trim() || "https://gateway-api.circle.com",
+  /*
+   * Circle Gateway (x402 nanopayments).
+   *
+   * Derived from the chain, not merely defaulted. The old version defaulted to
+   * mainnet and let GATEWAY_FACILITATOR_URL override it — and the deployed
+   * environment then carried the TESTNET facilitator while the daemon ran on
+   * mainnet, which is precisely the confusion the comment here claimed to
+   * prevent. An override that can silently point the money at another network
+   * is not a convenience.
+   *
+   * An explicit env var still wins, because testing against a local facilitator
+   * has to stay possible — but a value that disagrees with the chain is shouted
+   * about rather than used quietly.
+   */
+  gatewayFacilitatorUrl: (() => {
+    const forChain =
+      Number(process.env.ARC_CHAIN_ID ?? ARC_MAINNET_ID) === ARC_MAINNET_ID
+        ? "https://gateway-api.circle.com"
+        : "https://gateway-api-testnet.circle.com";
+    const override = process.env.GATEWAY_FACILITATOR_URL?.trim();
+    if (override && override !== forChain) {
+      console.warn(
+        `[config] GATEWAY_FACILITATOR_URL is ${override} but this chain wants ${forChain}. ` +
+          `Using the chain's. Unset the variable, or set it to match.`,
+      );
+      return forChain;
+    }
+    return override || forChain;
+  })(),
   x402OrderFee: process.env.X402_ORDER_FEE?.trim() || "0.05",
 
   // x402 BUY side — Patron paying a marketplace service (services/portfolio-check)

@@ -22,9 +22,9 @@
  *
  * And the honest part: opting in is NOT the same as earning. An open job is
  * refundable in full by cancelJob at any instant, so its investable ceiling is
- * zero until a freelancer is assigned — and nothing can be deployed at all
- * unless a venue is configured for the token. On Arc mainnet today no venue is,
- * so every opted-in escrow correctly earns exactly nothing. See yieldState().
+ * zero until a freelancer is assigned. On Arc mainnet a venue IS attached — an
+ * Aave V4 adapter at 0x65317ec4…01Fe, registered under the ERC-20 USDC key —
+ * so the blocker is the ceiling, not the venue. Yield begins at hire.
  */
 import type { Abi } from "viem";
 import yieldAbiJson from "./SecureFlowYieldABI.json" with { type: "json" };
@@ -86,17 +86,22 @@ export interface YieldState {
   /** The freelancer's share of whatever is earned, as a percentage. */
   freelancerSharePct: number | null;
   /**
-   * Can this escrow earn anything right now? False whenever there is no venue,
-   * which on Arc mainnet is always — stated here so no caller has to infer it
-   * from a zero that could equally mean "nothing yet".
+   * Can this escrow earn anything right now?
+   *
+   * Requires BOTH a venue and a non-zero investable ceiling. An earlier version
+   * asked only about the venue, which made it answer true for every open job —
+   * telling a UI the escrow could earn while the contract would refuse to lend
+   * a cent of it, because an open job is refundable in full at any instant.
    */
   canEarn: boolean;
+  /** What the contract would actually allow to be lent right now, in USDC. */
+  investableCeiling: number;
 }
 
 export async function yieldState(escrowId: bigint): Promise<YieldState> {
   const controller = await controllerAddress();
   if (!controller) {
-    return { controller: null, choiceMade: false, optedIn: false, deployed: 0, earned: 0, venue: null, freelancerSharePct: null, canEarn: false };
+    return { controller: null, choiceMade: false, optedIn: false, deployed: 0, earned: 0, venue: null, freelancerSharePct: null, investableCeiling: 0, canEarn: false };
   }
 
   // The adapter map is keyed by TOKEN, and Arc escrows record USDC as the
@@ -113,6 +118,8 @@ export async function yieldState(escrowId: bigint): Promise<YieldState> {
     read<bigint>("freelancerShareBP", []),
   ]);
 
+  const ceiling = await read<bigint>("investableCeiling", [escrowId]);
+
   const venue = [venueErc, venueNative].find((v) => v && v !== ZERO) ?? null;
 
   return {
@@ -123,7 +130,8 @@ export async function yieldState(escrowId: bigint): Promise<YieldState> {
     earned: Number(earned ?? 0n) / 1e6,
     venue,
     freelancerSharePct: shareBP === null ? null : Number(shareBP) / 100,
-    canEarn: !!venue,
+    investableCeiling: Number(ceiling ?? 0n) / 1e6,
+    canEarn: !!venue && (ceiling ?? 0n) > 0n,
   };
 }
 
