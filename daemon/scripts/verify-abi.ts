@@ -31,7 +31,7 @@ for (let i = 0n; i < next; i++) {
     console.log(`  #${i} status=${e.status} depositor=${String(e.depositor).slice(0,10)}… total=${Number(e.totalAmount)/1e6} paid=${Number(e.paidAmount)/1e6} milestones=${ms.length} title=${JSON.stringify(String(e.projectTitle).slice(0,34))}`);
     ok++;
   } catch (err) {
-    console.log(`  #${i} REVERT (${String((err as Error).message).split("\n")[0].slice(0,50)})`);
+    console.log(`  #${i} REVERT (${(String((err as Error).message).split("\n")[0] ?? "").slice(0,50)})`);
     bad++;
   }
 }
