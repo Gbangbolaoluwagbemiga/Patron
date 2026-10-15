@@ -763,7 +763,11 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
           <div className="account-head">
             <h3>Your account</h3>
             {accountOpen ? (
-              <span className="account-sub">money you put in, what you've committed, and what you can take back</span>
+              <span className="account-sub">
+                {account && parseFloat(account.deposited) > 0
+                  ? "money you put in, what you've committed, and what you can take back"
+                  : "nothing deposited yet — the figures below are your position with Patron, not your wallet"}
+              </span>
             ) : (
               // Collapsed, the one number worth keeping on screen is what you can
               // still spend or withdraw — hiding that would make the card feel
@@ -787,6 +791,19 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
           <>
 
           <div className="account-grid">
+            {/*
+              THE MONEY THEY ACTUALLY HAVE, IN THE PANEL CALLED "YOUR ACCOUNT".
+              Every figure beside this one describes a position in Patron's
+              treasury, so before a first deposit they are all $0.00 — and a
+              panel of four zeros titled "Your account" reads as a balance that
+              failed to load, not as an empty position. The wallet balance was
+              on screen twice (a chip, and a red validation line) and in neither
+              place a person looks for "my balance".
+            */}
+            <div className="account-figure wallet">
+              <span className="account-figure-label">In your wallet</span>
+              <b>{myWalletBalance != null ? `$${myWalletBalance.toFixed(2)}` : "—"}</b>
+            </div>
             <div className="account-figure">
               <span className="account-figure-label">Deposited</span>
               <b>${account ? parseFloat(account.deposited).toFixed(2) : "0.00"}</b>

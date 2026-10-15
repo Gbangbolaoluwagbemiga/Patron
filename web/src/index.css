@@ -3006,3 +3006,8 @@ body {
 .wallet-pick-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
 .wallet-pick-btn:disabled { opacity: 0.5; cursor: default; }
 .wallet-pick-btn img { border-radius: 4px; }
+
+/* The wallet figure is a different KIND of number from the rest of the grid —
+   money you hold, not money you have placed with Patron. */
+.account-figure.wallet { border-color: rgba(255,255,255,0.14); }
+.account-figure.wallet b { color: #cfe8d6; }
