@@ -9,7 +9,7 @@
 //
 // Reads go through a plain public client — no signing, no cost, no custody question.
 
-import { createPublicClient, http, zeroAddress, type Abi, type PublicClient } from "viem";
+import { createPublicClient, http, zeroAddress, type Abi, type AbiEvent, type PublicClient } from "viem";
 import secureFlowAbi from "./SecureFlowABI.json" with { type: "json" };
 import { arcTestnet, config, explorerTx, rpcUrl } from "../config.js";
 import { createCircleSigner, type CircleSigner } from "../circle/circleSigner.js";
@@ -308,51 +308,182 @@ const DISPUTE_RESOLVED = {
  */
 const LOG_WINDOW = 9_000n;
 
+/**
+ * The widest getLogs range this RPC will actually serve, discovered at runtime.
+ *
+ * WHY THIS IS NOT A CONSTANT
+ *
+ * It was one, set to 9,000 and documented as "measured, not guessed". The
+ * measurement was real — and taken against a different endpoint than the one
+ * ARC_RPC_URL points at. On the configured dRPC node, 9,000 is refused and
+ * ~100 is the ceiling, so EVERY log scan in this file failed, was swallowed by
+ * the catch below, and reported "nothing found".
+ *
+ * That is not a cosmetic bug. `disputeAwards` reads the DisputeResolved event to
+ * decide how a disputed escrow is split, and it is the only authority on that
+ * split. A silent empty answer there is a settlement computed from no evidence.
+ *
+ * A measured constant is a fact about one provider, not about the protocol. So
+ * the width is now a question asked of whatever node we are actually talking
+ * to: start wide, halve on refusal, remember what worked.
+ */
+const LOG_WINDOW_FLOOR = 50n;
+let workingWindow: bigint | null = null;
+
+/** True when the last chunked scan had a window refused outright. */
+export interface ScanHealth {
+  /** Windows the RPC refused even at the floor width — ranges never actually examined. */
+  blindWindows: number;
+}
+
+/**
+ * getLogs with the range the node will serve, rather than the range we wish it would.
+ *
+ * Narrows on refusal and keeps the working width for later calls. A refusal that
+ * survives all the way down to the floor is reported to the caller rather than
+ * returned as an empty list, because "I looked and there was nothing" and "I was
+ * not allowed to look" are different answers and only one of them is safe to act on.
+ */
+/** The only parts of a decoded log this file ever reads. */
+type DecodedLog = { args: Record<string, unknown>; blockNumber: bigint | null };
+
+/**
+ * The block at (or just before) a timestamp, by bisection.
+ *
+ * WHY A SEARCH IS WORTH 25 RPC CALLS
+ *
+ * Every scan in this file used to start at the chain head and walk backwards,
+ * which silently assumes the thing we are looking for happened recently. For a
+ * dispute that is true — the poller reacts within seconds. For an APPLICATION it
+ * is false: the applicants on a job whose window closed three weeks ago are
+ * three weeks back, and at 9,000 blocks a window that is 24 chunks of walking to
+ * reach the first one. The first version of this did exactly that, hit its
+ * request cap on every escrow, and read nothing while looking busy.
+ *
+ * An escrow knows roughly when it happened — its applications all precede its
+ * deadline — so anchoring the walk there turns a hopeless sweep into two or
+ * three queries.
+ */
+async function blockAtTimestamp(target: bigint): Promise<bigint> {
+  const pc = getPublicClient();
+  let lo = 0n;
+  let hi = await pc.getBlockNumber();
+  const headBlock = await pc.getBlock({ blockNumber: hi });
+  if (headBlock.timestamp <= target) return hi;
+
+  // 48 iterations covers any chain height we will ever see; the loop exits on
+  // convergence long before that.
+  for (let i = 0; i < 48 && lo < hi; i++) {
+    const mid = (lo + hi) / 2n;
+    if (mid === lo) break;
+    const b = await pc.getBlock({ blockNumber: mid });
+    if (b.timestamp < target) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+async function getLogsChunked(
+  event: AbiEvent,
+  args: Record<string, unknown> | undefined,
+  spanBlocks: bigint,
+  onLogs: (logs: DecodedLog[]) => boolean | void,
+  /** Walk back from here instead of the chain head. */
+  anchorBlock?: bigint,
+): Promise<ScanHealth> {
+  const pc = getPublicClient();
+  const chainHead = await pc.getBlockNumber();
+  const head = anchorBlock !== undefined && anchorBlock < chainHead ? anchorBlock : chainHead;
+  const earliest = head > spanBlocks ? head - spanBlocks : 0n;
+  let blindWindows = 0;
+  let toBlock = head;
+
+  /*
+   * A ceiling on requests, not on blocks.
+   *
+   * The span asked for is expressed in blocks, but the width we get is the
+   * node's to decide. On an endpoint that caps ranges at ~100 blocks, covering
+   * a day of history would be two thousand sequential calls — so the honest
+   * outcome there is a short scan that REPORTS it was short, not a poller that
+   * hangs for ten minutes on every pass.
+   */
+  const MAX_REQUESTS = 64;
+  let requests = 0;
+
+  while (toBlock > earliest) {
+    if (requests++ >= MAX_REQUESTS) {
+      // Ran out of budget before reaching the far end of the span. The unscanned
+      // remainder was never examined, which is exactly what blindWindows means.
+      blindWindows++;
+      break;
+    }
+    let width = workingWindow ?? LOG_WINDOW;
+    let logs: DecodedLog[] | null = null;
+
+    while (logs === null) {
+      const fromBlock = toBlock > width ? toBlock - width + 1n : 0n;
+      try {
+        logs = (await pc.getLogs({
+          address: config.secureflowAddress as `0x${string}`,
+          event,
+          ...(args ? { args } : {}),
+          fromBlock,
+          toBlock,
+        } as Parameters<PublicClient["getLogs"]>[0])) as unknown as DecodedLog[];
+        workingWindow = width; // this width works here — stop rediscovering it
+      } catch {
+        if (width <= LOG_WINDOW_FLOOR) {
+          // Cannot see this range at any width. Say so; do not call it empty.
+          blindWindows++;
+          break;
+        }
+        width = width / 2n > LOG_WINDOW_FLOOR ? width / 2n : LOG_WINDOW_FLOOR;
+      }
+    }
+
+    const consumedWidth = workingWindow ?? LOG_WINDOW;
+    if (logs && onLogs(logs) === true) break; // caller has what it needs
+    toBlock = toBlock > consumedWidth ? toBlock - consumedWidth : 0n;
+    if (toBlock === 0n) break;
+  }
+
+  return { blindWindows };
+}
+
 /** ~1.94 blocks/sec on Arc, so one window is roughly 75 minutes. */
 export const CHUNKS_PER_DAY = 12;
 
 async function scanDisputes(
   chunks: number,
   escrowId?: bigint,
-): Promise<Map<string, Map<number, DisputeAward>>> {
-  const pc = getPublicClient();
-  const head = await pc.getBlockNumber();
+): Promise<{ found: Map<string, Map<number, DisputeAward>>; health: ScanHealth }> {
   const found = new Map<string, Map<number, DisputeAward>>();
 
-  for (let i = 0; i < chunks; i++) {
-    const toBlock = head - LOG_WINDOW * BigInt(i);
-    if (toBlock <= 0n) break;
-    const fromBlock = toBlock > LOG_WINDOW ? toBlock - LOG_WINDOW + 1n : 0n;
-    let logs;
-    try {
-      logs = await pc.getLogs({
-        address: config.secureflowAddress as `0x${string}`,
-        event: DISPUTE_RESOLVED,
-        ...(escrowId === undefined ? {} : { args: { escrowId } }),
-        fromBlock,
-        toBlock,
-      });
-    } catch {
-      continue; // a refused window is not an empty one — keep walking back
-    }
-    for (const l of logs) {
-      const a = l.args as { escrowId?: bigint; milestoneIndex?: bigint; freelancerAmount?: bigint; clientAmount?: bigint };
-      if (a.clientAmount === undefined || a.freelancerAmount === undefined) continue;
-      const key = String(a.escrowId ?? escrowId ?? "");
-      const forEscrow = found.get(key) ?? new Map<number, DisputeAward>();
-      const idx = Number(a.milestoneIndex ?? 0n);
-      forEscrow.set(idx, {
-        milestoneIndex: idx,
-        freelancerAmount: Number(a.freelancerAmount) / 1e6,
-        clientAmount: Number(a.clientAmount) / 1e6,
-        blockNumber: l.blockNumber ?? 0n,
-      });
-      found.set(key, forEscrow);
-    }
-    // Looking for one escrow and we have it: stop. A sweep keeps going.
-    if (escrowId !== undefined && found.size) break;
-  }
-  return found;
+  const health = await getLogsChunked(
+    DISPUTE_RESOLVED,
+    escrowId === undefined ? undefined : { escrowId },
+    LOG_WINDOW * BigInt(chunks),
+    (logs) => {
+      for (const l of logs) {
+        const a = l.args as { escrowId?: bigint; milestoneIndex?: bigint; freelancerAmount?: bigint; clientAmount?: bigint };
+        if (a.clientAmount === undefined || a.freelancerAmount === undefined) continue;
+        const key = String(a.escrowId ?? escrowId ?? "");
+        const forEscrow = found.get(key) ?? new Map<number, DisputeAward>();
+        const idx = Number(a.milestoneIndex ?? 0n);
+        forEscrow.set(idx, {
+          milestoneIndex: idx,
+          freelancerAmount: Number(a.freelancerAmount) / 1e6,
+          clientAmount: Number(a.clientAmount) / 1e6,
+          blockNumber: l.blockNumber ?? 0n,
+        });
+        found.set(key, forEscrow);
+      }
+      // Looking for one escrow and we have it: stop. A sweep keeps going.
+      return escrowId !== undefined && found.size > 0;
+    },
+  );
+
+  return { found, health };
 }
 
 /**
@@ -366,8 +497,27 @@ async function scanDisputes(
  * while a dispute is actually waiting to be settled.
  */
 export async function disputeAwards(escrowId: bigint, chunks = CHUNKS_PER_DAY): Promise<DisputeAward[]> {
-  const found = await scanDisputes(chunks, escrowId);
+  const { found, health } = await scanDisputes(chunks, escrowId);
   const forEscrow = found.get(String(escrowId));
+
+  /*
+   * An empty result from a scan that could not see is not "no award".
+   *
+   * This event is the ONLY authority on how a disputed escrow was split, and
+   * the caller turns the answer into the figures a client and a freelancer are
+   * each told they received. Returning [] after the RPC refused every range
+   * would have those numbers derived from an absence of evidence — which is how
+   * a $1.25/$1.25 split once got reported as $3.70.
+   *
+   * So this throws, and the poller's existing retry treats it as what it is: a
+   * read that has not happened yet.
+   */
+  if (!forEscrow && health.blindWindows > 0) {
+    throw new Error(
+      `cannot read DisputeResolved for escrow ${escrowId}: ${health.blindWindows} block range(s) refused by this RPC`,
+    );
+  }
+
   return forEscrow ? [...forEscrow.values()].sort((a, b) => a.milestoneIndex - b.milestoneIndex) : [];
 }
 
@@ -378,7 +528,7 @@ export async function disputeAwards(escrowId: bigint, chunks = CHUNKS_PER_DAY): 
  * chunked scan by the number of commissions.
  */
 export async function recentDisputeAwards(chunks: number): Promise<Map<string, DisputeAward[]>> {
-  const found = await scanDisputes(chunks);
+  const { found } = await scanDisputes(chunks);
   return new Map(
     [...found.entries()].map(([id, byIndex]) => [id, [...byIndex.values()].sort((a, b) => a.milestoneIndex - b.milestoneIndex)]),
   );
@@ -464,6 +614,114 @@ export async function getEscrowApplications(escrowId: bigint) {
     functionName: "getEscrowApplications",
     args: [escrowId],
   }) as Promise<`0x${string}`[]>;
+}
+
+const APPLICATION_SUBMITTED = {
+  type: "event",
+  name: "ApplicationSubmitted",
+  inputs: [
+    { name: "escrowId", type: "uint256", indexed: true },
+    { name: "freelancer", type: "address", indexed: true },
+    { name: "coverLetter", type: "string", indexed: false },
+    { name: "proposedTimeline", type: "uint256", indexed: false },
+  ],
+} as const;
+
+export interface ChainApplication {
+  freelancerAddress: `0x${string}`;
+  /**
+   * null means "we could not read it", NEVER "they wrote nothing".
+   *
+   * The distinction is the whole point. An empty string handed to the scorer is
+   * an applicant with no case for themselves, which scores near zero — so a log
+   * window the RPC happened to refuse would quietly become a rejection on
+   * merit. Unreadable is our limitation, not theirs, and the caller is made to
+   * say what it wants done about it.
+   */
+  coverLetter: string | null;
+  proposedTimeline: number | null;
+  blockNumber: bigint | null;
+}
+
+/**
+ * Who applied to a job, read from the chain instead of the subgraph.
+ *
+ * WHY THIS EXISTS
+ *
+ * Hiring — the single most consequential thing Patron does — ran entirely
+ * through a Goldsky subgraph. That made a hosted index a hard dependency of
+ * deciding who gets paid, and it indexed exactly one deployment: repointing the
+ * contract silently emptied the applicant list, which does not read as an
+ * outage. It reads as "nobody applied", and the honest-looking consequence is
+ * that Patron hires no one and the job quietly expires.
+ *
+ * The contract already holds both halves of the answer:
+ *
+ *   - the roster is STORED (`escrowApplications`), so it is exact and cheap
+ *   - the cover letter is only EMITTED, so it comes from ApplicationSubmitted
+ *
+ * The roster is therefore the authority on who applied, and the logs merely
+ * enrich it. A refused or short log window can cost us a cover letter; it can
+ * no longer cost us an applicant.
+ */
+export async function getApplications(escrowId: bigint, chunks = CHUNKS_PER_DAY * 2): Promise<ChainApplication[]> {
+  const roster = await getEscrowApplications(escrowId);
+  if (!roster.length) return [];
+
+  const byAddress = new Map<string, ChainApplication>(
+    roster.map((a) => [a.toLowerCase(), { freelancerAddress: a, coverLetter: null, proposedTimeline: null, blockNumber: null }]),
+  );
+
+  let missing = roster.length;
+
+  /*
+   * Anchor the walk at the escrow's own deadline, not at the chain head.
+   *
+   * Applications are only possible while a job is open, which is strictly
+   * before its deadline — so the deadline is an upper bound on where they can
+   * be, and for any job that is not brand new it is a far tighter one than
+   * "now". A job whose window closed weeks ago is found in two queries from
+   * here and was unreachable from the head.
+   *
+   * Falls back to the head if the deadline cannot be read, which is the old
+   * behaviour and still correct for a job posted minutes ago.
+   */
+  let anchor: bigint | undefined;
+  try {
+    const esc = (await getEscrow(escrowId)) as { deadline?: bigint };
+    const deadline = esc?.deadline ?? 0n;
+    // +1 hour of slack: the deadline is a timestamp, and the last application
+    // can share a block with it.
+    if (deadline > 0n) anchor = await blockAtTimestamp(deadline + 3600n);
+  } catch {
+    /* no anchor — scan from the head as before */
+  }
+
+  const health = await getLogsChunked(APPLICATION_SUBMITTED, { escrowId }, LOG_WINDOW * BigInt(chunks), (logs) => {
+    for (const l of logs) {
+      const a = l.args as { freelancer?: `0x${string}`; coverLetter?: string; proposedTimeline?: bigint };
+      if (!a.freelancer) continue;
+      const row = byAddress.get(a.freelancer.toLowerCase());
+      // Only addresses on the stored roster count. A log for anyone else is not
+      // an applicant on this job, whatever it says.
+      if (!row || row.coverLetter !== null) continue;
+      row.coverLetter = a.coverLetter ?? "";
+      row.proposedTimeline = a.proposedTimeline === undefined ? null : Number(a.proposedTimeline);
+      row.blockNumber = l.blockNumber ?? null;
+      missing--;
+    }
+    return missing === 0; // everyone accounted for — stop walking back
+  }, anchor);
+
+  if (missing > 0 && health.blindWindows > 0) {
+    console.warn(
+      `[secureflow] escrow ${escrowId}: ${missing} cover letter(s) unread and ` +
+        `${health.blindWindows} block range(s) could not be queried on this RPC — ` +
+        `these applicants are UNASSESSED, not unqualified.`,
+    );
+  }
+
+  return [...byAddress.values()];
 }
 
 export function explorerUrl(txHash: string): string {

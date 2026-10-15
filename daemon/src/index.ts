@@ -289,10 +289,10 @@ const agent = new AgentClient((event) => {
  */
 async function notifyUnsuccessfulApplicants(escrowId: string, winner: string | null): Promise<void> {
   try {
-    const result = await graphQuery<{ escrow: { applications: { freelancer: string }[] } | null }>(GET_JOB_APPLICATIONS, {
-      escrowId,
-    });
-    const applicants = result.escrow?.applications ?? [];
+    // The stored roster, not the subgraph's view of it. Telling an applicant
+    // they were unsuccessful is not worth a hosted-index dependency, and a
+    // subgraph pointed at the wrong deployment would simply notify nobody.
+    const applicants = (await secureflow.getEscrowApplications(BigInt(escrowId))).map((freelancer) => ({ freelancer }));
     const scores = store
       .listDecisions(300)
       .filter((d: { task_id?: string; type?: string }) => d.task_id === escrowId && d.type === "application_scored");
@@ -1240,14 +1240,61 @@ server.listen(PORT, () => {
 });
 
 // ── Background poller: applications → hire, submissions → review ──────────
-// MilestoneStatus enum ordering assumed 0=pending,1=submitted,2=approved,
-// 3=rejected,4=disputed,5=resolved (matches the app's original type comments) —
-// confirm against the live contract in scripts/e2e-loop.ts before the demo.
-const MILESTONE_SUBMITTED = 1;
-const MILESTONE_APPROVED = 2;
-const MILESTONE_DISPUTED = 4;
-const ESCROW_RELEASED = 2;
-const ESCROW_DISPUTED = 4;
+/**
+ * SecureFlow's two status enums, by name, read off the deployed source.
+ *
+ *   enum EscrowStatus    { Pending, InProgress, Released, Refunded, Disputed, Expired, Cancelled }
+ *   enum MilestoneStatus { NotStarted, Submitted, Approved, Rejected, Disputed, ProposalPending }
+ *
+ * This block used to say the ordering was "assumed ... confirm against the live
+ * contract before the demo", and the confirming never happened. It cost us:
+ * CHAIN_STATUS_TO_TASK below had drifted into a hybrid of two different
+ * orderings, mapping 5 to "refunded" when 5 is Expired — recording money as
+ * returned while the escrow still held it. That is bug #61 exactly, in the one
+ * function written to prevent it.
+ *
+ * So the numbers are written once, here, beside the names they stand for, and
+ * nothing downstream spells a status as a bare integer. An enum that is
+ * reordered in the contract now breaks a name rather than silently changing
+ * which escrows a sweep acts on.
+ */
+const ESCROW = {
+  Pending: 0,
+  InProgress: 1,
+  Released: 2,
+  Refunded: 3,
+  Disputed: 4,
+  Expired: 5,
+  Cancelled: 6,
+} as const;
+
+const MILESTONE = {
+  NotStarted: 0,
+  Submitted: 1,
+  Approved: 2,
+  Rejected: 3,
+  Disputed: 4,
+  ProposalPending: 5,
+} as const;
+
+/**
+ * A milestone as the CONTRACT returns it, which is the shape the poller now
+ * reads. Only the fields the poller actually uses are named — the struct has
+ * sixteen, and listing the rest here would be a second place to keep in sync
+ * with Solidity for no benefit.
+ */
+interface ChainMilestone {
+  amount: bigint;
+  description: string;
+  status: number;
+  submittedAt: bigint;
+}
+
+const MILESTONE_SUBMITTED = MILESTONE.Submitted;
+const MILESTONE_APPROVED = MILESTONE.Approved;
+const MILESTONE_DISPUTED = MILESTONE.Disputed;
+const ESCROW_RELEASED = ESCROW.Released;
+const ESCROW_DISPUTED = ESCROW.Disputed;
 
 /**
  * Which milestone reviews have actually COMPLETED.
@@ -1714,31 +1761,61 @@ async function sweepStrandedEscrows(): Promise<void> {
  * pass. It never moves money — only what we claim about it.
  */
 const CHAIN_STATUS_TO_TASK: Record<number, string> = {
-  2: "completed",   // COMPLETED
-  3: "disputed",    // DISPUTED
-  4: "disputed",
-  5: "refunded",    // REFUNDED
+  [ESCROW.Released]: "completed",
+  [ESCROW.Refunded]: "refunded",
+  [ESCROW.Disputed]: "disputed",
+  [ESCROW.Expired]: "expired",
+  [ESCROW.Cancelled]: "cancelled",
 };
+
+/**
+ * The statuses that assert the money is no longer at stake.
+ *
+ * "expired" and "disputed" make no such claim — an escrow can sit in either
+ * while still holding every cent — so they are safe to write whatever the
+ * balance says. These three are not, and writing one while value is
+ * outstanding is the lie reconcile exists to stop telling.
+ */
+const CLAIMS_SETTLED = new Set(["completed", "refunded", "cancelled"]);
 
 async function reconcileTaskStatuses(): Promise<void> {
   for (const task of store.listTasks(200)) {
     if (!task.escrowId) continue;
     if (task.status === "briefing" || task.status === "failed") continue;
     try {
-      const e = (await secureflow.getEscrow(BigInt(task.escrowId))) as { totalAmount?: bigint; status?: number | bigint };
+      const e = (await secureflow.getEscrow(BigInt(task.escrowId))) as { status?: number | bigint };
       if (!e || e.status === undefined) continue;
       const chain = Number(e.status);
-      const held = Number(e.totalAmount ?? 0n) / 1e6;
 
-      // A commission is only "completed" or "cancelled" when the escrow is
-      // actually empty. While it still holds money, something is outstanding.
       let want = CHAIN_STATUS_TO_TASK[chain];
-      if (!want && held > 0.000001 && (task.status === "completed" || task.status === "cancelled")) {
-        want = "active";
+
+      /*
+       * Before claiming the money is settled, ask what is still at stake.
+       *
+       * This used to read `totalAmount`, which is the ORIGINAL budget and is
+       * never decremented — so it was non-zero for every funded escrow that had
+       * ever existed, and the guard it fed fired on all of them or none. The
+       * question "is value still outstanding" has exactly one honest answer in
+       * this contract, and it is the sum of the milestones that are not
+       * Approved. That is what unresolvedValue reads.
+       *
+       * Only consulted when a settled claim is actually in play, since it costs
+       * a second chain read per commission and reconcile walks 200 of them.
+       */
+      const settledClaim = CLAIMS_SETTLED.has(want ?? "") || CLAIMS_SETTLED.has(task.status);
+      const outstanding = settledClaim ? await unresolvedValue(task.escrowId) : 0;
+
+      if (settledClaim && outstanding > 0.000001) {
+        // Something is still owed. Whatever the column says, this is not finished.
+        want = chain === ESCROW.Disputed ? "disputed" : "active";
       }
+
       if (want && want !== task.status) {
         store.updateTaskStatus(task.id, want, task.escrowId);
-        console.log(`[reconcile] escrow ${task.escrowId}: "${task.status}" → "${want}" (chain status ${chain}, $${held.toFixed(2)} held)`);
+        console.log(
+          `[reconcile] escrow ${task.escrowId}: "${task.status}" → "${want}" ` +
+            `(chain status ${chain}, $${outstanding.toFixed(2)} unresolved)`,
+        );
       }
     } catch {
       // A chain read failing is not evidence about status. Leave the row alone.
@@ -1852,7 +1929,16 @@ async function pollOnce() {
   await sweepStrandedEscrows();
   await sweepOverdueCommissions();
   await reconcileTaskStatuses();
-  if (!isGraphConfigured()) return;
+  /*
+   * There used to be a `if (!isGraphConfigured()) return;` here.
+   *
+   * It made an unset GRAPH_URL stop hiring, reviewing and paying — the whole
+   * agent — while the process stayed up, /healthz stayed green and the logs
+   * said nothing. Now that applicants and milestones are read from the
+   * contract, the subgraph is not required to run any of it, and a config gate
+   * that can silently switch the product off is worse than the dependency it
+   * was guarding.
+   */
   // Everything the poller does downstream costs an LLM call. While the model is
   // rate-limited there is nothing useful to do, and trying anyway is what kept
   // the budget pinned at zero.
@@ -1881,10 +1967,11 @@ async function pollOnce() {
 
     try {
       if (task.status === "posted") {
-        const appsResult = await graphQuery<{ escrow: { applications: unknown[] } | null }>(GET_JOB_APPLICATIONS, {
-          escrowId: task.escrowId,
-        });
-        const currentCount = appsResult.escrow?.applications.length ?? 0;
+        // Counted on the contract. This gate decides whether scoring runs at
+        // all, so a subgraph that was lagging, or pointed at another
+        // deployment, could hold a job at "no applications yet" indefinitely
+        // while applicants sat on chain waiting to be judged.
+        const currentCount = (await secureflow.getEscrowApplications(escrowId)).length;
         const lastScored = store.getPollerInt(scoredCountKey(task.escrowId)) ?? -1;
         if (currentCount === 0 || currentCount <= lastScored) continue; // nothing new to score
 
@@ -1924,8 +2011,20 @@ async function pollOnce() {
       }
 
       if (task.status === "active") {
-        const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
-        const milestones = result.escrow?.milestones ?? [];
+        /*
+         * Milestones from the contract, not the subgraph.
+         *
+         * This loop decides when delivered work gets reviewed and paid. Reading
+         * it from a hosted index meant an indexer that lagged, fell over, or
+         * tracked a different deployment showed every milestone as not-yet-
+         * submitted — and the visible symptom is not an error, it is a
+         * freelancer's finished work sitting unreviewed and unpaid.
+         *
+         * `submittedAt` is unix seconds in both sources, so the dedup keys below
+         * are unchanged by the switch and nothing already reviewed is reviewed
+         * again.
+         */
+        const milestones = (await secureflow.getMilestones(escrowId)) as ChainMilestone[];
         for (const [index, m] of milestones.entries()) {
           if (m.status !== MILESTONE_SUBMITTED) continue;
           // Keyed on submittedAt, not just index — a rejected milestone gets
@@ -1966,8 +2065,11 @@ async function pollOnce() {
 
         // Re-fetch rather than trust the pre-review snapshot above, since a
         // review in the loop above may have just approved and paid a milestone.
-        const refreshed = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
-        const finalMilestones = refreshed.escrow?.milestones ?? [];
+        const [refreshedEscrow, finalMilestones] = await Promise.all([
+          secureflow.getEscrow(escrowId) as Promise<{ status?: number | bigint }>,
+          secureflow.getMilestones(escrowId) as Promise<ChainMilestone[]>,
+        ]);
+        const refreshed = { escrow: { status: Number(refreshedEscrow?.status ?? -1) } };
 
         // A disputed job is not "active" — it's out of the agent's hands and
         // waiting on a human arbiter. Surfacing this matters: escalation is the
@@ -2179,11 +2281,13 @@ const MILESTONE_RESOLVED = 5;
 async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: { amount: number }[]; budget?: number }): Promise<void> {
   if (!task.escrowId) return;
 
-  const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
-  const escrow = result.escrow;
-  if (!escrow) return;
-
-  const milestones = escrow.milestones ?? [];
+  // Settlement decides who gets disputed money, so it reads the contract. The
+  // authority on a dispute's outcome is already the DisputeResolved event (see
+  // disputeAwards below); taking the milestone states from a hosted index while
+  // taking the award from the chain meant one decision resting on two sources
+  // that can disagree.
+  const milestones = (await secureflow.getMilestones(BigInt(task.escrowId)).catch(() => null)) as ChainMilestone[] | null;
+  if (!milestones) return; // cannot read it, do not settle on it
 
   /**
    * A dispute is over when the milestone STOPS being disputed — not when it

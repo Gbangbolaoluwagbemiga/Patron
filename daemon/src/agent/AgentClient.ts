@@ -117,20 +117,37 @@ export class AgentClient {
 
   // ── STEP 2: poll applications, comparative-score, hire ───────────────────
   async reviewApplications(escrowId: bigint, brief: AcceptanceBrief): Promise<Application | null> {
-    if (!isGraphConfigured()) throw new Error("Subgraph not configured (GRAPH_URL)");
+    this.emit("applications_fetched", "Reading applications from the contract...");
+    const onChain = await secureflow.getApplications(escrowId);
 
-    this.emit("applications_fetched", "Fetching applications from subgraph...");
-    const result = await graphQuery<{ escrow: { applications: GQLApplication[] } | null }>(GET_JOB_APPLICATIONS, {
-      escrowId: escrowId.toString(),
-    });
+    /*
+     * An applicant whose cover letter we could not read is NOT scored.
+     *
+     * Handing the scorer an empty string would produce a low score and a
+     * rejection that looks like a judgement on merit, when the only thing that
+     * actually happened is that an RPC refused a log window. Nothing about this
+     * applicant has been assessed, so nothing is claimed about them — and it is
+     * said out loud rather than dropped, because a silently shorter list is how
+     * "nobody applied" gets reported for a job that had applicants.
+     */
+    const unreadable = onChain.filter((a) => a.coverLetter === null);
+    if (unreadable.length) {
+      this.emit(
+        "applications_fetched",
+        `${unreadable.length} application(s) could not be read from chain logs and were left unscored — ` +
+          `this is our limitation, not a judgement on them.`,
+      );
+    }
 
-    const applications: Application[] = (result.escrow?.applications ?? []).map((a) => ({
-      freelancerAddress: a.freelancer,
-      coverLetter: a.coverLetter,
-      proposedTimeline: Number(a.proposedTimeline),
-      appliedAt: Number(a.timestamp) * 1000,
-      status: "pending" as const,
-    }));
+    const applications: Application[] = onChain
+      .filter((a): a is typeof a & { coverLetter: string } => a.coverLetter !== null)
+      .map((a) => ({
+        freelancerAddress: a.freelancerAddress,
+        coverLetter: a.coverLetter,
+        proposedTimeline: a.proposedTimeline ?? 0,
+        appliedAt: Date.now(),
+        status: "pending" as const,
+      }));
 
     this.emit("applications_fetched", `${applications.length} application(s) received. Scoring comparatively...`);
 
