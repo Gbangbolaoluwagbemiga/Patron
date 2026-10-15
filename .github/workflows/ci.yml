@@ -1,0 +1,81 @@
+# Typecheck and build on every push.
+#
+# Deliberately secret-free: nothing here needs a Circle key, a Groq key or an
+# RPC, so it runs on forks and on this public repo without anything to leak.
+# The checks that DO touch the chain or the model (verify-mainnet, verify-abi,
+# verify-circle, e2e-agent) are run by hand against a real deployment, because
+# a green tick that proved nothing about money would be worse than no tick.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  daemon:
+    name: daemon — typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install
+        working-directory: daemon
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: daemon
+        run: npm run typecheck
+
+  web:
+    name: web — build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+  contracts:
+    name: contracts — ABI is in sync with source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Patron shipped for weeks against an ABI from an intermediate build of
+      # SecureFlow — missing version(), setYieldController and setJobManager,
+      # and still declaring a constructor for a contract that is now a proxy.
+      # Nothing failed loudly; the functions were simply uncallable. This is the
+      # cheapest check that would have caught it, and it needs no network.
+      - name: ABI declares the functions the agent calls
+        run: |
+          node -e '
+            const abi = require("./daemon/src/web3/SecureFlowABI.json");
+            const have = new Set(abi.filter(x => x.type === "function").map(x => x.name));
+            const need = [
+              "createEscrow","acceptFreelancer","approveMilestone","rejectMilestone",
+              "disputeMilestone","raiseOverdueDispute","cancelJob","emergencyRefundAfterDeadline",
+              "getEscrow","getMilestones","getEscrowApplications","nextEscrowId","quoteDeposit",
+              "submitRating","getAverageRating","version","yieldController",
+            ];
+            // NOT listed: setYieldOptIn, yieldAdapter, escrowYield. Those are on
+            // the SecureFlowYield controller (a separate contract that
+            // yieldController() points at), not on the escrow. Listing one here
+            // is how this check caught its own author assuming otherwise.
+            const missing = need.filter(n => !have.has(n));
+            if (missing.length) {
+              console.error("ABI is missing functions the agent calls:", missing.join(", "));
+              process.exit(1);
+            }
+            console.log(`ABI declares all ${need.length} functions the agent calls.`);
+          '
