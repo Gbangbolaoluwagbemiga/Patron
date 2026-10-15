@@ -18,6 +18,7 @@ import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
 import { createPatronGateway } from "./circle/gateway.js";
 import { createPatronPaywall, ORDER_FEE_USDC } from "./circle/x402-seller.js";
 import * as secureflow from "./web3/secureflow.js";
+import * as yieldController from "./web3/yield.js";
 import { graphQuery, isGraphConfigured } from "./graph/client.js";
 import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
 import * as store from "./store.js";
@@ -667,6 +668,39 @@ const server = http.createServer(async (req, res) => {
         address: config.circleWalletAddress,
         balance: formatEther(balance),
         explorerUrl: explorerAddress(config.circleWalletAddress),
+      });
+    } catch (err) {
+      return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /**
+   * What the escrowed money is doing while it waits.
+   *
+   * Without an escrowId this answers about the whole arrangement — is a venue
+   * attached, what share does the contractor get. With one it answers about a
+   * single commission.
+   *
+   * It reports `canEarn` and `investableCeiling` separately on purpose. A job
+   * can be opted in, with a live venue behind it, and still correctly have
+   * nothing deployed: an open job is refundable in full at any instant, so the
+   * contract will not lend a cent of it until somebody is hired. Collapsing
+   * those into one boolean is how a UI ends up claiming money is earning when
+   * it is sitting still.
+   */
+  if (req.method === "GET" && url.pathname === "/api/yield") {
+    try {
+      const escrowId = url.searchParams.get("escrowId");
+      if (escrowId) {
+        const state = await yieldController.yieldState(BigInt(escrowId));
+        return json(res, 200, { escrowId, ...state });
+      }
+      const controller = await yieldController.controllerAddress();
+      const venue = await yieldController.venueConfigured();
+      return json(res, 200, {
+        controller,
+        venueConfigured: venue,
+        explorerUrl: controller ? explorerAddress(controller) : null,
       });
     } catch (err) {
       return json(res, 500, { error: err instanceof Error ? err.message : String(err) });

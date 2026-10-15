@@ -2967,3 +2967,22 @@ body {
   background: color-mix(in srgb, #f5c451 14%, transparent);
   border-color: color-mix(in srgb, #f5c451 38%, transparent);
 }
+
+/* ── Yield card ──────────────────────────────────────────────────────────
+   Deliberately quiet. It is a standing property of how escrow works, not a
+   live number — the figures that actually move belong on a job. */
+.yield-card {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(118, 196, 139, 0.07), rgba(118, 196, 139, 0.02));
+}
+.yield-head { display: flex; gap: 12px; align-items: flex-start; }
+.yield-leaf { font-size: 20px; line-height: 1.2; }
+.yield-title { font-weight: 600; letter-spacing: 0.01em; margin-bottom: 2px; }
+.yield-sub { font-size: 13px; opacity: 0.85; line-height: 1.5; }
+.yield-note {
+  margin-top: 10px; font-size: 12px; opacity: 0.62; line-height: 1.55;
+  border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 10px;
+}

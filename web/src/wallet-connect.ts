@@ -48,6 +48,8 @@ export function describeWalletError(err: unknown): string {
   const e = err as { code?: number | string; message?: string; data?: { message?: string }; shortMessage?: string };
 
   switch (e?.code) {
+    case "TIMEOUT":
+      return e.message ?? "Your wallet didn't respond. Open the extension and look for a pending request.";
     case 4001:
     case "ACTION_REJECTED":
       return "You cancelled the request in your wallet — nothing was sent.";
@@ -115,7 +117,35 @@ export function useWalletConnect() {
     setConnecting(true);
     setError("");
     try {
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+      /*
+       * A WALLET THAT NEVER ANSWERS MUST NOT LOCK THE BUTTON FOREVER.
+       *
+       * eth_requestAccounts does not resolve or reject while the extension is
+       * sitting on an unanswered prompt — and if that popup was blocked,
+       * dismissed by the OS, or opened behind the window, nothing ever settles.
+       * The button is disabled while `connecting` is true, so the one action
+       * that would surface the real cause (clicking again, and getting -32002
+       * "request already pending", which this file already explains properly)
+       * was the one action the UI prevented. The spinner was the trap.
+       *
+       * So the request races a timeout. Losing the race is not an error about
+       * the wallet being broken — it is almost always a prompt waiting
+       * somewhere the person has not looked, and it says so.
+       */
+      const accounts = (await Promise.race([
+        provider.request({ method: "eth_requestAccounts" }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject({
+                code: "TIMEOUT",
+                message:
+                  "Your wallet hasn't responded. Open the extension — there is probably a connection request waiting for you — then try again.",
+              }),
+            30_000,
+          ),
+        ),
+      ])) as string[];
       if (!accounts[0]) throw new Error("No account returned");
 
       try {

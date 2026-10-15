@@ -173,3 +173,41 @@ export function useDaemonFeed() {
 
   return { connected, tasks, decisions, payments, liveEvents, lastEvent, loaded, refresh };
 }
+
+export interface YieldInfo {
+  controller: string | null;
+  venueConfigured: boolean;
+  explorerUrl: string | null;
+}
+
+/**
+ * What the escrowed money is doing while it waits.
+ *
+ * Polled slowly on purpose: a venue is attached or it is not, and that changes
+ * about once in the life of the product. The per-escrow numbers that actually
+ * move live on the job itself.
+ */
+export function useYield() {
+  const [info, setInfo] = useState<YieldInfo | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const next = await getJson<YieldInfo>("/api/yield");
+        if (alive) setInfo(next);
+      } catch {
+        // Not knowing is not the same as "no venue" — leave it null so the UI
+        // can stay quiet rather than claim the money is sitting idle.
+      }
+    };
+    void load();
+    const t = window.setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  return info;
+}

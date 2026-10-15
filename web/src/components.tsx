@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 const MotionLink = motion(Link);
-import { ARC_EXPLORER, api, postInstruction, stageForEventType, type Stage, type WalletInfo } from "./api";
+import { ARC_EXPLORER, api, postInstruction, stageForEventType, useYield, type Stage, type WalletInfo } from "./api";
 import { hasInjectedWallet } from "./wallet-connect";
 import { useWallet } from "./wallet-context";
 import { displayStatus, milestoneStates, parseBrief, type AgentEvent, type DecisionRow, type MilestoneState, type PaymentRow, type TaskRow } from "./types";
@@ -573,6 +573,7 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     refreshAccount,
     signMessage,
   } = useWallet();
+  const yieldInfo = useYield();
 
   const balance = wallet ? parseFloat(wallet.balance) : 0;
   const animatedBalance = useCountUp(balance);
@@ -681,6 +682,39 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
           )}
         </div>
       </div>
+
+      {/* What the locked money is doing while it waits.
+          Stated carefully: a venue being attached is NOT the same as a given
+          job earning, and the honest line is the second one. */}
+      {yieldInfo?.venueConfigured && (
+        <div className="yield-card">
+          <div className="yield-head">
+            <span className="yield-leaf">🌱</span>
+            <div>
+              <div className="yield-title">Escrow earns while it waits</div>
+              <div className="yield-sub">
+                Idle budget is supplied to{" "}
+                <a href="https://explorer.arc.io/address/0x65317ec4060c195f94C22CfD62C40742a21301Fe" target="_blank" rel="noreferrer">
+                  Aave v4 on Arc
+                </a>
+                . <strong>60%</strong> of whatever it earns goes to the contractor, not to us.
+              </div>
+            </div>
+          </div>
+          <div className="yield-note">
+            Nothing is lent while a job is still open — it is refundable in full at any instant, so the contract keeps
+            it in cash. Earning starts the moment someone is hired.
+            {yieldInfo.explorerUrl && (
+              <>
+                {" "}
+                <a className="tx-link" href={yieldInfo.explorerUrl} target="_blank" rel="noreferrer">
+                  view the controller ↗
+                </a>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* The visitor's OWN account. A separate card, because it is a different
           subject entirely — cramming it into the treasury row made one panel
