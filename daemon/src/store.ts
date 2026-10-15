@@ -6,6 +6,7 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import fs from "node:fs";
+import { chainId } from "./config.js";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -26,7 +27,20 @@ db.exec(`
     -- product is that a machine approves them), so a refund lands with Patron
     -- rather than with the client. Recording the payer is what lets Patron pass
     -- it back — see /api/jobs/refund.
-    client_address TEXT
+    client_address TEXT,
+    -- WHICH CHAIN THIS COMMISSION LIVES ON.
+    --
+    -- Escrow ids are per-deployment counters, so "escrow 50" means a different
+    -- job on every network — and on a network that has not reached 50 yet it
+    -- means nothing at all. When this daemon moved from Arc testnet to Arc
+    -- mainnet it inherited 31 testnet rows and began escalating and reclaiming
+    -- all of them against mainnet every cycle, forever, because nothing in the
+    -- row said where it came from.
+    --
+    -- Nullable on purpose: rows written before this column existed are backfilled
+    -- below, and a NULL that slips through is treated as "not this chain" rather
+    -- than silently swept.
+    chain_id INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS decisions (
@@ -158,6 +172,30 @@ try {
 // time the daemon redeployed.
 db.exec(`CREATE TABLE IF NOT EXISTS applied_repairs (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);`);
 
+/**
+ * Add tasks.chain_id to databases created before it existed, and say which
+ * chain the rows already in them came from.
+ *
+ * CREATE TABLE IF NOT EXISTS does nothing to a table that is already there, and
+ * the deployed database lives on a persistent volume that is never rebuilt — so
+ * without this, production keeps a schema the code no longer matches.
+ *
+ * The backfill names Arc testnet (5042002) because that is where every row
+ * written before this column existed was created: the daemon ran there from
+ * August until the mainnet cutover on 2026-10-15. On a fresh database there are
+ * no rows and this is a no-op, so it cannot mislabel anything.
+ */
+const ARC_TESTNET_CHAIN_ID = 5042002;
+
+function addChainIdColumn(): void {
+  const cols = db.prepare(`PRAGMA table_info(tasks)`).all() as { name: string }[];
+  if (cols.some((c) => c.name === "chain_id")) return;
+  db.exec(`ALTER TABLE tasks ADD COLUMN chain_id INTEGER`);
+  const filled = db.prepare(`UPDATE tasks SET chain_id = ? WHERE chain_id IS NULL`).run(ARC_TESTNET_CHAIN_ID);
+  console.log(`[store] added tasks.chain_id and marked ${filled.changes} pre-cutover task(s) as Arc testnet (${ARC_TESTNET_CHAIN_ID})`);
+}
+addChainIdColumn();
+
 function repairOnce(name: string, run: () => void): void {
   const done = db.prepare(`SELECT 1 FROM applied_repairs WHERE name = ?`).get(name);
   if (done) return;
@@ -273,12 +311,14 @@ export interface TaskRow {
   createdAt: number;
   /** The address that commissioned this, when known — the refund destination. */
   clientAddress?: string | null;
+  /** The chain this commission's escrow id belongs to. */
+  chainId?: number | null;
 }
 
 export function insertTask(task: Omit<TaskRow, "createdAt">): void {
   db.prepare(
-    `INSERT INTO tasks (id, escrow_id, instruction, client_type, status, brief_json, created_at, client_address)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (id, escrow_id, instruction, client_type, status, brief_json, created_at, client_address, chain_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     task.id,
     task.escrowId,
@@ -288,6 +328,7 @@ export function insertTask(task: Omit<TaskRow, "createdAt">): void {
     task.briefJson,
     Date.now(),
     task.clientAddress ?? null,
+    chainId,
   );
 }
 
@@ -314,7 +355,21 @@ function toTaskRow(r: any): TaskRow {
     briefJson: r.brief_json,
     createdAt: r.created_at,
     clientAddress: r.client_address ?? null,
+    chainId: r.chain_id ?? null,
   };
+}
+
+/**
+ * Is this commission's escrow id meaningful on the chain we are talking to?
+ *
+ * Escrow ids are per-deployment counters, so a row from another network names a
+ * different job — or, on a younger chain, no job at all. Every sweep that WRITES
+ * (cancel, escalate, reclaim) must ask this first. A NULL answers false: an
+ * unlabelled row is one we cannot place, and "do nothing" is the only safe
+ * reading of that when the next step spends gas or moves money.
+ */
+export function isOnCurrentChain(task: TaskRow): boolean {
+  return task.chainId === chainId;
 }
 
 export function listTasks(limit = 50): TaskRow[] {

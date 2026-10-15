@@ -1495,6 +1495,8 @@ const CANCEL_RETRY_MS = 30 * 60 * 1000;
 async function sweepExpiredCommissions(): Promise<void> {
   for (const task of store.listTasks(200)) {
     if (!task.escrowId || !task.briefJson) continue;
+    // Another network's escrow id names a different job here, or none. See store.isOnCurrentChain.
+    if (!store.isOnCurrentChain(task)) continue;
 
     /**
      * Ask the CHAIN who was hired, not our own status column.
@@ -1638,6 +1640,9 @@ const FULL_SCAN_INTERVAL_MS = 60 * 60 * 1000;
 async function escrowIdsToSweep(): Promise<string[]> {
   const fromDb = store
     .listTasks(300)
+    // Ids from another network point at someone else's escrow here, or at
+    // nothing. The chain enumeration below is already scoped to this contract.
+    .filter(store.isOnCurrentChain)
     .map((t) => t.escrowId)
     .filter((id): id is string => !!id);
 
@@ -1790,6 +1795,8 @@ async function reconcileTaskStatuses(): Promise<void> {
   for (const task of store.listTasks(200)) {
     if (!task.escrowId) continue;
     if (task.status === "briefing" || task.status === "failed") continue;
+    // Another network's escrow id names a different job here, or none. See store.isOnCurrentChain.
+    if (!store.isOnCurrentChain(task)) continue;
     try {
       const e = (await secureflow.getEscrow(BigInt(task.escrowId))) as { status?: number | bigint };
       if (!e || e.status === undefined) continue;
@@ -1857,6 +1864,8 @@ async function sweepOverdueCommissions(): Promise<void> {
   for (const task of store.listTasks(200)) {
     if (!task.escrowId || overdueHandled.has(task.escrowId)) continue;
     if (task.status === "cancelled" || task.status === "refunded" || task.status === "disputed") continue;
+    // Another network's escrow id names a different job here, or none. See store.isOnCurrentChain.
+    if (!store.isOnCurrentChain(task)) continue;
 
     try {
       const escrow = (await secureflow.getEscrow(BigInt(task.escrowId))) as {
@@ -1963,7 +1972,11 @@ async function pollOnce() {
   // ending — Patron still owes both sides the result.
   const tasks = store
     .listTasks(300)
-    .filter((t) => t.escrowId && (t.status === "posted" || t.status === "active" || t.status === "disputed"));
+    .filter((t) => t.escrowId && (t.status === "posted" || t.status === "active" || t.status === "disputed"))
+    // Hiring, reviewing and paying all resolve the escrow id against the
+    // configured contract. A row from another network would be scored, approved
+    // and PAID against whatever job happens to hold that id here.
+    .filter(store.isOnCurrentChain);
   let pollFailures = 0;
 
   for (const task of tasks) {
@@ -2214,6 +2227,8 @@ void (async () => {
 
   for (const task of store.listTasks(300)) {
     if (!task.escrowId) continue;
+    // Another network's escrow id names a different job here, or none. See store.isOnCurrentChain.
+    if (!store.isOnCurrentChain(task)) continue;
     try {
       const awards = sweep.get(task.escrowId);
       if (!awards?.length) continue;
