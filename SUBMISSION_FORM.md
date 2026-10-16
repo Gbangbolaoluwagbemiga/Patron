@@ -204,8 +204,9 @@ https://github.com/Gbangbolaoluwagbemiga/Patron
 ```
 https://github.com/Gbangbolaoluwagbemiga/Patron/compare/727f8c1...main
 ```
-> 19 commits, 33 files, +4,016 / −274. Baseline `727f8c1` is the last commit
-> before the event window opened on 27 Sept.
+> Baseline `727f8c1` is the last commit before the event window opened on
+> 27 Sept. The link tracks `main`, so it stays current as more lands — no need
+> to regenerate it if you submit again.
 
 ## Project Live
 ```
