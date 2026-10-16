@@ -69,7 +69,9 @@ db.exec(`
     direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal' | 'spend' | 'refund'
     amount_usdc TEXT NOT NULL,
     tx_hash TEXT UNIQUE,
-    timestamp INTEGER NOT NULL
+    timestamp INTEGER NOT NULL,
+    -- WHICH NETWORK THIS MONEY WAS ON. See addLedgerChainId below.
+    chain_id INTEGER
   );
 
   -- Clients who want their commissions followed in a chat.
@@ -187,6 +189,57 @@ db.exec(`CREATE TABLE IF NOT EXISTS applied_repairs (name TEXT PRIMARY KEY, appl
  */
 const ARC_TESTNET_CHAIN_ID = 5042002;
 
+/**
+ * Stamp the treasury ledger with its network, and scope every read to the one
+ * we are on.
+ *
+ * After the mainnet cutover this was the most dangerous row in the product.
+ * The ledger still held a testnet history — $145.00 deposited, $76.73 claim —
+ * while `withdrawable` was computed against the MAINNET treasury's real
+ * balance. So the live site told a depositor:
+ *
+ *   "$76.73 is yours, but only $0.04 is in the treasury right now — the rest
+ *    is locked in escrow against live commissions, and frees up as they settle."
+ *
+ * Every clause of that was false on mainnet. The $76.73 is testnet money that
+ * will never free up, and the sentence reads as an escrow product that cannot
+ * cover what it owes. A judge depositing $1 would have seen it.
+ *
+ * Backfilled to Arc testnet for the same reason tasks were: every entry
+ * written before this column existed was created there.
+ */
+function addLedgerChainId(): void {
+  const cols = db.prepare(`PRAGMA table_info(treasury_ledger)`).all() as { name: string }[];
+  if (cols.some((c) => c.name === "chain_id")) return;
+  db.exec(`ALTER TABLE treasury_ledger ADD COLUMN chain_id INTEGER`);
+
+  /*
+   * Split by WHEN, not by "everything so far was testnet".
+   *
+   * The first version of this backfill marked every unlabelled entry testnet,
+   * which is right for the deployed database — twenty entries, all written in
+   * August and September — and WRONG for any entry written after the cutover
+   * but before this column existed. There was exactly one: a $0.10 mainnet
+   * deposit credited by hand earlier the same day, which the blanket backfill
+   * promptly hid from its own depositor.
+   *
+   * The daemon moved to Arc mainnet on 2026-10-15. Anything older than that is
+   * testnet by construction; anything newer belongs to the chain this process
+   * is configured for.
+   */
+  const CUTOVER_MS = Date.UTC(2026, 9, 15); // 15 Oct 2026, the mainnet cutover
+  const old = db
+    .prepare(`UPDATE treasury_ledger SET chain_id = ? WHERE chain_id IS NULL AND timestamp < ?`)
+    .run(ARC_TESTNET_CHAIN_ID, CUTOVER_MS);
+  const recent = db
+    .prepare(`UPDATE treasury_ledger SET chain_id = ? WHERE chain_id IS NULL AND timestamp >= ?`)
+    .run(chainId, CUTOVER_MS);
+  console.log(
+    `[store] added treasury_ledger.chain_id — ${old.changes} pre-cutover entr(ies) marked Arc testnet, ` +
+      `${recent.changes} marked chain ${chainId}`,
+  );
+}
+
 function addChainIdColumn(): void {
   const cols = db.prepare(`PRAGMA table_info(tasks)`).all() as { name: string }[];
   if (cols.some((c) => c.name === "chain_id")) return;
@@ -195,6 +248,7 @@ function addChainIdColumn(): void {
   console.log(`[store] added tasks.chain_id and marked ${filled.changes} pre-cutover task(s) as Arc testnet (${ARC_TESTNET_CHAIN_ID})`);
 }
 addChainIdColumn();
+addLedgerChainId();
 
 function repairOnce(name: string, run: () => void): void {
   const done = db.prepare(`SELECT 1 FROM applied_repairs WHERE name = ?`).get(name);
@@ -644,9 +698,9 @@ export function recordTreasuryEntry(e: {
 }): boolean {
   try {
     db.prepare(
-      `INSERT INTO treasury_ledger (id, party, direction, amount_usdc, tx_hash, timestamp)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(e.id, e.party.toLowerCase(), e.direction, e.amountUsdc, e.txHash ?? null, Date.now());
+      `INSERT INTO treasury_ledger (id, party, direction, amount_usdc, tx_hash, timestamp, chain_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(e.id, e.party.toLowerCase(), e.direction, e.amountUsdc, e.txHash ?? null, Date.now(), chainId);
     return true;
   } catch {
     // UNIQUE(tx_hash) — this transaction has already been credited.
@@ -676,9 +730,9 @@ export function treasuryAccount(party: string): {
          COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS wdr,
          COALESCE(SUM(CASE WHEN direction = 'spend'      THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS spd,
          COALESCE(SUM(CASE WHEN direction = 'refund'     THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS ref
-       FROM treasury_ledger WHERE party = ?`,
+       FROM treasury_ledger WHERE party = ? AND chain_id = ?`,
     )
-    .get(party.toLowerCase()) as { dep: number; wdr: number; spd: number; ref: number };
+    .get(party.toLowerCase(), chainId) as { dep: number; wdr: number; spd: number; ref: number };
   const deposited = Number(row?.dep ?? 0);
   const withdrawn = Number(row?.wdr ?? 0);
   const spent = Number(row?.spd ?? 0);
@@ -691,8 +745,8 @@ export function treasuryAccount(party: string): {
 
 export function treasuryEntries(party: string, limit = 50): any[] {
   return db
-    .prepare(`SELECT * FROM treasury_ledger WHERE party = ? ORDER BY timestamp DESC LIMIT ?`)
-    .all(party.toLowerCase(), limit);
+    .prepare(`SELECT * FROM treasury_ledger WHERE party = ? AND chain_id = ? ORDER BY timestamp DESC LIMIT ?`)
+    .all(party.toLowerCase(), chainId, limit);
 }
 
 /** Everything every depositor still has a claim on, pooled. */
@@ -702,9 +756,9 @@ export function treasuryClaimsTotal(): number {
       `SELECT
          COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) -
          COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS net
-       FROM treasury_ledger`,
+       FROM treasury_ledger WHERE chain_id = ?`,
     )
-    .get() as { net: number };
+    .get(chainId) as { net: number };
   return Math.max(0, Number(row?.net ?? 0));
 }
 
