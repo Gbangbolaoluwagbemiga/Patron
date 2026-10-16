@@ -80,7 +80,7 @@ function stageOf(j: ClientJob): { label: string; tone: string } {
 }
 
 export default function MyJobs() {
-  const { address, connect, connecting, signMessage } = useWallet();
+  const { address, connect, connecting, signMessage, wallets } = useWallet();
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
   const [jobs, setJobs] = useState<ClientJob[] | null>(null);
@@ -167,7 +167,7 @@ export default function MyJobs() {
         </p>
         <div className="post-quest">
           <div className="post-quest-fields">
-            <button onClick={connect} disabled={connecting}>
+            <button onClick={() => connect(wallets[0]?.rdns)} disabled={connecting}>
               {connecting ? "Connecting…" : "Connect wallet →"}
             </button>
           </div>

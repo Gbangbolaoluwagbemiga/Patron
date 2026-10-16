@@ -740,6 +740,7 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
                 discover a message the app already had.
               */}
               {error && <div className="treasury-connect-error">⚠ {error}</div>}
+              {crediting && <div className="treasury-fund-label">Crediting your deposit…</div>}
             </>
           ) : (
             <div className="wallet-chip">
@@ -938,7 +939,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
   // let a $5 depositor commission out of the pooled treasury: this component
   // held a second, never-connected copy, so it sent no signature and the
   // server's cap was never consulted.
-  const { address, signMessage, connecting, connect, account, refreshAccount } = useWallet();
+  const { address, signMessage, connecting, connect, account, refreshAccount, wallets } = useWallet();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
@@ -1041,7 +1042,7 @@ export function PostQuest({ onPosted }: { onPosted: () => void }) {
           withdraw whatever you don't use — no job can ever exceed your own balance.
         </p>
         <div className="post-quest-fields" style={{ marginTop: 16 }}>
-          <button onClick={connect} disabled={connecting}>
+          <button onClick={() => connect(wallets[0]?.rdns)} disabled={connecting}>
             {connecting ? "Connecting…" : "Connect wallet →"}
           </button>
         </div>
