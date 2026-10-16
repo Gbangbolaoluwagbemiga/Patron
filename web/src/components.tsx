@@ -537,6 +537,7 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
   const [copied, setCopied] = useState(false);
   const [amount, setAmount] = useState("5");
   const [fundedTx, setFundedTx] = useState<string | null>(null);
+  const [crediting, setCrediting] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawAmt, setWithdrawAmt] = useState("");
   const [withdrewTx, setWithdrewTx] = useState<string | null>(null);
@@ -598,15 +599,43 @@ export function Treasury({ wallet, onFunded }: { wallet: WalletInfo | null; onFu
     if (!hash) return;
     setFundedTx(hash);
     onFunded();
-    if (address) {
+    if (!address) return;
+
+    /*
+     * CREDITING HAS TO SURVIVE THE TRANSACTION NOT BEING MINED YET.
+     *
+     * fund() returns the moment the wallet SUBMITS — it does not wait for a
+     * receipt. This then posted the hash straight to the daemon, which looks
+     * the transaction up with getTransaction and answers 404 while it is still
+     * pending. The catch below said "the funds landed; attribution can be
+     * retried" and nothing retried it, ever.
+     *
+     * The result was the worst kind of failure this product can have: a
+     * depositor's USDC sitting in Patron's treasury, credited to nobody, with
+     * a green "Deposited" tick on screen. It happened on a real $0.10 deposit.
+     *
+     * So it retries while the chain catches up, and if it still cannot credit
+     * it, it SAYS SO and keeps the hash on screen so nothing is lost.
+     */
+    setCrediting(true);
+    let credited = false;
+    for (let attempt = 0; attempt < 6 && !credited; attempt++) {
       try {
-        // Credited only after the daemon re-reads this transaction on Arc.
         await api(`/api/treasury/deposit`, { method: "POST", body: JSON.stringify({ txHash: hash, from: address }) });
+        credited = true;
       } catch {
-        /* the funds landed; attribution can be retried */
+        await new Promise((r) => setTimeout(r, 2_500));
       }
-      await refreshAccount();
     }
+    setCrediting(false);
+
+    if (!credited) {
+      setError(
+        `Your $${amount} reached the treasury (tx ${hash.slice(0, 10)}…) but we could not credit it to your account yet. ` +
+          `Nothing is lost — reload this page and it will be picked up.`,
+      );
+    }
+    await refreshAccount();
   }
 
   async function handleWithdraw() {

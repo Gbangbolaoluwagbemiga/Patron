@@ -758,7 +758,22 @@ const server = http.createServer(async (req, res) => {
       if (!b.txHash || !b.from) return json(res, 400, { error: "txHash and from are required" });
 
       const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
-      const tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
+
+      /*
+       * WAIT FOR IT. The caller has just submitted this transaction.
+       *
+       * The browser sends the hash the instant the wallet returns it, which is
+       * BEFORE the transaction is mined — so a single getTransaction answers
+       * 404 and the deposit goes uncredited while the USDC is already on its
+       * way to the treasury. Arc blocks are about a second, so a few seconds of
+       * patience here is the difference between crediting a depositor and
+       * stranding their money.
+       */
+      let tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
+      for (let i = 0; i < 8 && !tx; i++) {
+        await new Promise((r) => setTimeout(r, 1_500));
+        tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
+      }
       if (!tx) return json(res, 404, { error: "That transaction could not be found on Arc yet. Give it a moment and try again." });
 
       const receipt = await pub.getTransactionReceipt({ hash: b.txHash as `0x${string}` }).catch(() => null);

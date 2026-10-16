@@ -4,7 +4,7 @@
 // Circle MPC exactly as before (see IMPLEMENTATION.md) — this only ever signs with
 // the VISITOR's own wallet, sending the visitor's own funds, by the visitor's own
 // explicit approval in their wallet's UI. Nothing here can move Patron's funds.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createWalletClient, custom, formatEther, parseEther } from "viem";
 
 /** Chain the browser is asked to add/switch to. Env-driven so mainnet and testnet cannot diverge from the daemon. */
@@ -192,6 +192,47 @@ export function useWalletConnect() {
     }
   }, []);
 
+  /*
+   * COME BACK CONNECTED.
+   *
+   * Nothing restored the session, so every reload dropped the wallet and the
+   * person had to pick and approve it again — and because the choice was gone
+   * too, the next connect could land on a DIFFERENT wallet than the one that
+   * deposited. A page refresh is not a logout.
+   *
+   * eth_accounts is the right call here, not eth_requestAccounts: it returns
+   * the already-authorised account without prompting, and an empty array when
+   * the person has not connected or has revoked. So this silently restores a
+   * live session and silently does nothing otherwise.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const saved = (() => {
+      try { return localStorage.getItem("patron.wallet.rdns"); } catch { return null; }
+    })();
+
+    const restore = async () => {
+      const provider = providerFor(saved);
+      if (!provider) return;
+      try {
+        const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+        if (cancelled || !accounts?.[0]) return;
+        if (saved) { setActiveRdns(saved); activeRdnsRef.current = saved; }
+        setAddress(accounts[0]);
+        void readBalance(accounts[0]);
+      } catch {
+        /* nothing authorised — stay disconnected, silently */
+      }
+    };
+
+    // Wallets announce over 6963 asynchronously, so the saved one may not be
+    // registered on the first tick.
+    void restore();
+    const t = setTimeout(restore, 600);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const connect = useCallback(async (rdns?: string) => {
     // An explicitly chosen wallet always wins over whatever claimed the slot.
     const chosen = rdns ? discovered.get(rdns)?.provider ?? null : null;
@@ -245,7 +286,13 @@ export function useWalletConnect() {
         }
       }
 
-      if (rdns) { setActiveRdns(rdns); activeRdnsRef.current = rdns; }
+      if (rdns) {
+        setActiveRdns(rdns);
+        activeRdnsRef.current = rdns;
+        // Remember WHICH wallet, so a reload restores the same one rather than
+        // whichever happens to answer.
+        try { localStorage.setItem("patron.wallet.rdns", rdns); } catch { /* private mode */ }
+      }
       setAddress(accounts[0]);
       void readBalance(accounts[0]);
     } catch (err) {
